@@ -1,0 +1,32 @@
+{
+  "projectRef": "ljzoizsogbirlvlsrwzi",
+  "verifiedAt": "2026-09-11T08:33:03.901Z",
+  "status": "installed-and-verified",
+  "tableCount": 82,
+  "functionCount": 303,
+  "nonemptyTables": {
+    "announcement_slider_settings": 1,
+    "company_settings": 1,
+    "flight_search_supplier_limits": 3,
+    "homepage_offer_settings": 1,
+    "homepage_travel_offers": 3,
+    "promotional_popup_settings": 1,
+    "supplier_operational_settings": 1
+  },
+  "businessTablesEmpty": true,
+  "allTablesHaveRls": true,
+  "migrationVersions": [
+    "20260911000000"
+  ],
+  "restChecks": 8,
+  "readOnlyRpc": "passed",
+  "anonymousSettingsAccess": "denied",
+  "supplier": {
+    "active": "triplover",
+    "booking_enabled": false,
+    "ticketing_enabled": false
+  },
+  "databasePasswordFieldsMatch": true,
+  "baselineSha256": "44b28abe0576ebd08a8239593047ec36177fe7a3076bccc47d0152be7e5b88ab",
+  "postInstallDryRun": "up-to-date; no migrations or seeds pending"
+}

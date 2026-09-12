@@ -1,0 +1,92 @@
+/* Shared ticket presentation for the dashboard, physical print and Save as PDF. */
+.license { margin-top: 3px; font-size: 12px; color: #64748b; }
+@media screen, print {
+  .ticket { border-radius: 0; box-shadow: 0 6px 28px #172b4510; color: #172b45; }
+  .masthead { padding: 16px 20px; gap: 16px; background: white; border-top-width: 5px; color: #172b45; }
+  .agencyName { font-size: 22px; letter-spacing: -.6px; }
+  .masthead > div:first-child > div:first-child { gap: 12px; }
+  .masthead > div:first-child > div:first-child > div:first-child > div { width: 44px; height: 44px; border-radius: 0; }
+  .agencyName + p { font-size: 12px; color: #64748b; margin-top: 3px; line-height: 1.4; }
+  .contact { margin-top: 10px; padding: 0; background: transparent; box-shadow: none; color: #526174; font-size: 12px; line-height: 1.6; }
+  .contact svg { color: #d86d08; }
+  .reference { width: auto; max-width: 100%; padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 0; background: #f8fafc; text-align: left; }
+  .reference > p:first-child { color: #64748b; font-size: 12px; letter-spacing: .1em; }
+  .reference > div { justify-content: flex-start; }
+  .reference > div > span { font-size: 16px; letter-spacing: .035em; overflow-wrap: anywhere; }
+  .reference button { color: #526174; }
+  .reference button:hover { background: #e2e8f0; }
+  .reference button:focus-visible { outline: 2px solid #e5790c; outline-offset: 3px; }
+  .status { margin-top: 6px; font-size: 12px; }
+  .summary { background: #f8fafc; border-color: #e2e8f0; padding: 0 8px; }
+  .summary > div { padding: 10px 14px; border-color: #e2e8f0; }
+  .summary > div > p:first-child { color: #64748b; font-size: 12px; letter-spacing: .04em; }
+  .summary > div > p:last-child { margin-top: 3px; color: #172b45; font-size: 14px; }
+  .summary > div:first-child > p:last-child { color: #b75a08; font-size: 18px; letter-spacing: .07em; }
+  .section { padding: 12px 20px; border-color: #e2e8f0; }
+  .section > div:first-child:has(h2) { margin-bottom: 8px; gap: 8px; }
+  .section h2 { font-size: 14px; text-transform: none; letter-spacing: 0; color: #172b45; }
+  .section > div:first-child > svg { width: 18px; height: 18px; }
+  .section th { padding: 7px 12px; font-size: 12px; text-transform: none; letter-spacing: 0; color: #64748b; background: #f8fafc; }
+  .section td { padding-top: 9px; padding-bottom: 9px; font-size: 14px; }
+  .section td p:first-child { font-size: 14px; color: #172b45; }
+  .section td p + p { font-size: 12px; line-height: 1.6; }
+  .section > p { font-size: 12px; line-height: 1.7; color: #64748b; }
+  .flight { border-radius: 0; box-shadow: 0 0 0 1px #e2e8f0; }
+  .carrier { padding: 8px 14px; background: #f8fafc; }
+  .carrier p:first-child { font-size: 14px; color: #172b45; }
+  .carrier p + p { margin-top: 3px; font-size: 12px; }
+  .journey { padding: 14px; gap: 20px; align-items: center; }
+  .terminus > p:first-child { font-size: 28px; font-weight: 750; letter-spacing: -1px; color: #172b45; }
+  .terminus > p:nth-child(2) { font-size: 16px; margin-top: 6px; letter-spacing: .05em; color: #172b45; }
+  .terminus > p:nth-child(n+3) { display: block; overflow: visible; -webkit-line-clamp: unset; font-size: 12px; color: #64748b; line-height: 1.5; }
+  .journey > div:nth-child(2) { max-width: 160px; }
+  .journey > div:nth-child(2) > span:first-child { font-size: 12px; }
+  .baggage { padding: 7px 14px; border-top-style: dashed; background: #fff; font-size: 12px; color: #64748b; gap: 5px 18px; }
+  .total { background: #fff4e6; color: #172b45; border-top: 1px solid #ffddb4; }
+  .total td:last-child { font-size: 22px; color: #b75a08; letter-spacing: -.5px; }
+  .ticket > footer { padding: 9px 20px; background: #f8fafc; border-color: #e2e8f0; flex-wrap: wrap; gap: 8px; }
+  .ticket > footer p { font-size: 12px; }
+}
+@media screen and (max-width: 767px) {
+  .masthead { flex-direction: column; }
+  .reference { width: 100%; }
+}
+@media screen and (max-width: 639px) {
+  .masthead, .section { padding: 12px 14px; }
+  .summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
+  .summary > div { padding: 10px 14px; border: 0; }
+  .summary > div:nth-child(even) { border-left: 1px solid #e2e8f0; }
+  .summary > div:nth-child(n+3) { border-top: 1px solid #e2e8f0; }
+  .journey { padding: 12px 14px; gap: 10px; }
+  .terminus > p:first-child { font-size: 26px; }
+  .journey > div:nth-child(2) { max-width: 75px; min-width: 45px; }
+  .carrier, .baggage { padding-left: 14px; padding-right: 14px; }
+  .ticket > footer { padding: 9px 14px; }
+}
+
+/* Square corners throughout the ticket, including nested badges and tables. */
+.ticket,
+.ticket * {
+  border-radius: 0 !important;
+}
+
+/* Keep the desktop document composition on A4, including when printing from a phone. */
+@media print {
+  .masthead { flex-direction: row; align-items: flex-start; justify-content: space-between; padding: 14px 20px; gap: 16px; }
+  .reference { width: auto; max-width: 45%; }
+  .reference button { display: none; }
+  .summary > div { padding: 9px 12px; }
+  .ticket .summary > div + div { border-left-color: #e2e8f0 !important; }
+  .section { padding: 10px 20px; }
+  .section > div:first-child:has(h2) { break-after: avoid; }
+  .section > div { overflow: visible; }
+  .section table { min-width: 0; width: 100%; }
+  .section th, .section td { white-space: normal; overflow-wrap: anywhere; }
+  .section td { padding-top: 8px; padding-bottom: 8px; }
+  .section thead { display: table-header-group; }
+  .section tr, .header, .journey, .baggage, .ticket > footer { break-inside: avoid; }
+  .flight { overflow: visible; box-shadow: none; border: 1px solid #e2e8f0; }
+  .carrier { break-after: avoid; }
+  .journey { padding: 12px 14px; break-after: avoid; }
+  .ticket > footer { flex-direction: row; padding: 8px 20px; }
+}

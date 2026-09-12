@@ -1,0 +1,980 @@
+{
+  "expectedProjectRef": "ljzoizsogbirlvlsrwzi",
+  "sqlSha256": "44b28abe0576ebd08a8239593047ec36177fe7a3076bccc47d0152be7e5b88ab",
+  "migrations": [
+    {
+      "source": "0001_users_and_profiles.sql",
+      "sourceSha256": "f1d147e30f99c3a474cadf2e5e077591255077bac9ee3d162f72c149c98c1cc3",
+      "preparedSha256": "8ba7f7feb2d056b48b6bd15ca3fcd2db45f9074c6cd282e2e6f66b063325fa51",
+      "changes": []
+    },
+    {
+      "source": "0002_agencies_and_sub_users.sql",
+      "sourceSha256": "61a6e4d21563ce717c8030e2e0ef6ddde6efeb09ee20fffdc1b875e6e8c30011",
+      "preparedSha256": "90efb01269b5a4360abf111cc2f3c5d2eb712ef2307e81da1af5ffe2edfc018f",
+      "changes": []
+    },
+    {
+      "source": "0003_staff_details.sql",
+      "sourceSha256": "f8cd525a294e6cdf445cf0a0d11fe9cd7941aced95cc77130ed20d99430b90e0",
+      "preparedSha256": "c25bc6188e42c8b30291364227575ee64d1bb24b257d65c013cee871370d6e3e",
+      "changes": []
+    },
+    {
+      "source": "0004_upgrade_requests.sql",
+      "sourceSha256": "93f2cca955a712fd40a4d4d5253c713128c1f0bf73f9977fa7fa826cf9d0e1a8",
+      "preparedSha256": "59aa079db34c1f9dfbf529238eb5eeb423d80ae1c8061aa8e9ddae7f16471d47",
+      "changes": []
+    },
+    {
+      "source": "0005_document_uploads.sql",
+      "sourceSha256": "d8cd48f570b479f934d5cb141e0056e216d4cfa701204407d7d33fd4b488fc63",
+      "preparedSha256": "46b4b78e89691502cb53c4fce418c5294589aa59e49eb18ae9de8df0cf787ac1",
+      "changes": []
+    },
+    {
+      "source": "0006_markup_rules.sql",
+      "sourceSha256": "02c4f92750bb376bf016833a998a8161b25b80fb7b9ba7d388402db4e35f43ef",
+      "preparedSha256": "7fcc757e9e7e27fc1dcdf1b61c764c648bcfb2ebf51fd4d21a1b31c83f8146e3",
+      "changes": []
+    },
+    {
+      "source": "0007_capped_and_lcc_markup.sql",
+      "sourceSha256": "7f2cd44611f7e2a55364b9f0188d95355f0135859faa6e6ba482f655b00ae7b7",
+      "preparedSha256": "7f2cd44611f7e2a55364b9f0188d95355f0135859faa6e6ba482f655b00ae7b7",
+      "changes": []
+    },
+    {
+      "source": "0008_flight_search_quotes.sql",
+      "sourceSha256": "a628f4766aacba4f1547eb4eac34d4cf9b25b1035a1587e673412f819a21944f",
+      "preparedSha256": "a628f4766aacba4f1547eb4eac34d4cf9b25b1035a1587e673412f819a21944f",
+      "changes": []
+    },
+    {
+      "source": "0009_flight_bookings.sql",
+      "sourceSha256": "589d04591972d92f4d575b2e469bea63b4260156881c23af34be5d3c19648cb5",
+      "preparedSha256": "589d04591972d92f4d575b2e469bea63b4260156881c23af34be5d3c19648cb5",
+      "changes": []
+    },
+    {
+      "source": "0010_all_airlines_markup.sql",
+      "sourceSha256": "4eaceb5b71b0bf306000d2b74cc91fb0097b1cf9184ffb54a93a9a6b97d9afe1",
+      "preparedSha256": "4eaceb5b71b0bf306000d2b74cc91fb0097b1cf9184ffb54a93a9a6b97d9afe1",
+      "changes": []
+    },
+    {
+      "source": "0011_all_airlines_route_markup.sql",
+      "sourceSha256": "b4a4c93748913160e2b13f64e0f3d1f421b594c80885ec1c8b798530ceea58eb",
+      "preparedSha256": "b4a4c93748913160e2b13f64e0f3d1f421b594c80885ec1c8b798530ceea58eb",
+      "changes": []
+    },
+    {
+      "source": "0012_all_b2b_markup_audience.sql",
+      "sourceSha256": "02ff7e4c8110a83ea3ee37ee5d1e2eeeddce114513ad83cbe22de5329f8bbba5",
+      "preparedSha256": "02ff7e4c8110a83ea3ee37ee5d1e2eeeddce114513ad83cbe22de5329f8bbba5",
+      "changes": []
+    },
+    {
+      "source": "0013_negative_markup_discounts.sql",
+      "sourceSha256": "4989465ed9eef67fd0c3180cf26aacfbf5510fa08c57a4dcfbb6614160fed4e0",
+      "preparedSha256": "4989465ed9eef67fd0c3180cf26aacfbf5510fa08c57a4dcfbb6614160fed4e0",
+      "changes": []
+    },
+    {
+      "source": "0014_prevent_overlapping_markup_routes.sql",
+      "sourceSha256": "57aac2cc1244ce982b278b4175d6e143d299140730b85729a643cd03724fbbc8",
+      "preparedSha256": "57aac2cc1244ce982b278b4175d6e143d299140730b85729a643cd03724fbbc8",
+      "changes": []
+    },
+    {
+      "source": "0015_booking_itinerary_snapshot.sql",
+      "sourceSha256": "d553ced904b104cb4edf295e5e549c3373d62da952b5de40d842c51c2ec84f62",
+      "preparedSha256": "d553ced904b104cb4edf295e5e549c3373d62da952b5de40d842c51c2ec84f62",
+      "changes": []
+    },
+    {
+      "source": "0016_booking_attempts.sql",
+      "sourceSha256": "8016df920884cd15388c734511670b37be8cd488bdefd35712d68fb42e5d1099",
+      "preparedSha256": "8016df920884cd15388c734511670b37be8cd488bdefd35712d68fb42e5d1099",
+      "changes": []
+    },
+    {
+      "source": "0017_booking_lifecycle.sql",
+      "sourceSha256": "15d6ae798a95dd60447c5b58686a10abe1f761d2ae55ab60cc9c6762a89633de",
+      "preparedSha256": "15d6ae798a95dd60447c5b58686a10abe1f761d2ae55ab60cc9c6762a89633de",
+      "changes": []
+    },
+    {
+      "source": "0018_security_hardening.sql",
+      "sourceSha256": "bb4aebe61a3408659798b360e0e1a301644840a15df1a2e17b4bb91ea7672343",
+      "preparedSha256": "bb4aebe61a3408659798b360e0e1a301644840a15df1a2e17b4bb91ea7672343",
+      "changes": []
+    },
+    {
+      "source": "0019_wallet_core.sql",
+      "sourceSha256": "7ddaab2a90d26bffe2da4c0630550911571ec0960f13f1bb75215c0fa2bfa304",
+      "preparedSha256": "fa09fb00668c64856639fd6957715f89135bbd189b5feb44fc2108110636e6b5",
+      "changes": []
+    },
+    {
+      "source": "0020_wallet_report_view_security.sql",
+      "sourceSha256": "d1c2164094ddd11564efac730b7d2491753ddb36485791b519fca07eb64d86ef",
+      "preparedSha256": "d1c2164094ddd11564efac730b7d2491753ddb36485791b519fca07eb64d86ef",
+      "changes": []
+    },
+    {
+      "source": "0021_wallet_currency_and_privilege_guards.sql",
+      "sourceSha256": "cc55737a1fbf89aeb21bff3176958efb5d757eaa4a5dd734f21f7cdb677a8903",
+      "preparedSha256": "cc55737a1fbf89aeb21bff3176958efb5d757eaa4a5dd734f21f7cdb677a8903",
+      "changes": []
+    },
+    {
+      "source": "0022_deposit_public_references.sql",
+      "sourceSha256": "bfacba5900332ba1907212f0c7796bcd1ffc79c1733efa0d29c3b9c4e3c070d4",
+      "preparedSha256": "bfacba5900332ba1907212f0c7796bcd1ffc79c1733efa0d29c3b9c4e3c070d4",
+      "changes": []
+    },
+    {
+      "source": "0023_deposit_channels.sql",
+      "sourceSha256": "4458ed3645c0c1c656d7001996b2476dcce6c1fa87923cfa10d3c0a53897c050",
+      "preparedSha256": "fd0c0af246c8ebc1cabbe9035ae1705ff348a4751225ae3fd0dbd4d206184ee2",
+      "changes": [
+        "omit old company branch seed"
+      ]
+    },
+    {
+      "source": "0024_bank_transfer_deposits.sql",
+      "sourceSha256": "e14eaf3cd64ea54ea1bacb633e77dba395bbbd16e88b1906723cb23ccc451fee",
+      "preparedSha256": "e14eaf3cd64ea54ea1bacb633e77dba395bbbd16e88b1906723cb23ccc451fee",
+      "changes": []
+    },
+    {
+      "source": "0025_booking_cancellation.sql",
+      "sourceSha256": "ab1243333f29213aa6d75742ada2d96019259bbc18283fbffb0ad556ba46cc79",
+      "preparedSha256": "ab1243333f29213aa6d75742ada2d96019259bbc18283fbffb0ad556ba46cc79",
+      "changes": []
+    },
+    {
+      "source": "0026_manual_ticket_queue.sql",
+      "sourceSha256": "871f6679f49e5452c74a8c6334f656eb6bbfe0e93e82bf6b9c85ec15fd28762e",
+      "preparedSha256": "871f6679f49e5452c74a8c6334f656eb6bbfe0e93e82bf6b9c85ec15fd28762e",
+      "changes": []
+    },
+    {
+      "source": "0027_confirmed_booking_email.sql",
+      "sourceSha256": "2844a9fb312ad73d80c30e052dd09db37fe1e94af8bec2001a18afbe921eff5e",
+      "preparedSha256": "2844a9fb312ad73d80c30e052dd09db37fe1e94af8bec2001a18afbe921eff5e",
+      "changes": []
+    },
+    {
+      "source": "0028_fix_pnr_deadline_date_order.sql",
+      "sourceSha256": "9233a4849ee78509b2ce0db1e0d2d1f727388c11b8b731ed5463344e00bc4e85",
+      "preparedSha256": "9233a4849ee78509b2ce0db1e0d2d1f727388c11b8b731ed5463344e00bc4e85",
+      "changes": []
+    },
+    {
+      "source": "0029_agency_license_number.sql",
+      "sourceSha256": "2229b4c1fe5d92fcb4a6f111d0d16e979e58a506da9d1123a11966fb2936876d",
+      "preparedSha256": "8a72474e8c189a572f67e888506ea3bf25ed31fae08c8e631fdaa9ec62857799",
+      "changes": []
+    },
+    {
+      "source": "0030_correct_pnr_deadline_to_month_day.sql",
+      "sourceSha256": "18ffb0690357687732af7797fcac51b18b773a3b7910bc2ea0bb1fe2d068ca48",
+      "preparedSha256": "18ffb0690357687732af7797fcac51b18b773a3b7910bc2ea0bb1fe2d068ca48",
+      "changes": []
+    },
+    {
+      "source": "0031_booking_lifecycle_authority.sql",
+      "sourceSha256": "fd2292cab173677aa31af479dc94afc9f7de38f9619dcf00ae31aea822bacee6",
+      "preparedSha256": "fd2292cab173677aa31af479dc94afc9f7de38f9619dcf00ae31aea822bacee6",
+      "changes": []
+    },
+    {
+      "source": "0032_booking_lifecycle_manual_issue_guard.sql",
+      "sourceSha256": "0dc66ed833da64c08e23687e14d36df9d2455f2b028a168390b75e0d52381ede",
+      "preparedSha256": "0dc66ed833da64c08e23687e14d36df9d2455f2b028a168390b75e0d52381ede",
+      "changes": []
+    },
+    {
+      "source": "0033_verified_booking_cancellation_reconciliation.sql",
+      "sourceSha256": "3f7e5dc2a82b750b010545636e1e7f1f2857918df0120e94df137a9018035e73",
+      "preparedSha256": "3f7e5dc2a82b750b010545636e1e7f1f2857918df0120e94df137a9018035e73",
+      "changes": []
+    },
+    {
+      "source": "0034_fix_pnr_dd_mm_deadline_and_hold_email.sql",
+      "sourceSha256": "989b81416a9a2d2d8eaed3275413506a53b4aa016f3462e414aa4d0f400fd04a",
+      "preparedSha256": "a5fc4aacf2cec3cf6ff5efeb178d6691e76f33425fcc4e54082583686ad20d96",
+      "changes": [
+        "retain schema/functions; omit historical booking repair"
+      ]
+    },
+    {
+      "source": "0035_confirmed_email_retry_safety.sql",
+      "sourceSha256": "7abb350fde3efe5e1760ce4e1c25585683b39f3daad69aa46baa71f637806958",
+      "preparedSha256": "dfd4ba6f979117808acca7c9d70e94c2242a69ac6e41046cd87c62154c2a688c",
+      "changes": [
+        "omit historical email error record"
+      ]
+    },
+    {
+      "source": "0036_correct_ambiguous_pnr_deadline_by_booking_time.sql",
+      "sourceSha256": "28c89ffe8c6b94bd646193d3d788106a96e0dc7ba56f740de6325b3dabb3a43c",
+      "preparedSha256": "ce5e50fab7369579340e984a61a04657c335596bb885c367d9a3628dc3542e93",
+      "changes": [
+        "omit historical booking-only repair"
+      ]
+    },
+    {
+      "source": "0037_impexp_booking_imports.sql",
+      "sourceSha256": "96203bdc497f5dba21cdecb5e7c27685814aa911e693dad4470fb6d37f730e17",
+      "preparedSha256": "96203bdc497f5dba21cdecb5e7c27685814aa911e693dad4470fb6d37f730e17",
+      "changes": []
+    },
+    {
+      "source": "0038_impexp_passenger_details.sql",
+      "sourceSha256": "38d2da5f661a68c22b71b869228ee8cefed4b69c912791f508eee4c5784cfeff",
+      "preparedSha256": "38d2da5f661a68c22b71b869228ee8cefed4b69c912791f508eee4c5784cfeff",
+      "changes": []
+    },
+    {
+      "source": "0039_fix_us_bangla_pnr_month_day_deadlines.sql",
+      "sourceSha256": "3c3c2dad43f3acce270d587f27489005d68f1a7e805f8619df53b1907811acb4",
+      "preparedSha256": "ce5e50fab7369579340e984a61a04657c335596bb885c367d9a3628dc3542e93",
+      "changes": [
+        "omit historical booking-only repair"
+      ]
+    },
+    {
+      "source": "0040_impexp_wallet_and_sync.sql",
+      "sourceSha256": "3d20ad011c2dbf2ec10086ce8577efcfb108262c667b45df8dc229edb714a20e",
+      "preparedSha256": "3d20ad011c2dbf2ec10086ce8577efcfb108262c667b45df8dc229edb714a20e",
+      "changes": []
+    },
+    {
+      "source": "0041_booking_status_emails.sql",
+      "sourceSha256": "064a04b5a20b5b9e07be058939612467affa273f571f0b39b5178620fd9fef21",
+      "preparedSha256": "064a04b5a20b5b9e07be058939612467affa273f571f0b39b5178620fd9fef21",
+      "changes": []
+    },
+    {
+      "source": "0042_supabase_booking_status_email_cron.sql",
+      "sourceSha256": "2c871bd2d49f2a8ef1f7132fe8a91271b2190ab6b100a0f0676de54789892ee2",
+      "preparedSha256": "bc85736f96b7eef90530fc8559247cbc2c9aa325118292f11959cfc651972875",
+      "changes": [
+        "defer platform scheduler; no network jobs during installation"
+      ]
+    },
+    {
+      "source": "0043_booking_lifecycle_internal_model.sql",
+      "sourceSha256": "eb6b3f38544b62ab5f483c4171c959fc0db411d9b5796bff1f012ee19d264cdc",
+      "preparedSha256": "eb6b3f38544b62ab5f483c4171c959fc0db411d9b5796bff1f012ee19d264cdc",
+      "changes": []
+    },
+    {
+      "source": "0044_booking_lifecycle_observability.sql",
+      "sourceSha256": "634ac1409ecc3bdb7ee468cbb3e9f5c41ac16ad5e20281e750489d83543b1f8d",
+      "preparedSha256": "634ac1409ecc3bdb7ee468cbb3e9f5c41ac16ad5e20281e750489d83543b1f8d",
+      "changes": []
+    },
+    {
+      "source": "0045_booking_operation_claims.sql",
+      "sourceSha256": "96aff1fea048ef5e8d6a07531e5070fda326054b52a246b6af41f98d14076c65",
+      "preparedSha256": "96aff1fea048ef5e8d6a07531e5070fda326054b52a246b6af41f98d14076c65",
+      "changes": []
+    },
+    {
+      "source": "0046_booking_reconciliation_evidence_reads.sql",
+      "sourceSha256": "97250208d5398cc8619b862cf06f733fe6c9c9f1194608e753b48c8419f971aa",
+      "preparedSha256": "97250208d5398cc8619b862cf06f733fe6c9c9f1194608e753b48c8419f971aa",
+      "changes": []
+    },
+    {
+      "source": "0047_booking_reconciliation_no_change_closure.sql",
+      "sourceSha256": "6a10755e37013cb7a6d75827a16ac1ade602e9e44759d1a884639d76f5f2cc32",
+      "preparedSha256": "6a10755e37013cb7a6d75827a16ac1ade602e9e44759d1a884639d76f5f2cc32",
+      "changes": []
+    },
+    {
+      "source": "0048_booking_supplier_sync_protection.sql",
+      "sourceSha256": "5226bd3acc4e0c1ef19791aefba5c517507f4bb3975fcbedccb4b740c4054202",
+      "preparedSha256": "5226bd3acc4e0c1ef19791aefba5c517507f4bb3975fcbedccb4b740c4054202",
+      "changes": []
+    },
+    {
+      "source": "0049_booking_reconciliation_security_audit.sql",
+      "sourceSha256": "9212a77f0f1c41d48840547c521651f2837c28778360cf604d2aee3bbfe19f93",
+      "preparedSha256": "9212a77f0f1c41d48840547c521651f2837c28778360cf604d2aee3bbfe19f93",
+      "changes": []
+    },
+    {
+      "source": "0050_booking_reconciliation_maker_checker.sql",
+      "sourceSha256": "218f64a1a318c91a8c94364443e211ab4d54dee34958322ba81b27e54b3d50bd",
+      "preparedSha256": "218f64a1a318c91a8c94364443e211ab4d54dee34958322ba81b27e54b3d50bd",
+      "changes": []
+    },
+    {
+      "source": "0051_booking_reconciliation_resolution_contracts.sql",
+      "sourceSha256": "015adcb18ef40647de2905f2a7d308135017a7f1745a09e3f88b8b57e63b1438",
+      "preparedSha256": "015adcb18ef40647de2905f2a7d308135017a7f1745a09e3f88b8b57e63b1438",
+      "changes": []
+    },
+    {
+      "source": "0052_booking_reconciliation_ticketed_capture.sql",
+      "sourceSha256": "66929cbd18205bdb7aca1ee4c987c058b3faf6ee85c7d6cabd585e86e1714434",
+      "preparedSha256": "66929cbd18205bdb7aca1ee4c987c058b3faf6ee85c7d6cabd585e86e1714434",
+      "changes": []
+    },
+    {
+      "source": "0053_booking_reconciliation_nonissuance_release.sql",
+      "sourceSha256": "7058e0bad092e4e8a32f25604ed3c9b6268cf7cdf4e1237fb62184411239a5b5",
+      "preparedSha256": "7058e0bad092e4e8a32f25604ed3c9b6268cf7cdf4e1237fb62184411239a5b5",
+      "changes": []
+    },
+    {
+      "source": "0054_booking_reconciliation_unpaid_cancellation.sql",
+      "sourceSha256": "569cefbb36948ec0a68279cd8725c3da35c61b327b4eb60714e8ba892fee519a",
+      "preparedSha256": "569cefbb36948ec0a68279cd8725c3da35c61b327b4eb60714e8ba892fee519a",
+      "changes": []
+    },
+    {
+      "source": "0055_booking_reconciliation_held_cancellation.sql",
+      "sourceSha256": "1b2dd6577a45bf9452c3a8e4bdc82f6ab55a3a9ed212ef4593d844e9d78cc57c",
+      "preparedSha256": "1b2dd6577a45bf9452c3a8e4bdc82f6ab55a3a9ed212ef4593d844e9d78cc57c",
+      "changes": []
+    },
+    {
+      "source": "0056_booking_reconciliation_captured_cancellation.sql",
+      "sourceSha256": "8c58d0519617cb175657c2f81c1fa94af43c548f914fa83591fae45927d8bcdb",
+      "preparedSha256": "8c58d0519617cb175657c2f81c1fa94af43c548f914fa83591fae45927d8bcdb",
+      "changes": []
+    },
+    {
+      "source": "0057_booking_reconciliation_terminal_corrections.sql",
+      "sourceSha256": "2d0fce069de21d3641027d1866e4727b02da596265e3773909bfd2ceb1da060d",
+      "preparedSha256": "2d0fce069de21d3641027d1866e4727b02da596265e3773909bfd2ceb1da060d",
+      "changes": []
+    },
+    {
+      "source": "0058_wallet_reconciliation_release_guard.sql",
+      "sourceSha256": "0128b0c09c0dc72acce3c087ad1b0b6bc4e21eb7f6ec79244a78fed17e075e0e",
+      "preparedSha256": "0128b0c09c0dc72acce3c087ad1b0b6bc4e21eb7f6ec79244a78fed17e075e0e",
+      "changes": []
+    },
+    {
+      "source": "0059_wallet_reconciliation_refund_guard.sql",
+      "sourceSha256": "18b71cea67e5c02ee26ea7038b5c1a0786daa62f239ed3294d629fae660524a3",
+      "preparedSha256": "18b71cea67e5c02ee26ea7038b5c1a0786daa62f239ed3294d629fae660524a3",
+      "changes": []
+    },
+    {
+      "source": "0060_booking_lifecycle_event_outbox.sql",
+      "sourceSha256": "1bc89e08f877022a1c3b0fa5c577158c9b8ed922ae84c6d1b9d2582c310fe625",
+      "preparedSha256": "1bc89e08f877022a1c3b0fa5c577158c9b8ed922ae84c6d1b9d2582c310fe625",
+      "changes": []
+    },
+    {
+      "source": "0061_impexp_on_hold_unpaid_invariant.sql",
+      "sourceSha256": "fed836c267077a6c2c058c8498da15ec8119596dd4e8aa8ad0278211fb632c14",
+      "preparedSha256": "fed836c267077a6c2c058c8498da15ec8119596dd4e8aa8ad0278211fb632c14",
+      "changes": []
+    },
+    {
+      "source": "0062_impexp_confirm_manual_ticket_operation.sql",
+      "sourceSha256": "1410838a3c36bd29d006f8168572efda2acc19eed776d67b4c902560448d08da",
+      "preparedSha256": "1410838a3c36bd29d006f8168572efda2acc19eed776d67b4c902560448d08da",
+      "changes": []
+    },
+    {
+      "source": "0063_impexp_manual_ticket_completion.sql",
+      "sourceSha256": "446eca2a5d075f0ccf78c5cffcf9f06fcc95f042f3b0326389db6d4392a316d5",
+      "preparedSha256": "446eca2a5d075f0ccf78c5cffcf9f06fcc95f042f3b0326389db6d4392a316d5",
+      "changes": []
+    },
+    {
+      "source": "0064_impexp_supplier_outcome_rules.sql",
+      "sourceSha256": "9e295d0d47d4c40fe4c16af356b9dd4d86ae51b9e509fa43f056ca6618ff99b3",
+      "preparedSha256": "9e295d0d47d4c40fe4c16af356b9dd4d86ae51b9e509fa43f056ca6618ff99b3",
+      "changes": []
+    },
+    {
+      "source": "0065_impexp_manual_ticket_financial_disposition.sql",
+      "sourceSha256": "b3861c1e4342e2a651b3ace14c6449f3977c05d14b928aa65eb637dd4571b6d6",
+      "preparedSha256": "b3861c1e4342e2a651b3ace14c6449f3977c05d14b928aa65eb637dd4571b6d6",
+      "changes": []
+    },
+    {
+      "source": "0066_impexp_manual_ticket_escalation.sql",
+      "sourceSha256": "5c18b3df18cdfd942d85ddc3621c8dc89f436388ab937fac5faa1f1a8e912320",
+      "preparedSha256": "5c18b3df18cdfd942d85ddc3621c8dc89f436388ab937fac5faa1f1a8e912320",
+      "changes": []
+    },
+    {
+      "source": "0067_impexp_direct_import_charge_authorization.sql",
+      "sourceSha256": "9b74af7e0463874e275a061c12cd932487db36a33cacbce7265875d994e48437",
+      "preparedSha256": "9b74af7e0463874e275a061c12cd932487db36a33cacbce7265875d994e48437",
+      "changes": []
+    },
+    {
+      "source": "0068_impexp_pricing_invariants.sql",
+      "sourceSha256": "c60680f359f5b15afbb74e9a6160538fdbd90165be3ebfdd1b924e4969fb91dd",
+      "preparedSha256": "c60680f359f5b15afbb74e9a6160538fdbd90165be3ebfdd1b924e4969fb91dd",
+      "changes": []
+    },
+    {
+      "source": "0069_booking_lifecycle_timestamp_contract.sql",
+      "sourceSha256": "75a506659916d8b6d2f30634623fc38118ac54cd90dda8307ba139e9c6cb3dce",
+      "preparedSha256": "75a506659916d8b6d2f30634623fc38118ac54cd90dda8307ba139e9c6cb3dce",
+      "changes": []
+    },
+    {
+      "source": "0070_booking_notification_grace_supersession.sql",
+      "sourceSha256": "1c8debe8e40341b154c25dd3689db27236ab5eb5a7c982df873b48512ec646be",
+      "preparedSha256": "1c8debe8e40341b154c25dd3689db27236ab5eb5a7c982df873b48512ec646be",
+      "changes": []
+    },
+    {
+      "source": "0071_booking_notification_occurrence_delivery.sql",
+      "sourceSha256": "078ab9c68e1fd15f4c373173961332ff3671063dcb56e7d2a5902bb7185c46ad",
+      "preparedSha256": "078ab9c68e1fd15f4c373173961332ff3671063dcb56e7d2a5902bb7185c46ad",
+      "changes": []
+    },
+    {
+      "source": "0072_booking_notification_reentry_policy.sql",
+      "sourceSha256": "b8a75d1743db54d46ae88955f6aafffabf11dca9a68f1db244286b84dae04228",
+      "preparedSha256": "b8a75d1743db54d46ae88955f6aafffabf11dca9a68f1db244286b84dae04228",
+      "changes": []
+    },
+    {
+      "source": "0073_booking_notification_render_snapshot.sql",
+      "sourceSha256": "e0d6913ec11fef944ddd4bdf3d078057d595c87403131edb78fd1837bb283c96",
+      "preparedSha256": "b55aa8ae123f5621e2bd80e147a6139a750eb11e756b01c08699cf6da84d5f79",
+      "changes": [
+        "read new company settings for notification snapshot identity"
+      ]
+    },
+    {
+      "source": "0074_booking_notification_recipient_delivery.sql",
+      "sourceSha256": "096008a0a76932e25d4d6ff2c543c60da59768e9773dafcd2e34fc19ad201c7f",
+      "preparedSha256": "096008a0a76932e25d4d6ff2c543c60da59768e9773dafcd2e34fc19ad201c7f",
+      "changes": []
+    },
+    {
+      "source": "0075_booking_notification_resilience_metrics.sql",
+      "sourceSha256": "2adf4aa8f8a36693c8f7c0451c7dcda6708ff022e72c6e77f78509b48d79a6c6",
+      "preparedSha256": "2adf4aa8f8a36693c8f7c0451c7dcda6708ff022e72c6e77f78509b48d79a6c6",
+      "changes": []
+    },
+    {
+      "source": "0076_booking_due_deadline_index.sql",
+      "sourceSha256": "3dd21f8b37c63b64d635b3db4e02ade7b97fb050bd1a852afa482d8034182857",
+      "preparedSha256": "3dd21f8b37c63b64d635b3db4e02ade7b97fb050bd1a852afa482d8034182857",
+      "changes": []
+    },
+    {
+      "source": "0077_booking_due_expiry_observation.sql",
+      "sourceSha256": "8634e6b5e2bc3d4dc5f4f55db1ef2772dc4a6da2d50113d7dbf068b08cd236b9",
+      "preparedSha256": "8634e6b5e2bc3d4dc5f4f55db1ef2772dc4a6da2d50113d7dbf068b08cd236b9",
+      "changes": []
+    },
+    {
+      "source": "0078_booking_expiry_keyset_pagination.sql",
+      "sourceSha256": "33b3d5d3a9eb7b565241ebdf702bc929b9541e477da4fce71704a199de9aed8e",
+      "preparedSha256": "33b3d5d3a9eb7b565241ebdf702bc929b9541e477da4fce71704a199de9aed8e",
+      "changes": []
+    },
+    {
+      "source": "0079_booking_expiry_worker_runs.sql",
+      "sourceSha256": "9041cab459725b341ad38d51cab9d19ce2deb74962da57b0af71e859c9174d29",
+      "preparedSha256": "9041cab459725b341ad38d51cab9d19ce2deb74962da57b0af71e859c9174d29",
+      "changes": []
+    },
+    {
+      "source": "0080_booking_unconfirmed_observation_paths.sql",
+      "sourceSha256": "cb6b9fa39b592f97f04bb4c74f9d556e3992573855c09bb5f058d13bd72458b4",
+      "preparedSha256": "cb6b9fa39b592f97f04bb4c74f9d556e3992573855c09bb5f058d13bd72458b4",
+      "changes": []
+    },
+    {
+      "source": "0081_booking_derived_lifecycle_metrics.sql",
+      "sourceSha256": "b9b62190887d28d8f97b603f3de794c13969c302ceb55e6ca24911e240f29ab9",
+      "preparedSha256": "b9b62190887d28d8f97b603f3de794c13969c302ceb55e6ca24911e240f29ab9",
+      "changes": []
+    },
+    {
+      "source": "0082_booking_notification_address_hash_resolution.sql",
+      "sourceSha256": "29894733cbc1ec5adcbfcf5c49c502c88004322635d402dbd8cebf9a9c221edb",
+      "preparedSha256": "29894733cbc1ec5adcbfcf5c49c502c88004322635d402dbd8cebf9a9c221edb",
+      "changes": []
+    },
+    {
+      "source": "0083_booking_local_time_limit_requests.sql",
+      "sourceSha256": "2be5b71fe14f9906ac924205baed70a1870a3cb602ef0c3c799b54702b9837ac",
+      "preparedSha256": "2be5b71fe14f9906ac924205baed70a1870a3cb602ef0c3c799b54702b9837ac",
+      "changes": []
+    },
+    {
+      "source": "0084_local_time_limit_expired_request_cap.sql",
+      "sourceSha256": "d53f141241ce74787624e7ac913228978bb641e127420588aea2b9ac8f4a6b7f",
+      "preparedSha256": "d53f141241ce74787624e7ac913228978bb641e127420588aea2b9ac8f4a6b7f",
+      "changes": []
+    },
+    {
+      "source": "0085_supplier_accounts_and_operational_controls.sql",
+      "sourceSha256": "6545ac93ad7e0f0aaab3bb625508b23f0b2074741fa45f1f17642079e7c73793",
+      "preparedSha256": "6545ac93ad7e0f0aaab3bb625508b23f0b2074741fa45f1f17642079e7c73793",
+      "changes": []
+    },
+    {
+      "source": "0086_manual_booking_import.sql",
+      "sourceSha256": "a754324078336394ec382973f371e54eadccc7c92bda43598c557e235f173300",
+      "preparedSha256": "a754324078336394ec382973f371e54eadccc7c92bda43598c557e235f173300",
+      "changes": []
+    },
+    {
+      "source": "0087_manual_booking_pricing_scale_fix.sql",
+      "sourceSha256": "c305ba29760e07d58e5c05d19c7092b7e41145583e78e674de1afd519bb11c87",
+      "preparedSha256": "c305ba29760e07d58e5c05d19c7092b7e41145583e78e674de1afd519bb11c87",
+      "changes": []
+    },
+    {
+      "source": "0088_wallet_owner_bank_accounts.sql",
+      "sourceSha256": "c4a13f94acde5d112f7ac46031afe75d1908695edc8ad5fb322ee764930d529b",
+      "preparedSha256": "c4a13f94acde5d112f7ac46031afe75d1908695edc8ad5fb322ee764930d529b",
+      "changes": []
+    },
+    {
+      "source": "0089_wallet_adjustment_public_references.sql",
+      "sourceSha256": "d381d9e476468d1cdca8c48b72b7ae9d260a1ee4f693968205d8d0925b58d177",
+      "preparedSha256": "d381d9e476468d1cdca8c48b72b7ae9d260a1ee4f693968205d8d0925b58d177",
+      "changes": []
+    },
+    {
+      "source": "0090_booking_attempt_response_watchdog.sql",
+      "sourceSha256": "435d1e245a9b1de8a163b31003bed0c7ff068251892fe6d63340a1ab636ac581",
+      "preparedSha256": "435d1e245a9b1de8a163b31003bed0c7ff068251892fe6d63340a1ab636ac581",
+      "changes": []
+    },
+    {
+      "source": "0091_booking_pnr_deadline_refresh_queue.sql",
+      "sourceSha256": "121f1e08b9b6cf087c074e62fd477e4e63e36264adeff34a1d9639ce76b0e63c",
+      "preparedSha256": "121f1e08b9b6cf087c074e62fd477e4e63e36264adeff34a1d9639ce76b0e63c",
+      "changes": []
+    },
+    {
+      "source": "0092_takeoff_manual_ticket_reconciliation.sql",
+      "sourceSha256": "6fb50cf9e3db1e066057bb61eaf78a0b79e96e05b3a853d81573d1e451bb0413",
+      "preparedSha256": "6fb50cf9e3db1e066057bb61eaf78a0b79e96e05b3a853d81573d1e451bb0413",
+      "changes": []
+    },
+    {
+      "source": "0093_booking_reconciliation_captured_cancellation_confirmation.sql",
+      "sourceSha256": "45ae362a57434a098e3a266d46279ba7fb216e4251f650e8a105b911f083a2c7",
+      "preparedSha256": "45ae362a57434a098e3a266d46279ba7fb216e4251f650e8a105b911f083a2c7",
+      "changes": []
+    },
+    {
+      "source": "0094_booking_pnr_echoed_transaction_validation.sql",
+      "sourceSha256": "df14b8082a867527899e23cfa7053f99522bb394549e1f9ca989dc317938d289",
+      "preparedSha256": "df14b8082a867527899e23cfa7053f99522bb394549e1f9ca989dc317938d289",
+      "changes": []
+    },
+    {
+      "source": "0095_booking_reconciliation_stale_approved_proposal_supersession.sql",
+      "sourceSha256": "cb93357a570c0b25320bdfafb232af10da15e79ab58fbb2627ce96e29d3d7cac",
+      "preparedSha256": "cb93357a570c0b25320bdfafb232af10da15e79ab58fbb2627ce96e29d3d7cac",
+      "changes": []
+    },
+    {
+      "source": "0096_booking_reconciliation_superseded_terminal_compatibility.sql",
+      "sourceSha256": "c05056f0363550ccdd5e537530f69fe779cac2846571ffcbf9f54d1bb2c50ae9",
+      "preparedSha256": "c05056f0363550ccdd5e537530f69fe779cac2846571ffcbf9f54d1bb2c50ae9",
+      "changes": []
+    },
+    {
+      "source": "0097_booking_dashboard_list_performance.sql",
+      "sourceSha256": "93e33e2f14249a27ed65c0a7a257b3d1c4ca7f7bbd290f918aa5adde6b877923",
+      "preparedSha256": "93e33e2f14249a27ed65c0a7a257b3d1c4ca7f7bbd290f918aa5adde6b877923",
+      "changes": []
+    },
+    {
+      "source": "0098_booking_dashboard_status_sort.sql",
+      "sourceSha256": "7747b6b766a9733cc8fb44d44338a41000dc3721577b3f30f23900ba9a0f92e4",
+      "preparedSha256": "7747b6b766a9733cc8fb44d44338a41000dc3721577b3f30f23900ba9a0f92e4",
+      "changes": []
+    },
+    {
+      "source": "0099_staff_on_behalf_booking.sql",
+      "sourceSha256": "fd7dae2359dc7b064c5a192deed2b11e89545b0557a5b548b48a36debda6295e",
+      "preparedSha256": "fd7dae2359dc7b064c5a192deed2b11e89545b0557a5b548b48a36debda6295e",
+      "changes": []
+    },
+    {
+      "source": "0100_staff_booking_attempt_hold_recovery.sql",
+      "sourceSha256": "aceaed435050d7700ef9ee910727fb07570c1d6b58cea9eb6205e0e8d43ba0aa",
+      "preparedSha256": "aceaed435050d7700ef9ee910727fb07570c1d6b58cea9eb6205e0e8d43ba0aa",
+      "changes": []
+    },
+    {
+      "source": "0101_on_hold_cancellation_independence.sql",
+      "sourceSha256": "060122e192da8da4ea08f5777a63148215f4c4dc0bc4beda0d06d09a9c105efb",
+      "preparedSha256": "060122e192da8da4ea08f5777a63148215f4c4dc0bc4beda0d06d09a9c105efb",
+      "changes": []
+    },
+    {
+      "source": "0102_admin_owner_wallet_ticketing.sql",
+      "sourceSha256": "13d888b9345b51193ddf2d0943053a2811907346b5caa2dd5304aec30b44fd84",
+      "preparedSha256": "13d888b9345b51193ddf2d0943053a2811907346b5caa2dd5304aec30b44fd84",
+      "changes": []
+    },
+    {
+      "source": "0103_passenger_profiles.sql",
+      "sourceSha256": "041399fb17c5fb5d3e57fcc79bfca8b2bc86a1ca4cb9ecfd4d45ec58962f4555",
+      "preparedSha256": "041399fb17c5fb5d3e57fcc79bfca8b2bc86a1ca4cb9ecfd4d45ec58962f4555",
+      "changes": []
+    },
+    {
+      "source": "0104_booking_dashboard_on_behalf_agency.sql",
+      "sourceSha256": "9785bf4a2a46198968a462fa2f59b95f79efe26c434653d2e52dde32c166e024",
+      "preparedSha256": "9785bf4a2a46198968a462fa2f59b95f79efe26c434653d2e52dde32c166e024",
+      "changes": []
+    },
+    {
+      "source": "0105_manual_booking_supplier_payable.sql",
+      "sourceSha256": "ddeadd170df511ffe53102de1ea03b6084b97da5aa08841eca8fac22429d5c3d",
+      "preparedSha256": "ddeadd170df511ffe53102de1ea03b6084b97da5aa08841eca8fac22429d5c3d",
+      "changes": []
+    },
+    {
+      "source": "0106_superadmin_booking_decisions.sql",
+      "sourceSha256": "447bee8c57dd8f6781edebb5cb14ab101bf0b742a7945afb80531d09503b678f",
+      "preparedSha256": "447bee8c57dd8f6781edebb5cb14ab101bf0b742a7945afb80531d09503b678f",
+      "changes": []
+    },
+    {
+      "source": "0107_superadmin_issue_resolution.sql",
+      "sourceSha256": "b3db13b6f0e782702de9cfeec3e85be0c95a77b4277cf09026077a58ec21c724",
+      "preparedSha256": "b3db13b6f0e782702de9cfeec3e85be0c95a77b4277cf09026077a58ec21c724",
+      "changes": []
+    },
+    {
+      "source": "0108_imported_booking_ticketing_resolution.sql",
+      "sourceSha256": "85802efccf1cc341b8e92b173ee184da1da7ee5174472c58f2cc5e8c497d6408",
+      "preparedSha256": "85802efccf1cc341b8e92b173ee184da1da7ee5174472c58f2cc5e8c497d6408",
+      "changes": []
+    },
+    {
+      "source": "0109_supplier_reference_api_import.sql",
+      "sourceSha256": "13c6938af0da819f50fac3b3f33fa80972318023accf7384011f6532bce17b91",
+      "preparedSha256": "13c6938af0da819f50fac3b3f33fa80972318023accf7384011f6532bce17b91",
+      "changes": []
+    },
+    {
+      "source": "0110_staff_imported_issue_now.sql",
+      "sourceSha256": "2327b00cc4dbf3fab336856b75b429386db79445bf0c49a6236a2fb07928cbe2",
+      "preparedSha256": "2327b00cc4dbf3fab336856b75b429386db79445bf0c49a6236a2fb07928cbe2",
+      "changes": []
+    },
+    {
+      "source": "0111_announcement_slider_management.sql",
+      "sourceSha256": "92a4e0f58645d173ac1e6b330c5b2194b3cccc4dff1f82b6bcc9c0454b8551de",
+      "preparedSha256": "16d4ea8d492a5e85a3ed9bc3882474b98ed51ea40bc5fed00cf7e4ef69e51e68",
+      "changes": [
+        "omit old promotional messages"
+      ]
+    },
+    {
+      "source": "0112_announcement_slider_speed.sql",
+      "sourceSha256": "05b36aa6bdd4dde6d2bccf48797b46aac4becaa0be10e3d59fda9548d48086f2",
+      "preparedSha256": "05b36aa6bdd4dde6d2bccf48797b46aac4becaa0be10e3d59fda9548d48086f2",
+      "changes": []
+    },
+    {
+      "source": "0113_flight_search_history.sql",
+      "sourceSha256": "3c47e0555d037d756c897b76689bc42f5900d160fd7f8d407bb75e4f1032e6e9",
+      "preparedSha256": "3c47e0555d037d756c897b76689bc42f5900d160fd7f8d407bb75e4f1032e6e9",
+      "changes": []
+    },
+    {
+      "source": "0115_ticketing_operation_window_reconciliation.sql",
+      "sourceSha256": "eedc6b6828939e8910ff182954c44b43895277c4bbb77b1a13abb70ad97554b2",
+      "preparedSha256": "eedc6b6828939e8910ff182954c44b43895277c4bbb77b1a13abb70ad97554b2",
+      "changes": []
+    },
+    {
+      "source": "0116_canonical_supplier_evidence_v2.sql",
+      "sourceSha256": "6424849e0026cb98c122c0b8f46966b1c48c91f291c0fdcf08ecd39ccc183ca4",
+      "preparedSha256": "6424849e0026cb98c122c0b8f46966b1c48c91f291c0fdcf08ecd39ccc183ca4",
+      "changes": []
+    },
+    {
+      "source": "0117_booking_user_visibility.sql",
+      "sourceSha256": "e0e4cbb252185ac3416a74449231c161fccfce7f1d8d906578286df99680fd8b",
+      "preparedSha256": "e0e4cbb252185ac3416a74449231c161fccfce7f1d8d906578286df99680fd8b",
+      "changes": []
+    },
+    {
+      "source": "0118_homepage_travel_offer_management.sql",
+      "sourceSha256": "f6f5f2ce8e46a9390dbcb23df91e6e374d6b0faf0b35620875db4be42f016348",
+      "preparedSha256": "222c970cc670b1192418aa18d56fdef356b4ad23f901997b514d17355020fb6c",
+      "changes": [
+        "replace old offers with three new inactive editor slots"
+      ]
+    },
+    {
+      "source": "0119_ticket_management_core.sql",
+      "sourceSha256": "5b4caf727b052063a14428f8f28909d9a8a60643487b32f4a49c6fe1f5e8cea6",
+      "preparedSha256": "5b4caf727b052063a14428f8f28909d9a8a60643487b32f4a49c6fe1f5e8cea6",
+      "changes": []
+    },
+    {
+      "source": "0120_ticket_management_lifecycle_assignment.sql",
+      "sourceSha256": "e2de0c7fabc53944ecb59d1b225f06e798a7fa56eb60cd97d07eca16e42d360a",
+      "preparedSha256": "9e8497f27cb5fd446b8248f850fc2583c0b641a84287f77f33e7893dedcba509",
+      "changes": []
+    },
+    {
+      "source": "0121_ticket_management_entitlements.sql",
+      "sourceSha256": "2292b89e1a5d0552ebca37b5472da5586e48fca3bc61fb79c332a08072cf9439",
+      "preparedSha256": "2292b89e1a5d0552ebca37b5472da5586e48fca3bc61fb79c332a08072cf9439",
+      "changes": []
+    },
+    {
+      "source": "0122_ticket_management_wallet_substrate.sql",
+      "sourceSha256": "7e188f0e699f0a9ca83ec7d8fbd3bef50a0db34b56fb4ac0020e01357c380714",
+      "preparedSha256": "7e188f0e699f0a9ca83ec7d8fbd3bef50a0db34b56fb4ac0020e01357c380714",
+      "changes": []
+    },
+    {
+      "source": "0123_ticket_management_refund_settlement.sql",
+      "sourceSha256": "12d693a525b52670294349b8ee6b66437faab037cfa2e7a35f0f23e187ac7974",
+      "preparedSha256": "12d693a525b52670294349b8ee6b66437faab037cfa2e7a35f0f23e187ac7974",
+      "changes": []
+    },
+    {
+      "source": "0124_ticket_management_reissue_settlement.sql",
+      "sourceSha256": "7b3e3ef38415bcc9a14daad222318af6f9a2556d604579515f41d9325258076b",
+      "preparedSha256": "b26df86c1b12d506aaf89ab93bf806d80142444d9955b78a2cd46d0df2df5c48",
+      "changes": []
+    },
+    {
+      "source": "0125_ticket_management_void_settlement.sql",
+      "sourceSha256": "40f49d96e7f35653d642bf784ff9e6472afd6ab86e4fb6abe2f772535c8437d5",
+      "preparedSha256": "40f49d96e7f35653d642bf784ff9e6472afd6ab86e4fb6abe2f772535c8437d5",
+      "changes": []
+    },
+    {
+      "source": "0126_ticket_management_notification_outbox.sql",
+      "sourceSha256": "7c9bf629c34bbf6f65939159462f2d156fdfd6978ba6494b07a151028af3480d",
+      "preparedSha256": "7c9bf629c34bbf6f65939159462f2d156fdfd6978ba6494b07a151028af3480d",
+      "changes": []
+    },
+    {
+      "source": "0127_generic_wallet_authorization_hardening.sql",
+      "sourceSha256": "1982818deab51542fcbdf126f0e0aa5732ce6c7701716ca4f03df5bad2612d53",
+      "preparedSha256": "1982818deab51542fcbdf126f0e0aa5732ce6c7701716ca4f03df5bad2612d53",
+      "changes": []
+    },
+    {
+      "source": "0128_ticket_management_single_passenger_entitlement.sql",
+      "sourceSha256": "5657b5130a267ee0d1c03aca01918329a56ce63e452b1e47a5ba5de7bfc97a61",
+      "preparedSha256": "5657b5130a267ee0d1c03aca01918329a56ce63e452b1e47a5ba5de7bfc97a61",
+      "changes": []
+    },
+    {
+      "source": "0129_ticket_management_manual_single_passenger_entitlement.sql",
+      "sourceSha256": "1af5ed9f92c832be7246cf49edd2347f96a383f5d8a959076a78e2515f054fd1",
+      "preparedSha256": "1af5ed9f92c832be7246cf49edd2347f96a383f5d8a959076a78e2515f054fd1",
+      "changes": []
+    },
+    {
+      "source": "0130_ticket_management_booking_commercial_basis.sql",
+      "sourceSha256": "2908ebfc50647c95d0d7cb9f28a03c955e9ea288cae65091906444c8fb400f93",
+      "preparedSha256": "35d138d1aa3b520f1cc3e5de9ff71029dabe3d942d1cdd96060218f79cf00dd9",
+      "changes": []
+    },
+    {
+      "source": "0131_ticket_management_direct_admin_settlement.sql",
+      "sourceSha256": "7ce32bd6688a18659078ef8bf00be5fe7e464c5459fab7b56bd973cadb994ee7",
+      "preparedSha256": "7ce32bd6688a18659078ef8bf00be5fe7e464c5459fab7b56bd973cadb994ee7",
+      "changes": []
+    },
+    {
+      "source": "0132_ticket_management_email_delivery.sql",
+      "sourceSha256": "e4dd6dfcaf50b909c7bf18b88373c3bccd5dff4b7f7b29eaf3d5314e6a6943a9",
+      "preparedSha256": "e4dd6dfcaf50b909c7bf18b88373c3bccd5dff4b7f7b29eaf3d5314e6a6943a9",
+      "changes": []
+    },
+    {
+      "source": "0133_ticket_management_notification_recipient_hash.sql",
+      "sourceSha256": "79e2b7a7c86a242b9d2576672d0f589f7312ec86e3ea2c407cf7b25592a43e0a",
+      "preparedSha256": "79e2b7a7c86a242b9d2576672d0f589f7312ec86e3ea2c407cf7b25592a43e0a",
+      "changes": []
+    },
+    {
+      "source": "0134_ticket_management_request_type.sql",
+      "sourceSha256": "ae39f008313dfe9bc48940cd276f589c5dde0a8fc8fbfbe0caff74bdf3050393",
+      "preparedSha256": "ae39f008313dfe9bc48940cd276f589c5dde0a8fc8fbfbe0caff74bdf3050393",
+      "changes": []
+    },
+    {
+      "source": "0135_ticket_management_approved_final_status.sql",
+      "sourceSha256": "4e2ec79f2788beaaac4471b17196b24faf594051bc830aa6c88a43d6da388f53",
+      "preparedSha256": "4e2ec79f2788beaaac4471b17196b24faf594051bc830aa6c88a43d6da388f53",
+      "changes": []
+    },
+    {
+      "source": "0136_ticket_management_preserve_approved_settlement_time.sql",
+      "sourceSha256": "e04e99fd8b7b20fd19545d49254085ae3ce9e6455edb14274896625aa800b4a3",
+      "preparedSha256": "e04e99fd8b7b20fd19545d49254085ae3ce9e6455edb14274896625aa800b4a3",
+      "changes": []
+    },
+    {
+      "source": "0137_ticket_management_action_reference_prefix.sql",
+      "sourceSha256": "cec3390d4c32a5ad3f46ea11aff9014543d93f418e74f59d0799a98d0e39a01b",
+      "preparedSha256": "cec3390d4c32a5ad3f46ea11aff9014543d93f418e74f59d0799a98d0e39a01b",
+      "changes": []
+    },
+    {
+      "source": "0138_flight_search_usage_controls.sql",
+      "sourceSha256": "dc4b0079df80602964d136c838a42c731c9d5b5d91cd86ffbe5a358ccdb1d078",
+      "preparedSha256": "dc4b0079df80602964d136c838a42c731c9d5b5d91cd86ffbe5a358ccdb1d078",
+      "changes": []
+    },
+    {
+      "source": "0139_flight_search_actor_routes_and_agencies.sql",
+      "sourceSha256": "a34348af9ee318b28290d29638231bc43a2810a806e7f025d4662e425c7168f9",
+      "preparedSha256": "a34348af9ee318b28290d29638231bc43a2810a806e7f025d4662e425c7168f9",
+      "changes": []
+    },
+    {
+      "source": "0140_flight_search_route_travel_dates.sql",
+      "sourceSha256": "df42bdd89c2f0ff586c3f7c5e14a6be9f4bbc8f43fe537040a28f41433658501",
+      "preparedSha256": "df42bdd89c2f0ff586c3f7c5e14a6be9f4bbc8f43fe537040a28f41433658501",
+      "changes": []
+    },
+    {
+      "source": "0141_triplover_supplier_account.sql",
+      "sourceSha256": "13f0aa5fbed6974d513dd39fe952cf5537b8ea4b67acbaf1548dd8d0b3013ae7",
+      "preparedSha256": "13f0aa5fbed6974d513dd39fe952cf5537b8ea4b67acbaf1548dd8d0b3013ae7",
+      "changes": []
+    },
+    {
+      "source": "0142_triplover_supplier_reference_import.sql",
+      "sourceSha256": "0a27804c30b45588376564c79d85b873bffb19feae4a724c9d7a0b1cc70c7138",
+      "preparedSha256": "0a27804c30b45588376564c79d85b873bffb19feae4a724c9d7a0b1cc70c7138",
+      "changes": []
+    },
+    {
+      "source": "0143_ticket_management_single_active_action_request.sql",
+      "sourceSha256": "f0975836105dd02f0beb3d3f91fc33c0c4df91aec04c084395e7d5a9e40093e6",
+      "preparedSha256": "f0975836105dd02f0beb3d3f91fc33c0c4df91aec04c084395e7d5a9e40093e6",
+      "changes": []
+    },
+    {
+      "source": "0144_ticket_management_staff_rejection_until_approval.sql",
+      "sourceSha256": "5b1f8d774dfb2bbc907dec1b0b1ceef8a6ab8449afd63bf504679f9cb8854c26",
+      "preparedSha256": "5b1f8d774dfb2bbc907dec1b0b1ceef8a6ab8449afd63bf504679f9cb8854c26",
+      "changes": []
+    },
+    {
+      "source": "0145_ticket_management_route_selection.sql",
+      "sourceSha256": "7a6a80efeab0e185dffbc6af36084f6493e101b33d947fa5ffaa523e62a7e258",
+      "preparedSha256": "7a6a80efeab0e185dffbc6af36084f6493e101b33d947fa5ffaa523e62a7e258",
+      "changes": []
+    },
+    {
+      "source": "0146_ticket_management_void_same_day_cutoff.sql",
+      "sourceSha256": "8ff47c89e25863a1f8d2bd8919f064aa07357af3fa84ba3ed875c5a26c13a52b",
+      "preparedSha256": "8ff47c89e25863a1f8d2bd8919f064aa07357af3fa84ba3ed875c5a26c13a52b",
+      "changes": []
+    },
+    {
+      "source": "0147_ticket_management_action_visibility.sql",
+      "sourceSha256": "1e1d0bd8d360605fd35629f6176f5e964de717fc9ce9eb6fb158a6ae74c00946",
+      "preparedSha256": "1e1d0bd8d360605fd35629f6176f5e964de717fc9ce9eb6fb158a6ae74c00946",
+      "changes": []
+    },
+    {
+      "source": "0148_booking_issued_sms.sql",
+      "sourceSha256": "9d552ea606ad29a7ad711e5c0fe0cbc4d7b73938d8575343428018d15dfdac47",
+      "preparedSha256": "9d552ea606ad29a7ad711e5c0fe0cbc4d7b73938d8575343428018d15dfdac47",
+      "changes": []
+    },
+    {
+      "source": "0149_booking_manual_sms_share.sql",
+      "sourceSha256": "9840959702933748e1c2de5e3555877783cd2624ec32d7ac192eaa07edac5ba9",
+      "preparedSha256": "9840959702933748e1c2de5e3555877783cd2624ec32d7ac192eaa07edac5ba9",
+      "changes": []
+    },
+    {
+      "source": "0150_booking_manual_sms_editable_recipient.sql",
+      "sourceSha256": "d7c0576469258113338b623be4fda9ced8e93bfb93ede6e8390daf74c7dd957d",
+      "preparedSha256": "d7c0576469258113338b623be4fda9ced8e93bfb93ede6e8390daf74c7dd957d",
+      "changes": []
+    },
+    {
+      "source": "0151_booking_sms_pgcrypto_search_path.sql",
+      "sourceSha256": "b393fdfe30c9190df51e0d49961a8001efa0854716ebe37bbb5e1e04ef8581c0",
+      "preparedSha256": "b393fdfe30c9190df51e0d49961a8001efa0854716ebe37bbb5e1e04ef8581c0",
+      "changes": []
+    },
+    {
+      "source": "0152_deposit_approved_sms.sql",
+      "sourceSha256": "65ab6634c3d136f321beb764f0609c78a482e914f466a7a3b7bd4b6c0c4622c6",
+      "preparedSha256": "65ab6634c3d136f321beb764f0609c78a482e914f466a7a3b7bd4b6c0c4622c6",
+      "changes": []
+    },
+    {
+      "source": "0153_deposit_request_admin_sms.sql",
+      "sourceSha256": "6cfd417d63da9a52bb5310926856dde4d2c16b80e2042e257289bf05a94f9d4c",
+      "preparedSha256": "46475a8d2c890b3cefe455141116503a71a5a9f4450054bbb9938e2008cbe5c7",
+      "changes": [
+        "use empty, configurable new-company SMS recipient table"
+      ]
+    },
+    {
+      "source": "0154_booking_airline_pnr_integrity.sql",
+      "sourceSha256": "92944f5661cc80857ab7ee157991a12a831dbd313741036eeb2b22247f03ea58",
+      "preparedSha256": "92944f5661cc80857ab7ee157991a12a831dbd313741036eeb2b22247f03ea58",
+      "changes": []
+    },
+    {
+      "source": "0155_booking_airline_pnr_carrier_code_validation.sql",
+      "sourceSha256": "2aa20a67254c6f8e68e21f87a09de2f8b60605fbdcd6b993c91c1907c40cb8fe",
+      "preparedSha256": "2aa20a67254c6f8e68e21f87a09de2f8b60605fbdcd6b993c91c1907c40cb8fe",
+      "changes": []
+    },
+    {
+      "source": "0156_booking_deadline_shared_read_budget.sql",
+      "sourceSha256": "9b9de33ff930a94fbf725f4de91919ce30903271b18e711bf3704ffdd05b262b",
+      "preparedSha256": "9b9de33ff930a94fbf725f4de91919ce30903271b18e711bf3704ffdd05b262b",
+      "changes": []
+    },
+    {
+      "source": "0157_promotional_popup.sql",
+      "sourceSha256": "37d9be1d1c7fa142a3a7b171e92b7b6742059e86469eb841e1645495bb76de07",
+      "preparedSha256": "37d9be1d1c7fa142a3a7b171e92b7b6742059e86469eb841e1645495bb76de07",
+      "changes": []
+    },
+    {
+      "source": "0158_promotional_popup_auto_close.sql",
+      "sourceSha256": "aa792b629fba7425c7d2624414a06cadd99c665acae2ac59b7d66f847cc72235",
+      "preparedSha256": "aa792b629fba7425c7d2624414a06cadd99c665acae2ac59b7d66f847cc72235",
+      "changes": []
+    },
+    {
+      "source": "0159_promotional_popup_display_settings.sql",
+      "sourceSha256": "884f44109ee1bb20d28289d91506a2f3c9ebd48ab881e446b3f826a7169c4670",
+      "preparedSha256": "884f44109ee1bb20d28289d91506a2f3c9ebd48ab881e446b3f826a7169c4670",
+      "changes": []
+    },
+    {
+      "source": "0160_promotional_popup_tab_sessions.sql",
+      "sourceSha256": "1e1cab9ae5796ab7f2a19c2c71c5f3a5a31b62bcf489c09d58915862549f140c",
+      "preparedSha256": "1e1cab9ae5796ab7f2a19c2c71c5f3a5a31b62bcf489c09d58915862549f140c",
+      "changes": []
+    }
+  ]
+}

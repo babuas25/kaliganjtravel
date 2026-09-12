@@ -1,0 +1,316 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ── Neutral ink theme (legacy navy variable names) ──────────────────────────────── */
+  --navy-950: #171717;
+  --navy-900: #262626;
+  --navy-800: #404040;
+  --navy-700: #525252;
+  --navy-600: #626262;
+  --navy-500: #737373;
+  --navy-400: #a3a3a3;
+  --navy-300: #d4d4d4;
+  --navy-200: #e5e5e5;
+  --navy-100: #f0f0f0;
+  --navy-50:  #fafafa;
+
+  /* ── Orange Accent ──────────────────────────────────── */
+  --orange-600: #ad4f08;
+  --orange-500: #f68712;
+  --orange-400: #ffa240;
+  --orange-100: #fff1e2;
+
+  /* ── Neutral ─────────────────────────────────────── */
+  --neutral-900: #111827;
+  --neutral-800: #1f2937;
+  --neutral-700: #374151;
+  --neutral-600: #4b5563;
+  --neutral-500: #6b7280;
+  --neutral-400: #9ca3af;
+  --neutral-300: #d1d5db;
+  --neutral-200: #e5e7eb;
+  --neutral-100: #f3f4f6;
+  --neutral-50:  #f9fafb;
+
+  /* ── Semantic ─────────────────────────────────────── */
+  --success-600: #059669;
+  --success-100: #d1fae5;
+  --warning-500: #f59e0b;
+  --warning-100: #fef3c7;
+  --error-600:   #dc2626;
+  --error-100:   #fee2e2;
+  --info-500:    #3b82f6;
+  --info-100:    #dbeafe;
+
+  /* Shared orange / black theme for controls and page surfaces. */
+  --background: 0 0% 98%;
+  --foreground: 0 0% 9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 9%;
+  --primary: 31 93% 52%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 32 100% 94%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 40%;
+  --accent: 32 100% 94%;
+  --accent-foreground: 0 0% 9%;
+  --destructive: 350 85% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 88%;
+  --input: 0 0% 88%;
+  --ring: 31 93% 52%;
+  --radius: 0.5rem;
+  --chart-1: 31 93% 52%;
+  --chart-2: 0 0% 25%;
+  --chart-3: 160 60% 40%;
+  --chart-4: 43 74% 60%;
+  --chart-5: 280 60% 55%;
+}
+
+.dark {
+  --background: 0 0% 7%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 12%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 12%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 31 93% 52%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 0 0% 18%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 18%;
+  --muted-foreground: 0 0% 70%;
+  --accent: 0 0% 22%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 350 65% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 24%;
+  --input: 0 0% 24%;
+  --ring: 31 93% 52%;
+  --chart-1: 31 93% 52%;
+  --chart-2: 0 0% 70%;
+  --chart-3: 160 55% 55%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 280 65% 65%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ── Announcement ticker ─────────────────────── */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.ticker-track {
+  display: flex;
+  white-space: nowrap;
+  animation: ticker-scroll 28s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* ── Smooth fade-in ──────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fade-up 0.45s ease both;
+}
+
+/* The shared navigation indicator traverses the top track continuously; the
+   orange accent mirrors the app's primary action buttons without obscuring the
+   destination page underneath. */
+@keyframes navigation-loader-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(410%); }
+}
+.navigation-loader-bar {
+  animation: navigation-loader-progress 1.15s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .navigation-loader-bar {
+    animation: none;
+    transform: translateX(0);
+  }
+}
+
+/* Ticket printing isolates the document from dashboard chrome. The browser's
+   print dialog provides both physical printing and Save as PDF/download. */
+.print-individual-fare-row,
+.print-individual-fare-total {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    background: white !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .booking-print-document,
+  .booking-print-document * {
+    visibility: visible !important;
+  }
+
+  .booking-print-document {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Print media does not inherit the viewport width that gives the on-screen
+     ticket its four-column summary. Keep the same single-row document layout
+     on A4 instead of letting the responsive grid collapse to two rows. */
+  .booking-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .booking-summary-grid > * {
+    border-top: 0 !important;
+  }
+
+  .booking-summary-grid > * + * {
+    border-left: 1px solid #fed7aa !important;
+  }
+
+  /* The ticketing deadline is operational information for the signed-in B2B
+     user, not part of the customer-facing hold confirmation copy. */
+  .print-hide-expiration {
+    display: none !important;
+  }
+
+  /* Ticket Management references are dashboard workflow identifiers. They are
+     useful on screen but intentionally excluded from printed/PDF/email tickets. */
+  .ticket-management-reference-screen-only {
+    display: none !important;
+  }
+
+  html.print-ticket-without-fare .booking-fare-section {
+    display: none !important;
+  }
+
+  .print-passenger-hidden {
+    display: none !important;
+  }
+
+  .print-fare-hidden {
+    display: none !important;
+  }
+
+  .print-individual-fare-visible {
+    display: table-row !important;
+  }
+}
+
+
+/* Flight search: travel along the itinerary without shifting the route text. */
+@keyframes flight-search-route-travel {
+  0% { transform: translateX(0); opacity: 0; }
+  12% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+.flight-search-route-traveller {
+  animation: flight-search-route-travel 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flight-search-route-traveller {
+    animation: none;
+    transform: translateX(50%);
+    opacity: 1;
+  }
+}
+
+/* Orange text on pale surfaces needs a darker shade than the logo's orange. */
+@layer utilities {
+  .text-brand-orange { color: #ad4f08; }
+}
+
+/* Keep airport suggestions scrollable without displaying a scrollbar track. */
+.airport-suggestions-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.airport-suggestions-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* One calm flight cycle, followed by a pause before the next departure. */
+.auth-journey-plane {
+  offset-path: path('M42 138 Q200 -12 358 138');
+  offset-rotate: auto;
+  offset-distance: 45%;
+  animation: auth-journey-flight 12s linear infinite;
+}
+.auth-journey-trail {
+  stroke-dashoffset: 55;
+  animation: auth-journey-trail 12s linear infinite;
+}
+.auth-journey-cloud {
+  animation: auth-journey-drift 9s ease-in-out infinite alternate;
+}
+.auth-journey-cloud-late { animation-delay: -5s; animation-duration: 12s; }
+.auth-journey-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: auth-journey-arrival 12s linear infinite;
+}
+.auth-journey:has(input:checked) * { animation-play-state: paused; }
+@keyframes auth-journey-flight {
+  0%, 8% { offset-distance: 0%; opacity: 0; }
+  14% { opacity: 1; }
+  78% { offset-distance: 100%; opacity: 1; }
+  85%, 100% { offset-distance: 100%; opacity: 0; }
+}
+@keyframes auth-journey-trail {
+  0%, 8% { stroke-dashoffset: 100; opacity: 0; }
+  14% { opacity: .8; }
+  78% { stroke-dashoffset: 0; opacity: .8; }
+  90%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+@keyframes auth-journey-drift { from { transform: translateX(-8px); } to { transform: translateX(10px); } }
+@keyframes auth-journey-arrival {
+  0%, 65% { transform: scale(.5); opacity: 0; }
+  78% { transform: scale(1); opacity: .6; }
+  95%, 100% { transform: scale(1.8); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-journey * { animation: none !important; }
+  .auth-journey-pulse { opacity: .3; }
+}
+/* The artwork is hidden with its panel on smaller screens. */
+@media (max-width: 1023px) {
+  .auth-journey * { animation-play-state: paused; }
+}

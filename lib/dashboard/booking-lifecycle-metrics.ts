@@ -1,0 +1,43 @@
+export type BookingLifecycleMetrics = {
+  observedAt: string;
+  openCases: number;
+  oldestOpenCaseAt: string | null;
+  agedOperations: number;
+  oldestAgedOperationAt: string | null;
+  agedAttempts: number;
+  oldestAgedAttemptAt: string | null;
+  slaBreaches: number;
+  oldestSlaBreachAt: string | null;
+  terminalConflicts: number;
+  walletInconsistencies: number;
+  notifications: {
+    pending: number;
+    processing: number;
+    retryingRecipients: number;
+    sent: number;
+    sentRecipients: number;
+    suppressed: number;
+    superseded: number;
+    deadLetters: number;
+    deadLetterRecipients: number;
+    unEscalatedDeadLetters: number;
+    oldestPendingAt: string | null;
+    oldestDeadLetterAt: string | null;
+  };
+  derivedLifecycle: {
+    dueExpiry: number;
+    oldestDueDeadlineAt: string | null;
+    maxExpiryOverdueSeconds: number;
+    starvedExpiry: number;
+    unconfirmedRepair: number;
+    expiryObservations24h: number;
+    averageDetectionLatencySeconds: number;
+    p95DetectionLatencySeconds: number;
+    maxDetectionLatencySeconds: number;
+    failedRuns24h: number;
+    boundedRuns24h: number;
+    staleRunningRuns: number;
+    lastSuccessfulRunAt: string | null;
+    lastRunStopReason: string | null;
+  };
+};

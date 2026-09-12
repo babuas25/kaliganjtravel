@@ -1,0 +1,31 @@
+{
+  "source": "https://kaliganjtravel.com/",
+  "verifiedOn": "2026-09-11",
+  "banks": [
+    ["Islami Bank Bangladesh Ltd", "Ibrahim Hossain", "20502870200832100", "Kaligonj, Jhenaidah", "125440790"],
+    ["Islami Bank Bangladesh Ltd", "Kaliganj tour and Travel", "20502870100261215", "Kaligonj, Jhenaidah", "125440790"],
+    ["Dutch Bangla Bank", "Kaliganj Tour And Travels", "2281100098356", "Kaliganj Jhenaidah", "090440641"],
+    ["City Bank PLC", "Ibrahim Hossain", "2204404513001", "Agent banking, Kaliganj Jhenaidah", "225272684"],
+    ["City Bank PLC", "KALIGANJ TOUR AND TRAVEL", "1504776623001", "Jashore Branch", "225410941"],
+    ["United Commercial Bank PLC", "Ibrahim Hossain", "0453201000126954", "JHENAIDAH", "245440641"],
+    ["Sonali Bank", "Ibrahim Hossain", "2409101030403", "Kaliganj, Jhenaidah", "200440828"],
+    ["Brac Bank", "Kaliganj Tour and Travel", "2081511000001", "Jossore Branch", null],
+    ["Brac Bank", "Ibrahim Hossain", "1077767220001", "Kaliganj, Jhenaidah", "060440642"],
+    ["Pubali Bank PLC", "Kaliganj Tour and Travel", "1377901000903", "Kaliganj, Jhenaidah", "175440645"],
+    ["IFIC Bank PLC", "Kaliganj Tour and Travel", "0240108223001", "Kaliganj, Jhenaidah", "120440803"]
+  ],
+  "mobile": [
+    ["bKash", "01795271171", "send_money"],
+    ["bKash", "01323800024", "send_money"],
+    ["bKash", "01985222661", "cashout"],
+    ["Nagad", "01795271171", "send_money"],
+    ["Nagad", "01323800024", "send_money"],
+    ["Nagad", "01985222661", "cashout"]
+  ],
+  "notes": [
+    "Personal maps to Send Money; Agent maps to Cashout in existing application payment types.",
+    "No company MFS surcharge was published; retain database default zero. Provider charges may still apply.",
+    "No QR, SWIFT, branch code or Brac company-account routing number was published; leave these null.",
+    "City personal account type: General Savings Account; City company account type: Business Solution Account (website includes trailing br). Existing bank schema has no account-type field."
+  ]
+}

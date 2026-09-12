@@ -1,0 +1,3 @@
+# Separate migration history for the new company. Never use the legacy chain
+# in ../../migrations against this installation.
+project_id = "kaliganj-travels"

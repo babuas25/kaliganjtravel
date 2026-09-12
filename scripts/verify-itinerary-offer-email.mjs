@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+import { createRequire } from 'node:module';
+const nativeRequire = createRequire(import.meta.url);
+function load(file) {
+  const module = { exports: {} };
+  const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  new Function('require', 'module', 'exports', code)((name) => name.startsWith('@/') ? load(`${name.slice(2)}.ts`) : nativeRequire(name), module, module.exports);
+  return module.exports;
+}
+const { itineraryOfferEmail } = load('lib/email/itinerary-offer.ts');
+const { itineraryOfferSchema, itineraryShareOffer } = load('lib/flights/share-offer.ts');
+const segment = { from:'DAC',to:'CGP',fromAirport:'Hazrat Shahjalal International Airport',toAirport:'Shah Amanat International Airport',departure:'2026-09-30 15:55:00',arrival:'2026-09-30 16:55:00',airline:'Biman Bangladesh Airlines',flightNumber:'BG-125',cabinClass:'Economy',bookingClass:'G',baggage:'20 Kg',handBaggage:'7 Kg',duration:'1h' };
+const offer = itineraryShareOffer({ totalPrice:3759, refundable:true, fares:[{count:1}], legs:[{from:'DAC',to:'CGP',stops:0,segments:[segment]}], auditPricing:{netFare:1} }, 'BDT', { DAC: 'Dhaka', CGP: 'Chittagong' });
+assert.ok(itineraryOfferSchema.safeParse(offer).success);
+assert.ok(!JSON.stringify(offer).includes('netFare'));
+const html = itineraryOfferEmail(offer, 'Plain-text fallback');
+assert.ok(html.includes('Dhaka → Chittagong'));
+assert.ok(itineraryOfferEmail({ ...offer, legs: [{ ...offer.legs[0], to: 'SIN', toCity: 'Singapore' }] }, '').includes('Dhaka → Singapore'));
+for (const value of ['BDT 3,759','15:55','16:55','20 Kg','7 Kg','BG-125','not a confirmed booking']) assert.ok(html.includes(value));
+const unsafe = structuredClone(offer);
+unsafe.legs[0].segments[0].airline = '<img src=x onerror=alert(1)>';
+assert.ok(!itineraryOfferEmail(unsafe, '').includes('<img src=x'));
+assert.ok(itineraryOfferEmail(undefined, '<script>test</script>').includes('&lt;script&gt;'));
+assert.ok(!itineraryOfferSchema.safeParse({...offer,price:-1}).success);
+const multi = structuredClone(offer);
+multi.legs.push({...offer.legs[0],from:'CGP',to:'DAC',segments:[{...segment,from:'CGP',to:'DAC',arrival:'2026-10-01 00:55:00',baggage:null}]});
+assert.ok(itineraryOfferEmail(multi, '').includes('JOURNEY 2'));
+assert.ok(itineraryOfferEmail(multi, '').includes('1 Oct 2026'));
+assert.ok(itineraryOfferEmail(multi, '').includes('Not provided'));
+fs.mkdirSync('output', {recursive:true});
+fs.writeFileSync('output/itinerary-offer-preview.html', html);
+console.log('Offer email validation passed: rendering, escaping, multiple journeys, missing baggage, public fields only.');

@@ -1,0 +1,290 @@
+-- Terminal corrections are not generic status changes. A Confirmed ->
+-- Cancelled correction reuses the four exact captured-cancellation financial
+-- consequences after the private engine selects the terminal-correction
+-- contract from the server-derived risk flag. This migration adds the reverse
+-- Cancelled -> Confirmed branch for an already-consistent captured reservation.
+-- It moves no money and rejects every unpaid, held, released, refunded, or
+-- otherwise financially inconsistent booking.
+
+create or replace function public.resolve_booking_reconciliation_terminal_confirmed_v1(
+  p_booking_id uuid,
+  p_case_id uuid,
+  p_expected_case_version integer,
+  p_proposal_hash text,
+  p_actor_user_id text,
+  p_execution_request_key text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_contract jsonb;
+  v_booking public.flight_bookings;
+  v_case public.booking_reconciliation_cases;
+  v_operation public.booking_operations;
+  v_reservation public.wallet_reservations;
+  v_account public.wallet_accounts;
+  v_evidence public.booking_reconciliation_observations;
+  v_ticket_code_ref text;
+  v_ticket_numbers jsonb;
+  v_supplier_pnr text;
+  v_airlines_pnr jsonb;
+  v_supplier_status text;
+  v_issued_at timestamptz;
+  v_event_id bigint;
+  v_occurrence_number integer;
+  v_from_lifecycle text;
+  v_resolution_result jsonb;
+begin
+  v_contract := public.booking_reconciliation_resolution_contract_v1(
+    p_booking_id, p_case_id, p_expected_case_version, p_proposal_hash,
+    p_actor_user_id, p_execution_request_key, 'terminal_correction'
+  );
+  if coalesce((v_contract->>'ok')::boolean, false) is not true
+     or coalesce((v_contract->>'replay')::boolean, false) then
+    return v_contract;
+  end if;
+
+  select * into strict v_booking
+    from public.flight_bookings where id = p_booking_id;
+  select * into strict v_case
+    from public.booking_reconciliation_cases where id = p_case_id;
+  if v_case.proposed_outcome <> 'ticketed'
+     or v_case.financial_disposition <> 'none' then
+    return jsonb_build_object(
+      'ok', false, 'code', 'TERMINAL_CONFIRMED_OUTCOME_MISMATCH'
+    );
+  end if;
+  if v_booking.status <> 'cancelled'
+     or v_booking.payment_state <> 'captured'
+     or v_booking.captured_amount <= 0
+     or v_booking.refunded_amount <> 0
+     or v_booking.charged_wallet_account_id is null then
+    return jsonb_build_object(
+      'ok', false, 'code', 'TERMINAL_CONFIRMED_CAPTURED_STATE_REQUIRED'
+    );
+  end if;
+  if v_case.operation_id is not null then
+    select * into v_operation
+      from public.booking_operations where id = v_case.operation_id;
+    if v_operation.state <> 'needs_reconciliation' then
+      return jsonb_build_object('ok', false, 'code', 'OPERATION_NOT_RECONCILING');
+    end if;
+  end if;
+  select * into v_reservation
+    from public.wallet_reservations
+   where id = (v_contract->>'reservationId')::uuid;
+  if not found
+     or v_reservation.state <> 'captured'
+     or v_reservation.booking_id is distinct from p_booking_id
+     or v_reservation.amount <> v_booking.captured_amount
+     or v_reservation.currency <> v_booking.currency then
+    return jsonb_build_object(
+      'ok', false, 'code', 'TERMINAL_CONFIRMED_RESERVATION_MISMATCH'
+    );
+  end if;
+  select * into v_account
+    from public.wallet_accounts where id = v_reservation.wallet_account_id;
+  if not found
+     or v_account.id is distinct from (v_contract->>'walletAccountId')::uuid
+     or v_account.id is distinct from v_booking.charged_wallet_account_id
+     or v_account.currency <> v_booking.currency then
+    return jsonb_build_object(
+      'ok', false, 'code', 'TERMINAL_CONFIRMED_ACCOUNT_MISMATCH'
+    );
+  end if;
+
+  select observation.* into v_evidence
+    from jsonb_array_elements_text(
+      v_case.proposal->'evidenceObservationIds'
+    ) evidence_id(id)
+    join public.booking_reconciliation_observations observation
+      on observation.id = evidence_id.id::uuid
+     and observation.reconciliation_case_id = v_case.id
+   where observation.normalized_facts->>'requestedPurpose' = 'ticketed'
+     and observation.normalized_facts
+       #>> '{validation,authoritativeFor}' = 'ticketed'
+     and observation.normalized_facts #>> '{validation,valid}' = 'true'
+     and observation.normalized_facts #>> '{validation,complete}' = 'true'
+     and observation.normalized_facts #>> '{validation,fresh}' = 'true'
+     and observation.normalized_facts
+       #>> '{validation,identityMatches}' = 'true'
+     and observation.normalized_facts
+       #>> '{evidence,airTicketing,source}' = 'air-ticketing-details'
+   order by observation.observed_at desc, observation.id desc
+   limit 1;
+  if not found then
+    return jsonb_build_object(
+      'ok', false, 'code', 'AUTHORITATIVE_TICKET_EVIDENCE_REQUIRED'
+    );
+  end if;
+
+  v_ticket_code_ref := nullif(btrim(v_evidence.normalized_facts
+    #>> '{evidence,airTicketing,facts,ticketCodeRef}'), '');
+  v_ticket_numbers := v_evidence.normalized_facts
+    #> '{evidence,airTicketing,facts,ticketNumbers}';
+  if v_ticket_code_ref is null
+     or jsonb_typeof(v_ticket_numbers) <> 'array'
+     or jsonb_array_length(v_ticket_numbers) = 0
+     or exists (
+       select 1 from jsonb_array_elements(v_ticket_numbers) ticket(value)
+        where jsonb_typeof(ticket.value) <> 'string'
+           or nullif(btrim(ticket.value #>> '{}'), '') is null
+     ) then
+    return jsonb_build_object('ok', false, 'code', 'TICKET_EVIDENCE_INCOMPLETE');
+  end if;
+  v_supplier_pnr := nullif(btrim(v_evidence.normalized_facts
+    #>> '{evidence,airTicketing,facts,pnr}'), '');
+  v_airlines_pnr := v_evidence.normalized_facts
+    #> '{evidence,airTicketing,facts,airlinesPnr}';
+  v_supplier_status := nullif(btrim(v_evidence.normalized_facts
+    #>> '{evidence,airTicketing,facts,supplierStatus}'), '');
+  begin
+    v_issued_at := nullif(v_evidence.normalized_facts
+      #>> '{evidence,airTicketing,facts,issuedAt}', '')::timestamptz;
+  exception when invalid_datetime_format or datetime_field_overflow then
+    return jsonb_build_object('ok', false, 'code', 'INVALID_ISSUED_TIMESTAMP');
+  end;
+  v_issued_at := coalesce(v_issued_at, v_evidence.observed_at);
+  if v_issued_at > v_evidence.observed_at + interval '1 minute' then
+    return jsonb_build_object('ok', false, 'code', 'INVALID_ISSUED_TIMESTAMP');
+  end if;
+
+  v_from_lifecycle := public.resolve_booking_lifecycle(
+    v_booking.status, v_booking.airlines_pnr,
+    v_booking.ticketing_deadline_at, v_booking.operation_kind
+  );
+  update public.flight_bookings
+     set status = 'confirmed',
+         issued_by_user_id = p_actor_user_id,
+         issued_at = coalesce(issued_at, v_issued_at),
+         pnr = coalesce(v_supplier_pnr, pnr),
+         airlines_pnr = case
+           when jsonb_typeof(v_airlines_pnr) = 'array'
+             and jsonb_array_length(v_airlines_pnr) > 0
+             then v_airlines_pnr else airlines_pnr end,
+         booking_status = coalesce(v_supplier_status, 'Confirmed'),
+         ticket_code_ref = v_ticket_code_ref,
+         ticket_numbers = v_ticket_numbers,
+         cancelled_at = null,
+         cancelled_by = null,
+         cancel_reason = null,
+         active_operation_id = null,
+         operation_kind = null,
+         operation_reason = null,
+         operation_request_id = null,
+         operation_actor_user_id = null,
+         operation_started_at = null,
+         operation_prior_status = null
+   where id = v_booking.id;
+  if v_case.operation_id is not null then
+    update public.booking_operations
+       set state = 'succeeded',
+           completed_at = clock_timestamp(),
+           error_code = null,
+           error_message = null,
+           supplier_evidence = supplier_evidence || jsonb_build_object(
+             'reconciliationResolution', jsonb_build_object(
+               'caseId', v_case.id,
+               'outcome', 'ticketed',
+               'terminalCorrection', true,
+               'evidenceObservationId', v_evidence.id
+             )
+           )
+     where id = v_case.operation_id;
+  end if;
+
+  select count(*)::integer + 1 into v_occurrence_number
+    from public.booking_status_events event
+   where event.booking_id = v_booking.id
+     and event.to_lifecycle_status = 'confirmed';
+  insert into public.booking_status_events (
+    booking_id, from_lifecycle_status, to_lifecycle_status,
+    stored_status_before, stored_status_after, operation_kind,
+    operation_reason, actor_user_id, supplier_operation,
+    supplier_evidence, idempotency_key, operation_id,
+    reconciliation_case_id, occurrence_number,
+    effective_at, observed_at, event_snapshot, event_version
+  ) values (
+    v_booking.id, v_from_lifecycle, 'confirmed',
+    v_booking.status, 'confirmed', v_booking.operation_kind,
+    v_booking.operation_reason, p_actor_user_id,
+    'TerminalCorrectionConfirmed',
+    jsonb_build_object(
+      'evidenceObservationId', v_evidence.id,
+      'ticketCodeRefPresent', true,
+      'ticketCount', jsonb_array_length(v_ticket_numbers)
+    ),
+    p_execution_request_key || ':terminal-confirmed', v_case.operation_id,
+    v_case.id, v_occurrence_number, v_issued_at, clock_timestamp(),
+    jsonb_build_object(
+      'version', 1,
+      'bookingReference', v_booking.public_ref,
+      'lifecycleStatus', 'confirmed',
+      'paymentState', 'captured',
+      'terminalCorrection', true,
+      'ticketCount', jsonb_array_length(v_ticket_numbers),
+      'reconciliationCaseId', v_case.id
+    ), 1
+  ) returning id into v_event_id;
+
+  v_resolution_result := jsonb_build_object(
+    'bookingStatus', 'confirmed',
+    'paymentState', 'captured',
+    'financialDisposition', 'none',
+    'reservationId', v_reservation.id,
+    'walletAccountId', v_account.id,
+    'lifecycleEventId', v_event_id,
+    'capturedAmount', v_booking.captured_amount,
+    'currency', v_booking.currency,
+    'previousCancelledAt', v_booking.cancelled_at,
+    'previousCancelledBy', v_booking.cancelled_by,
+    'previousCancelReason', v_booking.cancel_reason,
+    'walletMutation', false,
+    'reservationMutation', false,
+    'ledgerMutation', false,
+    'availableBalance', v_account.available_balance,
+    'holdBalance', v_account.hold_balance
+  );
+  update public.booking_reconciliation_cases
+     set state = 'resolved',
+         resolution_outcome = 'terminal_corrected_confirmed',
+         resolution = jsonb_build_object(
+           'version', 1,
+           'executionRequestKey', p_execution_request_key,
+           'proposalHash', v_case.proposal_hash,
+           'resolutionKind', 'terminal_correction',
+           'financialDisposition', 'none',
+           'executedByRole', v_contract->>'actorRole',
+           'evidenceObservationIds', v_case.proposal->'evidenceObservationIds',
+           'result', v_resolution_result
+         ),
+         resolution_reason = v_case.proposal->>'reason',
+         resolved_by_user_id = p_actor_user_id,
+         resolved_at = clock_timestamp(),
+         closed_at = clock_timestamp(),
+         version = version + 1
+   where id = v_case.id;
+
+  return v_resolution_result || jsonb_build_object(
+    'ok', true, 'replay', false,
+    'caseId', v_case.id,
+    'caseVersion', v_case.version + 1,
+    'resolutionKind', 'terminal_correction'
+  );
+end;
+$$;
+
+revoke all on function public.resolve_booking_reconciliation_terminal_confirmed_v1(
+  uuid, uuid, integer, text, text, text
+) from public, anon, authenticated;
+grant execute on function public.resolve_booking_reconciliation_terminal_confirmed_v1(
+  uuid, uuid, integer, text, text, text
+) to service_role;
+
+comment on function public.resolve_booking_reconciliation_terminal_confirmed_v1(
+  uuid, uuid, integer, text, text, text
+) is
+  'Corrects Cancelled to Confirmed only when fresh authoritative ticket evidence and an already captured, unrefunded, identity-matching reservation agree. It moves no money and rejects every other financial state.';

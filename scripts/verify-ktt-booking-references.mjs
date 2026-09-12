@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
+const db = new PGlite();
+await db.exec(`create role anon; create role authenticated; create role service_role;
+create table flight_bookings(id uuid primary key, public_ref text unique, pnr text, airlines_pnr jsonb, legacy_operational boolean default false,
+status text default 'on-hold', constraint flight_bookings_public_ref_format_check check(public_ref ~ '^STR[0-9]{12}$'));
+insert into flight_bookings values ('00000000-0000-0000-0000-000000000001','STR260911000001','0A4OQT','["0A4OQT"]',false,'on-hold');`);
+await db.exec(fs.readFileSync('supabase/migrations/0161_ktt_booking_references.sql','utf8'));
+assert.equal((await db.query('select public_ref from flight_bookings')).rows[0].public_ref,'KTT0A4OQT0A4OQT');
+assert.equal((await db.query('select alias from booking_reference_aliases')).rows[0].alias,'STR260911000001');
+assert.equal((await db.query('select status from flight_bookings')).rows[0].status,'on-hold');
+const insert = async (id,pnr,airlines) => (await db.query(`insert into flight_bookings(id,public_ref,pnr,airlines_pnr) values($1,$2,$3,$4) returning public_ref`,[id,'STR26091100000'+id.slice(-1),pnr,JSON.stringify(airlines)])).rows[0].public_ref;
+assert.equal(await insert('00000000-0000-0000-0000-000000000002',' abc123 ',[' def456 ','XYZ789']),'KTTABC123DEF456');
+assert.equal(await insert('00000000-0000-0000-0000-000000000003','0A4OQT',['0A4OQT']),'KTT0A4OQT0A4OQT00000000000000000000000000000003');
+const fallback = await insert('00000000-0000-0000-0000-000000000004','GDS123',[]);
+assert.equal(fallback,'KTTGDS12300000000000000000000000000000004');
+await db.exec(`update flight_bookings set airlines_pnr='["NEW123"]' where id='00000000-0000-0000-0000-000000000004'`);
+assert.equal((await db.query(`select public_ref from flight_bookings where id='00000000-0000-0000-0000-000000000004'`)).rows[0].public_ref,fallback);
+await db.exec(fs.readFileSync('supabase/migrations/0161_ktt_booking_references.sql','utf8'));
+assert.equal((await db.query('select count(*)::int as n from booking_reference_aliases')).rows[0].n,4);
+assert.equal(fs.readFileSync('supabase/migrations/0161_ktt_booking_references.sql','utf8'),fs.readFileSync('supabase/fresh-install/supabase/migrations/20260911030000_ktt_booking_references.sql','utf8'));
+console.log('KTT references passed: existing rename, new insert, aliases, collisions, missing PNR, stable refresh, idempotent migration.');
+await db.close();

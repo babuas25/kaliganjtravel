@@ -135,7 +135,7 @@ export const FOOTER_PAGES = [
           },
           {
             label: 'How to Get the Best Airfares for International Flights',
-            text: 'Understand when to book, how flexible transit routes can help, and how our team finds budget-friendly flights.',
+            text: 'Understand when to book, explore flexible routes, and find flights that suit your travel plans with support from our team.',
           },
           {
             label: 'Essential Checklist Before Traveling Abroad',

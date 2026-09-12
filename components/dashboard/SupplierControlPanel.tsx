@@ -36,6 +36,10 @@ export default function SupplierControlPanel({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const availableSuppliers = (Object.keys(LABEL) as TriploverSupplier[])
+    .filter((supplier) => supplierConfigured[supplier]);
+  const selectedSupplierAvailable = supplierConfigured[activeSupplier];
+
   function save() {
     setMessage(null);
     startTransition(async () => {
@@ -99,14 +103,14 @@ export default function SupplierControlPanel({
             Active supplier for new searches
           </legend>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {(['firsttrip', 'takeoff', 'triplover'] as const).map((supplier) => (
+            {availableSuppliers.map((supplier) => (
               <label
                 key={supplier}
                 className={`cursor-pointer rounded-xl border p-4 transition ${
                   activeSupplier === supplier
                     ? 'border-brand-orange bg-brand-orange/5 ring-1 ring-brand-orange'
                     : 'border-navy-100 bg-white hover:border-navy-300'
-                } ${!supplierConfigured[supplier] ? 'opacity-60' : ''}`}
+                }`}
               >
                 <input
                   className="sr-only"
@@ -115,23 +119,24 @@ export default function SupplierControlPanel({
                   value={supplier}
                   checked={activeSupplier === supplier}
                   onChange={() => setActiveSupplier(supplier)}
-                  disabled={isPending || !supplierConfigured[supplier]}
+                  disabled={isPending}
                 />
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-navy-950">{LABEL[supplier]}</span>
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      supplierConfigured[supplier]
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-navy-100 text-navy-700'
-                    }`}
-                  >
-                    {supplierConfigured[supplier] ? 'Configured' : 'Missing server config'}
+                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">
+                    Available
                   </span>
                 </span>
               </label>
             ))}
           </div>
+          {availableSuppliers.length === 0 ? (
+            <p className="mt-3 text-sm text-navy-700">No suppliers are available.</p>
+          ) : !selectedSupplierAvailable ? (
+            <p className="mt-3 text-sm text-navy-700">
+              The saved supplier is unavailable. Select an available supplier and save your changes.
+            </p>
+          ) : null}
         </fieldset>
 
         <div className="mt-6 space-y-3 rounded-xl bg-navy-50 p-4">
@@ -149,7 +154,7 @@ export default function SupplierControlPanel({
                 setBookingEnabled(enabled);
                 if (!enabled) setTicketingEnabled(false);
               }}
-              disabled={isPending}
+              disabled={isPending || !selectedSupplierAvailable}
             />
           </label>
           <label className="flex cursor-pointer items-center justify-between gap-4">
@@ -162,7 +167,7 @@ export default function SupplierControlPanel({
               className="h-4 w-4 accent-brand-orange"
               checked={ticketingEnabled}
               onChange={(event) => setTicketingEnabled(event.target.checked)}
-              disabled={isPending || !bookingEnabled}
+              disabled={isPending || !selectedSupplierAvailable || !bookingEnabled}
             />
           </label>
         </div>
@@ -186,7 +191,7 @@ export default function SupplierControlPanel({
           <button
             type="button"
             onClick={save}
-            disabled={isPending || !supplierConfigured[activeSupplier]}
+            disabled={isPending || !selectedSupplierAvailable}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-orange px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-brand-orange/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

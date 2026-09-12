@@ -62,3 +62,6 @@ backups/
 # Environment files are private; only the template is published
 .env*
 !.env.example
+
+# Private account recovery codes
+/recovery-codes.txt

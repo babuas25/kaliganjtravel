@@ -4,6 +4,12 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Migration sync, 2026-09-12:** applied the remaining
+`20260912020000_kaliganj_support_email.sql` migration. Hosted verification confirmed
+`support@kaliganjtravel.com`; a subsequent migration dry run reported the database
+up to date with no pending migrations.
+
+
 **Passenger prefixes, 2026-09-12:** applied `20260912030000_kt_passenger_references.sql`.
 Existing passenger references now use `KTPYYMMDD######`, and new profiles use the
 same prefix. Profile UUIDs, all other fields (including timestamps), and daily

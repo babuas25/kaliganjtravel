@@ -4,6 +4,14 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Passenger prefixes, 2026-09-12:** applied `20260912030000_kt_passenger_references.sql`.
+Existing passenger references now use `KTPYYMMDD######`, and new profiles use the
+same prefix. Profile UUIDs, all other fields (including timestamps), and daily
+counters were verified unchanged in the hosted migration transaction. The reference
+immutability and timestamp triggers were restored before commit. Verify locally
+with `node scripts/verify-kt-passenger-references.mjs`. The unrelated pending
+`20260912020000` support-email migration was not applied by this change.
+
 **Request prefixes, 2026-09-12:** applied `20260912010000_kt_request_references.sql`.
 Deposits now use `KTDYYMMDD######`; Refund, Reissue and VOID use `KTRR`, `KTRE`
 and `KTRV` plus their existing 12-character hexadecimal suffix format. Existing

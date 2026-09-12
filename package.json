@@ -142,7 +142,7 @@
     "verify:staff-on-behalf-booking:live": "node scripts/verify-staff-on-behalf-booking-live.mjs",
     "verify:kaliganj-branding": "node scripts/verify-kaliganj-branding.mjs",
     "verify:kaliganj-markup": "node scripts/verify-kaliganj-markup.mjs",
-    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && npm run verify:flight-search-reference-safety"
+    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && node scripts/verify-kt-passenger-references.mjs && npm run verify:flight-search-reference-safety"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.1",

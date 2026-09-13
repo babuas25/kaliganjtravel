@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Info,
   Armchair,
   Loader2,
   Luggage,
@@ -22,6 +23,7 @@ import {
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { cn } from '@/lib/utils';
 
 import {
   bookingItinerarySnapshotFor,
@@ -1441,10 +1443,19 @@ export default function ItineraryCard({
         >
           {repriceError && (
             <div
-              className="flex items-start gap-2 rounded-md bg-red-50 p-3 text-sm text-red-800 ring-1 ring-red-200"
-              role="alert"
+              className={cn(
+                'flex items-start gap-2 rounded-md p-3 text-sm ring-1',
+                repriceError === 'No eligible fare found'
+                  ? 'bg-neutral-50 text-neutral-700 ring-neutral-200'
+                  : 'bg-red-50 text-red-800 ring-red-200'
+              )}
+              role={repriceError === 'No eligible fare found' ? 'status' : 'alert'}
             >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              {repriceError === 'No eligible fare found' ? (
+                <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              ) : (
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              )}
               <span>{repriceError}</span>
             </div>
           )}

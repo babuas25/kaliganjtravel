@@ -32,7 +32,7 @@ function harness({fail=false}={}) {
    claimFlightSearchSupplierHit:async()=>({allowed:true}),
    finishFlightSearchUsage:async outcome=>{events.push(outcome);await finish.promise;},
   },
-  '@/lib/triplover/search':{searchFlights:async()=>{await search.promise;if(fail)throw new Error('test supplier failure');return {result:{itineraries:[],partial:true},timing:{}};}},
+  '@/lib/triplover/search':{searchFlights:async()=>{await search.promise;if(fail==='supplier')throw Object.assign(new TriploverError('supplier business failure'),{kind:'supplier',status:200});if(fail)throw new Error('test supplier failure');return {result:{itineraries:[],partial:true},timing:{}};}},
  };
  const module={exports:{}};
  vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{if(!(id in modules))throw new Error('Unexpected import '+id);return modules[id];},performance,ReadableStream,TextEncoder,Response,Headers,setInterval,clearInterval,console:{log(){},info(){},error(){},warn(){}},process:{env:{}}});
@@ -68,4 +68,16 @@ for(const fail of [false,true]) {
  assert.equal((await response.json()).error.errorCode,'INVALID_SEARCH');
  assert.equal(h.events.length,0,'unsupported student fare must never reach supplier admission');
 }
-console.log('Search finalization, disconnect lifecycle and unsupported-fare checks passed.');
+for(const stream of [true,false]) {
+ const h=harness({fail:'supplier'});
+ const pending=h.route.POST(new Request('https://example.test/api/flights/search',{method:'POST',headers:{accept:stream?'text/event-stream':'application/json'},body:JSON.stringify(input)}));
+ h.search.resolve();h.finish.resolve();const response=await pending;
+ const body=await response.text();
+ assert.ok(body.includes('SUPPLIER_SEARCH_REJECTED'));
+ assert.ok(!body.includes('supplier business failure'),'raw supplier message stays private');
+ assert.ok(!body.includes('event: result'));
+ assert.equal(h.events[0].errorCode,'SUPPLIER_SEARCH_REJECTED');
+ if(!stream)assert.equal(response.status,502);
+ await Promise.all(h.afterTasks.map(f=>f()));
+}
+console.log('Search finalization, supplier business-error classification, disconnect lifecycle and unsupported-fare checks passed.');

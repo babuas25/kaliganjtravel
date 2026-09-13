@@ -67,12 +67,12 @@ const PAYMENT_LABELS: Record<PublicBooking['paymentState'], string> = {
   refunded: 'Refunded',
 };
 
-const SUPPORT_FOOTER_TEXT = `Need help? Our Customer Support Team is here to assist you.
+const SUPPORT_FOOTER_TEXT = `Questions about your journey? Talk to the Kaliganj team.
 
 Email: support@kaliganjtravel.com
 Customer Care: +880 1795-271171
 
-Thank you for choosing Kaliganj Travels. We look forward to serving you and ensuring a smooth travel experience.
+From your first booking to your next destination, thank you for travelling with Kaliganj Travels.
 
 Kaliganj Travels
 1st Floor, Janata Super Market
@@ -183,9 +183,9 @@ function headerLogo(booking: PublicBooking): string {
     (!contact.logoUrl || contact.logoUrl === '/brand/kaliganj-logo.png')
     ? 'cid:kaliganj-logo' : contact.logoUrl;
   if (logoUrl) {
-    return `<img src="${escapeHtml(logoUrl)}" width="48" height="48" alt="${escapeHtml(contact.name)} logo" style="display:block;width:48px;height:48px;object-fit:contain;background:#ffffff;border-radius:6px">`;
+    return `<img src="${escapeHtml(logoUrl)}" width="48" height="48" alt="${escapeHtml(contact.name)} logo" style="display:block;width:48px;height:48px;object-fit:contain;background:#ffffff;border-radius:0">`;
   }
-  return `<div style="display:table-cell;width:48px;height:48px;border:1px solid #8ab7df;border-radius:6px;text-align:center;vertical-align:middle;background:#ffffff;color:#123a68;font-size:14px;font-weight:800">${escapeHtml(initials(contact.name))}</div>`;
+  return `<div style="display:table-cell;width:48px;height:48px;border:1px solid #e2e8f0;border-radius:0;text-align:center;vertical-align:middle;background:#ffffff;color:#172b45;font-size:14px;font-weight:800">${escapeHtml(initials(contact.name))}</div>`;
 }
 
 function renderHeader(input: MasterBookingEmailInput): string {
@@ -195,46 +195,46 @@ function renderHeader(input: MasterBookingEmailInput): string {
     ? formatActivity(booking.ticketingDeadlineAt)
     : null;
   const deadlineHtml = deadline && deadline !== '--'
-    ? `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:#ffffff">Ticketing deadline: <strong>${escapeHtml(deadline)}</strong></div>`
+    ? `<div style="margin-top:8px;font-size:11px;line-height:1.45;color:#526174">Ticketing deadline: <strong>${escapeHtml(deadline)}</strong></div>`
     : '';
 
-  return `<tr><td style="padding:22px;background:#073665;color:#ffffff">
+  return `<tr><td style="border-top:5px solid #f68712;padding:16px 20px;background:#ffffff;color:#172b45">
     <table role="presentation" class="booking-header-layout" width="100%" cellspacing="0" cellpadding="0">
       <tr>
         <td class="booking-header-logo" valign="top" width="62" style="width:62px;padding-right:10px">
           ${headerLogo(booking)}
         </td>
         <td class="booking-header-brand" valign="top" style="padding-right:12px">
-          <div style="font-size:20px;font-weight:700;line-height:1.2">${escapeHtml(contact.name)}</div>
-          <div style="margin-top:4px;font-size:12px;line-height:1.45;color:#eef7ff">${escapeHtml(variant.subtitle)}</div>
-          <div style="margin-top:5px;white-space:nowrap;font-size:9px;font-weight:600;color:#eef7ff">License No: ${escapeHtml(contact.licenseNo || '--')}</div>
-          <table role="presentation" class="booking-header-contact" width="100%" cellspacing="0" cellpadding="0" style="width:100%;margin-top:10px;font-size:11px;line-height:1.55;color:#ffffff">
-            <tr><td width="20" style="width:20px;padding-right:7px">${icon('phone', 'Phone')}</td><td class="booking-contact-value" style="white-space:nowrap"><a href="tel:${escapeHtml(contact.mobile)}" style="color:#ffffff;text-decoration:none;white-space:nowrap">${escapeHtml(contact.mobile)}</a></td></tr>
-            <tr><td width="20" style="width:20px;padding-right:7px;padding-top:3px">${icon('mail', 'Email')}</td><td class="booking-contact-value" style="padding-top:3px;white-space:nowrap;word-break:normal"><a href="mailto:${escapeHtml(contact.email)}" style="color:#ffffff;text-decoration:none;white-space:nowrap;word-break:normal">${escapeHtml(contact.email)}</a></td></tr>
+          <div style="font-size:22px;letter-spacing:-.6px;font-weight:700;line-height:1.2">${escapeHtml(contact.name)}</div>
+          <div style="margin-top:4px;font-size:12px;line-height:1.45;color:#64748b">${escapeHtml(variant.subtitle)}</div>
+          <div style="margin-top:5px;white-space:nowrap;font-size:9px;font-weight:600;color:#64748b">License No: ${escapeHtml(contact.licenseNo || '--')}</div>
+          <table role="presentation" class="booking-header-contact" width="100%" cellspacing="0" cellpadding="0" style="width:100%;margin-top:10px;font-size:11px;line-height:1.55;color:#526174">
+            <tr><td width="20" style="width:20px;padding-right:7px">${icon('phone', 'Phone')}</td><td class="booking-contact-value" style="white-space:nowrap"><a href="tel:${escapeHtml(contact.mobile)}" style="color:#526174;text-decoration:none;white-space:nowrap">${escapeHtml(contact.mobile)}</a></td></tr>
+            <tr><td width="20" style="width:20px;padding-right:7px;padding-top:3px">${icon('mail', 'Email')}</td><td class="booking-contact-value" style="padding-top:3px;white-space:nowrap;word-break:normal"><a href="mailto:${escapeHtml(contact.email)}" style="color:#526174;text-decoration:none;white-space:nowrap;word-break:normal">${escapeHtml(contact.email)}</a></td></tr>
             <tr><td width="20" valign="top" style="width:20px;padding-right:7px;padding-top:3px">${icon('map-pin', 'Address')}</td><td style="padding-top:3px">${escapeHtml(contact.address)}</td></tr>
           </table>
         </td>
-        <td class="booking-header-reference" align="right" valign="top" width="190" style="width:190px">
-          <div style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#dbeeff">BOOKING REFERENCE</div>
+        <td class="booking-header-reference" align="left" valign="top" width="190" style="width:190px;padding:10px 14px;border:1px solid #e2e8f0;background:#f8fafc">
+          <div style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#64748b">BOOKING REFERENCE</div>
           <div style="margin-top:6px;font-size:15px;font-weight:700;letter-spacing:.03em">${escapeHtml(booking.publicRef)}</div>
-          <div style="margin-top:10px"><span style="display:inline-block;border-radius:999px;background:${variant.tone.badgeBackground};color:${variant.tone.badgeColor};padding:6px 11px;font-size:11px;font-weight:700;letter-spacing:.04em">${icon('ticket', '', 13)}&nbsp; ${escapeHtml(variant.statusLabel)}</span></div>
+          <div style="margin-top:10px"><span style="display:inline-block;border-radius:0;background:${variant.tone.badgeBackground};color:${variant.tone.badgeColor};padding:6px 11px;font-size:11px;font-weight:700;letter-spacing:.04em">${icon('ticket', '', 13)}&nbsp; ${escapeHtml(variant.statusLabel)}</span></div>
           ${deadlineHtml}
         </td>
       </tr>
     </table>
   </td></tr>
-  <tr><td style="padding:13px 18px;background:${variant.tone.noticeBackground};border-left:4px solid ${variant.tone.noticeBorder};color:${variant.tone.noticeColor};font-size:12px;line-height:1.6"><strong>${escapeHtml(variant.message)}</strong></td></tr>`;
+  ${variant.status === 'on-hold' || variant.status === 'confirmed' ? '' : `<tr><td style="padding:18px 22px;background:${variant.tone.noticeBackground};border-left:4px solid ${variant.tone.noticeBorder};color:${variant.tone.noticeColor};font-size:12px;line-height:1.6"><strong>${escapeHtml(variant.message)}</strong></td></tr>`}`;
 }
 
 function summaryCell(label: string, value: string, last = false): string {
-  return `<td class="booking-summary-cell" valign="top" width="25%" style="width:25%;padding:13px 14px;${last ? '' : 'border-right:1px solid #94bce0;'}"><div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:#476b91">${escapeHtml(label.toUpperCase())}</div><div style="margin-top:4px;font-size:13px;font-weight:700;line-height:1.35;color:#082f5b">${escapeHtml(value)}</div></td>`;
+  return `<td class="booking-summary-cell" valign="top" width="25%" style="width:25%;padding:13px 14px;${last ? '' : 'border-right:1px solid #e2e8f0;'}"><div style="font-size:9px;font-weight:600;letter-spacing:.06em;color:#64748b">${escapeHtml(label.toUpperCase())}</div><div style="margin-top:4px;font-size:13px;font-weight:700;line-height:1.35;color:#172b45">${escapeHtml(value)}</div></td>`;
 }
 
 function renderSummary(input: MasterBookingEmailInput): string {
   const { booking, variant } = input;
   const pnr = validAirlinePnrs(booking.airlinesPnr).join(', ') || 'Not available';
   const trip = tripSummary(booking);
-  return `<tr><td style="background:#c6dcf2;border-top:1px solid #94bce0">
+  return `<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
       ${summaryCell('Airline PNR', pnr)}
       ${summaryCell(trip[0], trip[1])}
@@ -245,7 +245,7 @@ function renderSummary(input: MasterBookingEmailInput): string {
 }
 
 function sectionHeading(iconName: string, title: string): string {
-  return `<div style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.08em;color:#082f5b">${icon(iconName, '', 14)}&nbsp; ${escapeHtml(title.toUpperCase())}</div>`;
+  return `<div style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.08em;color:#172b45">${icon(iconName, '', 14)}&nbsp; ${escapeHtml(title.toUpperCase())}</div>`;
 }
 
 function renderPassengers(input: MasterBookingEmailInput): string {
@@ -254,19 +254,14 @@ function renderPassengers(input: MasterBookingEmailInput): string {
   const ticketsAlign =
     booking.ticketNumbers.length > 0 &&
     booking.ticketNumbers.length === namedTravellers.length;
-  const pnr = validAirlinePnrs(booking.airlinesPnr).join(', ') || 'Not available';
   const ticketColumn = variant.passengerMode === 'ticketing' || ticketsAlign;
-  const columnWidths = variant.passengerMode === 'ticketing'
-    ? ['39%', '14%', '20%', '27%']
-    : ticketColumn
-      ? ['38%', '13%', '13%', '19%', '17%']
+  const columnWidths = ticketColumn
+      ? ['33%', '12%', '15%', '18%', '22%']
       : ['45%', '15%', '15%', '25%'];
   const colgroup = `<colgroup>${columnWidths
     .map((width) => `<col style="width:${width}">`)
     .join('')}</colgroup>`;
-  const heading = variant.passengerMode === 'ticketing'
-    ? `<tr style="background:#f0f5fb;color:#476b91"><th align="left" style="padding:9px">PASSENGER</th><th align="left" style="padding:9px">TYPE</th><th align="left" style="padding:9px">AIRLINE PNR</th><th align="left" style="padding:9px">TICKET NUMBER</th></tr>`
-    : `<tr style="background:#f0f5fb;color:#476b91"><th align="left" style="padding:9px">PASSENGER</th><th align="left" style="padding:9px">TYPE</th><th align="left" style="padding:9px">GENDER</th><th align="left" style="padding:9px">DATE OF BIRTH</th>${ticketColumn ? '<th align="right" style="padding:9px">TICKET NUMBER</th>' : ''}</tr>`;
+  const heading = `<tr style="background:#f8fafc;color:#64748b"><th align="left" style="padding:9px">PASSENGER</th><th align="left" style="padding:9px">TYPE</th><th align="left" style="padding:9px">GENDER</th><th align="left" style="padding:9px">DATE OF BIRTH</th>${ticketColumn ? '<th align="right" style="padding:9px">TICKET NUMBER</th>' : ''}</tr>`;
 
   const rows = namedTravellers.map((traveller, index) => {
     const name = [traveller.title, traveller.firstName, traveller.lastName]
@@ -275,17 +270,14 @@ function renderPassengers(input: MasterBookingEmailInput): string {
       .toUpperCase();
     const nationality = countryName(traveller.nationality).toUpperCase();
     const ticket = ticketsAlign ? booking.ticketNumbers[index] : '--';
-    const commonPassenger = `<td valign="top" style="padding:11px;border-top:1px solid #dce7f3;font-weight:700;color:#082f5b">${escapeHtml(name)}<div style="margin-top:4px;font-size:10px;font-weight:400;color:#64748b">NATIONALITY <strong style="color:#082f5b">${escapeHtml(nationality)}</strong></div></td><td valign="top" style="padding:11px;border-top:1px solid #dce7f3">${escapeHtml(PASSENGER_LABELS[traveller.passengerType])}</td>`;
-    if (variant.passengerMode === 'ticketing') {
-      return `<tr>${commonPassenger}<td valign="top" style="padding:11px;border-top:1px solid #dce7f3">${escapeHtml(pnr)}</td><td valign="top" style="padding:11px;border-top:1px solid #dce7f3;font-weight:700;color:#082f5b">${escapeHtml(ticket)}</td></tr>`;
-    }
-    return `<tr>${commonPassenger}<td valign="top" style="padding:11px;border-top:1px solid #dce7f3">${escapeHtml(traveller.gender)}</td><td valign="top" style="padding:11px;border-top:1px solid #dce7f3">${escapeHtml(formatDate(traveller.dateOfBirth))}</td>${ticketColumn ? `<td align="right" valign="top" style="padding:11px;border-top:1px solid #dce7f3;font-weight:700;color:#082f5b">${escapeHtml(ticket)}</td>` : ''}</tr>`;
+    const commonPassenger = `<td valign="top" style="padding:11px;border-top:1px solid #e2e8f0;font-weight:700;color:#172b45">${escapeHtml(name)}<div style="margin-top:4px;font-size:10px;font-weight:400;color:#64748b">NATIONALITY <strong style="color:#172b45">${escapeHtml(nationality)}</strong></div></td><td valign="top" style="padding:11px;border-top:1px solid #e2e8f0">${escapeHtml(PASSENGER_LABELS[traveller.passengerType])}</td>`;
+    return `<tr>${commonPassenger}<td valign="top" style="padding:11px;border-top:1px solid #e2e8f0">${escapeHtml(traveller.gender)}</td><td valign="top" style="padding:11px;border-top:1px solid #e2e8f0">${escapeHtml(formatDate(traveller.dateOfBirth))}</td>${ticketColumn ? `<td align="right" valign="top" style="padding:11px;border-top:1px solid #e2e8f0;font-weight:700;color:#172b45">${escapeHtml(ticket)}</td>` : ''}</tr>`;
   }).join('');
 
-  const fallback = `<tr><td colspan="${variant.passengerMode === 'ticketing' || ticketColumn ? 4 : 4}" style="padding:12px;border-top:1px solid #dce7f3;color:#64748b">Passenger names are unavailable in the stored booking snapshot.</td></tr>`;
-  return `<tr><td style="padding:16px 18px;border-top:1px solid #dce7f3">
+  const fallback = `<tr><td colspan="${ticketColumn ? 5 : 4}" style="padding:12px;border-top:1px solid #e2e8f0;color:#64748b">Passenger names are unavailable in the stored booking snapshot.</td></tr>`;
+  return `<tr><td style="padding:16px 18px;border-top:1px solid #e2e8f0">
     ${sectionHeading('users', 'Passenger & Ticket Details')}
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;table-layout:fixed;border:1px solid #dce7f3;border-radius:7px;overflow:hidden;font-size:11px;line-height:1.4;word-break:break-word">
+    <table role="presentation" class="booking-passenger-table" width="100%" cellspacing="0" cellpadding="0" style="width:100%;table-layout:fixed;border:1px solid #e2e8f0;border-radius:0;overflow:hidden;font-size:11px;line-height:1.4;word-break:break-word">
       ${colgroup}${heading}${rows || fallback}
     </table>
   </td></tr>`;
@@ -318,25 +310,25 @@ function renderItinerary(input: MasterBookingEmailInput): string {
         ['Cabin bag', segment.handBaggage || '--'],
         ['Aircraft', segment.aircraft || '--'],
         ['RBD', segment.bookingClass || '--'],
-      ].map(([label, value]) => `<span class="booking-itinerary-fact" style="display:inline-block;white-space:nowrap;margin-right:10px">${label} <strong style="color:#082f5b">${escapeHtml(value)}</strong></span>`).join('');
-      return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:7px;border:1px solid #dce7f3;border-radius:7px;overflow:hidden">
-        <tr><td colspan="2" style="padding:9px 10px;background:#f0f5fb">
+      ].map(([label, value]) => `<span class="booking-itinerary-fact" style="display:inline-block;white-space:nowrap;margin-right:10px">${label} <strong style="color:#172b45">${escapeHtml(value)}</strong></span>`).join('');
+      return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:7px;border:1px solid #e2e8f0;border-radius:0;overflow:hidden">
+        <tr><td colspan="2" style="padding:9px 10px;background:#f8fafc">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
             <td width="32" style="width:32px">${airlineLogo(segment.airlineCode, segment.airline)}</td>
-            <td><div style="font-size:12px;font-weight:700;color:#082f5b">${escapeHtml(segment.airline || segment.airlineCode)}</div><div style="font-size:10px;color:#64748b">Flight ${escapeHtml(`${segment.airlineCode}${segment.flightNumber}`)}${segment.cabinClass ? ` · ${escapeHtml(segment.cabinClass)}` : ''}</div></td>
+            <td><div style="font-size:12px;font-weight:700;color:#172b45">${escapeHtml(segment.airline || segment.airlineCode)}</div><div style="font-size:10px;color:#64748b">Flight ${escapeHtml(`${segment.airlineCode}${segment.flightNumber}`)}${segment.cabinClass ? ` · ${escapeHtml(segment.cabinClass)}` : ''}</div></td>
             ${flightCount}
           </tr></table>
         </td></tr>
         <tr>
-          <td valign="top" width="50%" style="width:50%;padding:13px 12px"><div style="font-size:21px;font-weight:700;color:#082f5b">${escapeHtml(timeOf(segment.departure))}</div><div style="margin-top:5px;font-size:13px;font-weight:700;color:#082f5b">${escapeHtml(segment.from)}</div><div style="margin-top:3px;font-size:10px;color:#64748b">${escapeHtml(formatDate(segment.departure))}<br>${escapeHtml(segment.fromAirport || '--')}</div></td>
-          <td align="right" valign="top" width="50%" style="width:50%;padding:13px 12px"><div style="font-size:21px;font-weight:700;color:#082f5b">${escapeHtml(timeOf(segment.arrival))}</div><div style="margin-top:5px;font-size:13px;font-weight:700;color:#082f5b">${escapeHtml(segment.to)}</div><div style="margin-top:3px;font-size:10px;color:#64748b">${escapeHtml(formatDate(segment.arrival))}<br>${escapeHtml(segment.toAirport || '--')}</div></td>
+          <td valign="top" width="50%" style="width:50%;padding:13px 12px"><div style="font-size:21px;font-weight:700;color:#172b45">${escapeHtml(timeOf(segment.departure))}</div><div style="margin-top:5px;font-size:13px;font-weight:700;color:#172b45">${escapeHtml(segment.from)}</div><div style="margin-top:3px;font-size:10px;color:#64748b">${escapeHtml(formatDate(segment.departure))}<br>${escapeHtml(segment.fromAirport || '--')}</div></td>
+          <td align="right" valign="top" width="50%" style="width:50%;padding:13px 12px"><div style="font-size:21px;font-weight:700;color:#172b45">${escapeHtml(timeOf(segment.arrival))}</div><div style="margin-top:5px;font-size:13px;font-weight:700;color:#172b45">${escapeHtml(segment.to)}</div><div style="margin-top:3px;font-size:10px;color:#64748b">${escapeHtml(formatDate(segment.arrival))}<br>${escapeHtml(segment.toAirport || '--')}</div></td>
         </tr>
-        <tr><td colspan="2" style="padding:7px 10px;background:#f8fbfe;border-top:1px solid #dce7f3;font-size:10px;line-height:1.5;color:#64748b">${facts}</td></tr>
+        <tr><td colspan="2" style="padding:7px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:10px;line-height:1.5;color:#64748b">${facts}</td></tr>
       </table>`;
     }).join('');
-    return `<div style="${legIndex > 0 ? 'margin-top:14px;' : ''}"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="font-size:12px;font-weight:700;color:#082f5b">${legs.length > 1 ? `<span style="display:inline-block;margin-right:7px;padding:3px 6px;border-radius:3px;background:#082f5b;color:#ffffff;font-size:9px">LEG ${legIndex + 1}</span>` : ''}${escapeHtml(leg.from)} &rarr; ${escapeHtml(leg.to)}</td><td align="right" style="font-size:10px;color:#64748b">${escapeHtml(summary)}</td></tr></table>${segments}</div>`;
+    return `<div style="${legIndex > 0 ? 'margin-top:14px;' : ''}"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="font-size:12px;font-weight:700;color:#172b45">${legs.length > 1 ? `<span style="display:inline-block;margin-right:7px;padding:3px 6px;border-radius:0;background:#fff4e6;color:#172b45;font-size:9px">LEG ${legIndex + 1}</span>` : ''}${escapeHtml(leg.from)} &rarr; ${escapeHtml(leg.to)}</td><td align="right" style="font-size:10px;color:#64748b">${escapeHtml(summary)}</td></tr></table>${segments}</div>`;
   }).join('');
-  return `<tr><td class="booking-email-section" style="padding:16px 18px;border-top:1px solid #dce7f3">
+  return `<tr><td class="booking-email-section" style="padding:16px 18px;border-top:1px solid #e2e8f0">
     ${sectionHeading('plane', 'Flight Itinerary')}
     ${blocks}
     <div style="margin-top:8px;font-size:10px;color:#94a3b8">Times are local to each airport. Baggage allowance is per passenger, as published by the airline.</div>
@@ -359,51 +351,51 @@ function renderFare(input: MasterBookingEmailInput): string {
     .map((width) => `<col style="width:${width}">`)
     .join('')}</colgroup>`;
   const rows = booking.fares.map((fare) => `<tr>
-    <td style="padding:9px;border-top:1px solid #dce7f3;font-weight:700;color:#082f5b">${escapeHtml(PASSENGER_LABELS[fare.passengerType])}</td>
-    <td align="right" style="padding:9px;border-top:1px solid #dce7f3">${fare.count}</td>
-    <td align="right" style="padding:9px;border-top:1px solid #dce7f3">${escapeHtml(formatNumber(fare.basePrice))}</td>
-    <td align="right" style="padding:9px;border-top:1px solid #dce7f3">${escapeHtml(formatNumber(fare.taxes))}</td>
-    ${hasMargin ? `<td align="right" style="padding:9px;border-top:1px solid #dce7f3">${escapeHtml(formatNumber(fare.serviceMargin))}</td>` : ''}
-    <td align="right" style="padding:9px;border-top:1px solid #dce7f3">${escapeHtml(formatNumber(fare.ait))}</td>
-    <td class="booking-fare-money" align="right" style="padding:9px;border-top:1px solid #dce7f3;font-weight:700;color:#082f5b;white-space:nowrap;word-break:normal">${escapeHtml(formatMoney(fare.totalPrice, booking.currency))}</td>
+    <td style="padding:9px;border-top:1px solid #e2e8f0;font-weight:700;color:#172b45">${escapeHtml(PASSENGER_LABELS[fare.passengerType])}</td>
+    <td align="right" style="padding:9px;border-top:1px solid #e2e8f0">${fare.count}</td>
+    <td align="right" style="padding:9px;border-top:1px solid #e2e8f0">${escapeHtml(formatNumber(fare.basePrice))}</td>
+    <td align="right" style="padding:9px;border-top:1px solid #e2e8f0">${escapeHtml(formatNumber(fare.taxes))}</td>
+    ${hasMargin ? `<td align="right" style="padding:9px;border-top:1px solid #e2e8f0">${escapeHtml(formatNumber(fare.serviceMargin))}</td>` : ''}
+    <td align="right" style="padding:9px;border-top:1px solid #e2e8f0">${escapeHtml(formatNumber(fare.ait))}</td>
+    <td class="booking-fare-money" align="right" style="padding:9px;border-top:1px solid #e2e8f0;font-weight:700;color:#172b45;white-space:nowrap;word-break:normal">${escapeHtml(formatMoney(fare.totalPrice, booking.currency))}</td>
   </tr>`).join('');
   const columnCount = hasMargin ? 7 : 6;
-  const empty = `<tr><td colspan="${columnCount}" style="padding:11px;border-top:1px solid #dce7f3;color:#64748b">A per-passenger breakdown is not available for this fare.</td></tr>`;
+  const empty = `<tr><td colspan="${columnCount}" style="padding:11px;border-top:1px solid #e2e8f0;color:#64748b">A per-passenger breakdown is not available for this fare.</td></tr>`;
   const marginHeader = hasMargin ? '<th align="right" style="padding:8px">SERVICE MARGIN</th>' : '';
-  return `<tr><td class="booking-email-section" style="padding:16px 18px;border-top:1px solid #dce7f3">
+  return `<tr><td class="booking-email-section" style="padding:16px 18px;border-top:1px solid #e2e8f0">
     ${sectionHeading('receipt', 'Fare Breakdown')}
-    <table role="presentation" class="booking-fare-table" width="100%" cellspacing="0" cellpadding="0" style="width:100%;table-layout:fixed;border:1px solid #dce7f3;border-radius:7px;overflow:hidden;font-size:10px;line-height:1.4;word-break:break-word">
+    <table role="presentation" class="booking-fare-table" width="100%" cellspacing="0" cellpadding="0" style="width:100%;table-layout:fixed;border:1px solid #e2e8f0;border-radius:0;overflow:hidden;font-size:10px;line-height:1.4;word-break:break-word">
       ${colgroup}
-      <tr style="background:#f0f5fb;color:#476b91"><th align="left" style="padding:8px">PASSENGER TYPE</th><th align="right" style="padding:8px">PAX</th><th align="right" style="padding:8px">BASE FARE</th><th align="right" style="padding:8px">TAX &amp; OTHER</th>${marginHeader}<th align="right" style="padding:8px">AIT / VAT</th><th align="right" style="padding:8px">AMOUNT</th></tr>
+      <tr style="background:#f8fafc;color:#64748b"><th align="left" style="padding:8px">PASSENGER TYPE</th><th align="right" style="padding:8px">PAX</th><th align="right" style="padding:8px">BASE FARE</th><th align="right" style="padding:8px">TAX &amp; OTHER</th>${marginHeader}<th align="right" style="padding:8px">AIT / VAT</th><th align="right" style="padding:8px">AMOUNT</th></tr>
       ${rows || empty}
-      <tr style="background:#073665;color:#ffffff"><td colspan="${columnCount - 1}" style="padding:11px;font-size:11px;font-weight:700">Total price${totalAit > 0 ? ' (incl. AIT / VAT)' : ''}</td><td class="booking-fare-money booking-fare-total" align="right" style="padding:11px;font-size:13px;font-weight:700;white-space:nowrap;word-break:normal">${escapeHtml(formatMoney(booking.totalPrice, booking.currency))}</td></tr>
+      <tr style="background:#fff4e6;color:#172b45"><td colspan="${columnCount - 1}" style="padding:11px;font-size:11px;font-weight:700">Total price${totalAit > 0 ? ' (incl. AIT / VAT)' : ''}</td><td class="booking-fare-money booking-fare-total" align="right" style="padding:11px;color:#b75a08;font-size:22px;font-weight:700;white-space:nowrap;word-break:normal">${escapeHtml(formatMoney(booking.totalPrice, booking.currency))}</td></tr>
     </table>
-    <div style="margin-top:12px;font-size:11px;font-weight:700;letter-spacing:.07em;color:#082f5b">FARE CONDITIONS</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;table-layout:fixed;margin-top:6px;background:#f8fbfe;border:1px solid #dce7f3;font-size:10px;color:#64748b;word-break:break-word"><tr>
-      <td style="padding:9px">Fare type<br><strong style="color:#082f5b">${booking.directTicketing ? 'Instant ticketing' : 'Hold'}</strong></td>
-      <td style="padding:9px">Refundable<br><strong style="color:#082f5b">${booking.itinerary?.refundable ? 'Yes' : 'No'}</strong></td>
-      <td style="padding:9px">Validating carrier<br><strong style="color:#082f5b">${escapeHtml(carrier)}</strong></td>
-      <td style="padding:9px">Payment status<br><strong style="color:#082f5b">${escapeHtml(PAYMENT_LABELS[booking.paymentState])}</strong></td>
+    <div style="margin-top:12px;font-size:11px;font-weight:700;letter-spacing:.07em;color:#172b45">FARE CONDITIONS</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;table-layout:fixed;margin-top:6px;background:#f8fafc;border:1px solid #e2e8f0;font-size:10px;color:#64748b;word-break:break-word"><tr>
+      <td style="padding:9px">Fare type<br><strong style="color:#172b45">${booking.directTicketing ? 'Instant ticketing' : 'Hold'}</strong></td>
+      <td style="padding:9px">Refundable<br><strong style="color:#172b45">${booking.itinerary?.refundable ? 'Yes' : 'No'}</strong></td>
+      <td style="padding:9px">Validating carrier<br><strong style="color:#172b45">${escapeHtml(carrier)}</strong></td>
+      <td style="padding:9px">Payment status<br><strong style="color:#172b45">${escapeHtml(PAYMENT_LABELS[booking.paymentState])}</strong></td>
     </tr></table>
   </td></tr>`;
 }
 
 function supportFooter(): string {
-  return `<tr><td style="padding:22px 24px;border-top:1px solid #dce7f3;color:#475569;font-size:12px;line-height:1.65">
-    <div style="margin:0 0 11px"><strong style="color:#082f5b">Need help?</strong> Our Customer Support Team is here to assist you.</div>
-    <div style="margin:0 0 14px"><strong>Email:</strong> <a href="mailto:support@kaliganjtravel.com" style="color:#155a9c;text-decoration:none">support@kaliganjtravel.com</a><br><strong>Customer Care:</strong> <a href="tel:+8801795271171" style="color:#155a9c;text-decoration:none">+880 1795-271171</a></div>
-    <div style="margin:0 0 14px">Thank you for choosing <strong style="color:#082f5b">Kaliganj Travels</strong>. We look forward to serving you and ensuring a smooth travel experience.</div>
-    <div style="margin:0 0 14px"><strong style="color:#082f5b">Kaliganj Travels</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</div>
-    <div><a href="https://www.facebook.com/KaligonjTourTravel/" style="color:#155a9c;text-decoration:none">Facebook</a> &nbsp;·&nbsp; <a href="https://wa.me/8801795271171" style="color:#155a9c;text-decoration:none">WhatsApp +880 1795-271171</a> &nbsp;·&nbsp; <a href="https://kaliganjtravel.com" style="color:#155a9c;text-decoration:none">kaliganjtravel.com</a></div>
+  return `<tr><td style="padding:22px 24px;border-top:1px solid #e2e8f0;color:#475569;font-size:12px;line-height:1.65">
+    <div style="margin:0 0 11px"><strong style="color:#172b45">Let’s plan the next step.</strong> Our Kaliganj team can help with your booking and travel questions.</div>
+    <div style="margin:0 0 14px"><strong>Email:</strong> <a href="mailto:support@kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">support@kaliganjtravel.com</a><br><strong>Customer Care:</strong> <a href="tel:+8801795271171" style="color:#ad4f08;text-decoration:none">+880 1795-271171</a></div>
+    <div style="margin:0 0 14px">Your next destination starts here. Thank you for travelling with <strong style="color:#172b45">Kaliganj Travels</strong>.</div>
+    <div style="margin:0 0 14px"><strong style="color:#172b45">Kaliganj Travels</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</div>
+    <div><a href="https://www.facebook.com/KaligonjTourTravel/" style="color:#ad4f08;text-decoration:none">Facebook</a> &nbsp;·&nbsp; <a href="https://wa.me/8801795271171" style="color:#ad4f08;text-decoration:none">WhatsApp +880 1795-271171</a> &nbsp;·&nbsp; <a href="https://kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">kaliganjtravel.com</a></div>
   </td></tr>`;
 }
 
 function renderBottom(input: MasterBookingEmailInput): string {
   const url = escapeHtml(input.bookingUrl);
-  return `<tr><td style="padding:12px 18px;background:#f0f5fb;border-top:1px solid #dce7f3">
+  return `<tr><td style="padding:12px 18px;background:#f8fafc;border-top:1px solid #e2e8f0">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
       <td style="font-size:10px;line-height:1.5;color:#64748b">System generated document — quote the booking reference in any correspondence.</td>
-      <td align="right" width="125"><a href="${url}" style="display:inline-block;border-radius:5px;background:#f68712;padding:9px 14px;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700">View Booking</a></td>
+      <td align="right" width="125"><a href="${url}" style="display:inline-block;border-radius:0;background:#f68712;padding:11px 16px;color:#171717;text-decoration:none;font-size:11px;font-weight:700">Open journey details</a></td>
     </tr></table>
   </td></tr>${supportFooter()}`;
 }
@@ -448,7 +440,7 @@ Total price: ${formatMoney(booking.totalPrice, booking.currency)}
 Fare type: ${booking.directTicketing ? 'Instant ticketing' : 'Hold'}
 Refundable: ${booking.itinerary?.refundable ? 'Yes' : 'No'}
 
-View Booking: ${input.bookingUrl}
+Open journey details: ${input.bookingUrl}
 
 System generated document — quote the booking reference in any correspondence.
 
@@ -470,7 +462,8 @@ export function masterBookingEmail(input: MasterBookingEmailInput): BookingEmail
   .booking-header-reference { display:block !important; clear:both !important; width:auto !important; padding-top:15px !important; text-align:left !important; }
   .booking-header-contact { width:100% !important; }
   .booking-contact-value, .booking-contact-value a { white-space:nowrap !important; word-break:normal !important; }
-  .booking-summary-cell { padding:10px 7px !important; }
+  .booking-summary-cell { display:inline-block !important; box-sizing:border-box !important; width:50% !important; padding:10px 14px !important; vertical-align:top !important; }
+  .booking-passenger-table th, .booking-passenger-table td { padding-left:4px !important; padding-right:4px !important; font-size:10px !important; }
   .booking-email-section { padding-left:10px !important; padding-right:10px !important; }
   .booking-itinerary-fact { margin-right:8px !important; }
   .booking-fare-table th, .booking-fare-table td { padding-left:4px !important; padding-right:4px !important; }
@@ -478,9 +471,9 @@ export function masterBookingEmail(input: MasterBookingEmailInput): BookingEmail
   .booking-fare-total { font-size:11px !important; }
 }
 </style></head>
-<body style="margin:0;background:#f3f8fc;color:#111827;font-family:Arial,Helvetica,sans-serif"><div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(input.variant.preheader)}</div>
-<table role="presentation" class="booking-email-outer" width="100%" cellspacing="0" cellpadding="0" style="width:100%;padding:20px 8px;background:#f3f8fc"><tr><td align="center">
-<table role="presentation" class="booking-email-shell" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:840px;background:#ffffff;border:1px solid #dce7f3;overflow:hidden">
+<body style="margin:0;background:#f7f5f2;color:#111827;font-family:Arial,Helvetica,sans-serif"><div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(input.variant.preheader)}</div>
+<table role="presentation" class="booking-email-outer" width="100%" cellspacing="0" cellpadding="0" style="width:100%;padding:20px 8px;background:#f7f5f2"><tr><td align="center">
+<table role="presentation" class="booking-email-shell" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:840px;background:#ffffff;border:1px solid #e2e8f0;overflow:hidden">
 ${renderHeader(input)}
 ${renderSummary(input)}
 ${renderPassengers(input)}
@@ -515,7 +508,7 @@ export function bookingConfirmationEmail(input: Omit<MasterBookingEmailInput, 'v
       status: 'on-hold',
       statusLabel: 'ON HOLD',
       subjectPrefix: 'Booking on hold',
-      preheader: 'Your seats are held with the airline. Review the booking details and ticketing deadline.',
+      preheader: 'Your seats are on hold. Check the details below and complete ticketing before the deadline.',
       subtitle: 'Booking confirmation — seats held with the airline.',
       message: 'Booking confirmation — seats held with the airline.',
       activityLabel: 'Booked At',
@@ -535,9 +528,9 @@ export function confirmedBookingEmail(input: Omit<MasterBookingEmailInput, 'vari
       status: 'confirmed',
       statusLabel: 'CONFIRMED',
       subjectPrefix: 'Booking confirmed',
-      preheader: 'Your booking is confirmed and the tickets have been issued.',
-      subtitle: 'Booking confirmed — your tickets have been successfully issued.',
-      message: 'Booking confirmed — your tickets have been successfully issued. Please review all passenger, ticket, itinerary and baggage details before travel.',
+      preheader: 'Your tickets are ready. Find your flight and passenger details inside.',
+      subtitle: 'Electronic ticket — carry a copy while travelling.',
+      message: 'Your tickets are issued. Before you set off, check the passenger names, ticket numbers, flight times and baggage allowance below.',
       activityLabel: 'Issued At',
       activityAt: input.booking.issuedAt,
       passengerMode: 'ticketing',
@@ -603,8 +596,8 @@ export function bookingStatusEmail(
       statusLabel: 'PENDING',
       subjectPrefix: 'Booking pending',
       preheader: 'Your booking is pending review or ticket issuance.',
-      subtitle: 'Booking update - pending review or ticket issuance.',
-      message: 'Your booking is pending review or ticket issuance. We will send another update when its status changes.',
+      subtitle: 'Your booking is in the queue.',
+      message: 'We have your booking and are awaiting review or ticket issuance. We will email you as soon as the status changes.',
       activityLabel: 'Booked At',
       passengerMode: 'identity',
       showTicketingDeadline: true,
@@ -616,7 +609,7 @@ export function bookingStatusEmail(
       preheader:
         input.booking.statusMessage ??
         'A booking operation is currently being processed.',
-      subtitle: 'Booking update - an operation is being processed.',
+      subtitle: 'We are working on your booking.',
       message:
         input.booking.statusMessage ??
         'We are processing this booking with the airline. Please do not submit the same request again while processing is in progress.',
@@ -629,7 +622,7 @@ export function bookingStatusEmail(
       statusLabel: 'EXPIRED',
       subjectPrefix: 'Booking expired',
       preheader: 'The airline ticketing deadline for this held booking has passed.',
-      subtitle: 'Booking update - the ticketing deadline has passed.',
+      subtitle: 'The hold window has closed.',
       message: 'The airline ticketing deadline has passed and the held seats are no longer guaranteed. Please contact us before making further travel arrangements.',
       activityLabel: 'Expired At',
       passengerMode: 'identity',
@@ -640,7 +633,7 @@ export function bookingStatusEmail(
       statusLabel: 'UNCONFIRMED',
       subjectPrefix: 'Booking unconfirmed',
       preheader: 'The airline confirmation could not be verified.',
-      subtitle: 'Booking update - airline confirmation requires attention.',
+      subtitle: 'Let us check your airline confirmation.',
       message: 'The airline confirmation could not be verified. Please contact Kaliganj Travels before payment or travel.',
       activityLabel: 'Booked At',
       passengerMode: 'identity',

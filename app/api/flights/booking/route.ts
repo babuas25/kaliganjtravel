@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE } from '@/lib/db/booking-read-error';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { createOperationRequestIdentity } from '@/lib/booking-lifecycle/operation-request';
@@ -227,10 +228,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const current = await readBookingAttempt(
-    parsed.data.bookingId,
-    parsed.data.accessToken
-  );
+  let current: Awaited<ReturnType<typeof readBookingAttempt>>;
+  try {
+    current = await readBookingAttempt(parsed.data.bookingId, parsed.data.accessToken);
+  } catch {
+    return fail(503, BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE);
+  }
   if (!current) {
     return fail(404, 'DRAFT_NOT_FOUND', 'This booking draft is unavailable.');
   }
@@ -596,7 +599,7 @@ export async function POST(request: NextRequest) {
           503,
           'BOOKING_STORAGE_FAILED',
           unknown
-            ? 'The airline outcome is unknown and could not be recorded. Do not submit again; contact support.'
+            ? 'Booking status: Unconfirmed. The airline confirmation could not be verified or recorded. Do not submit again; contact support.'
             : 'The airline declined the booking, but the outcome could not be recorded. Contact support.'
         );
       }
@@ -609,7 +612,7 @@ export async function POST(request: NextRequest) {
       unknown ? 503 : duplicateRejected ? 409 : 502,
       terminalErrorCode,
       unknown
-        ? 'The airline outcome is unknown. Do not submit again; contact support.'
+        ? 'Booking status: Unconfirmed. The airline has not confirmed this booking. Do not submit again; contact support.'
         : duplicateRejected
           ? 'The airline rejected this booking because the same passenger already has a booking for this flight. Please check My Bookings or contact support. Do not submit the same booking again.'
         : 'The airline declined the booking. Search and verify the fare again.'

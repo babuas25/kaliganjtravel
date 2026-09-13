@@ -147,8 +147,8 @@ export default async function BookingDetailsPage({
   if (!/^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/.test(reference)) notFound();
 
   const row = session.role === 'superadmin'
-    ? await readBookingByPublicRefForSuperAdmin(reference)
-    : await readBookingByPublicRef(reference, bookingScopeFor(session));
+    ? await readBookingByPublicRefForSuperAdmin(reference, true)
+    : await readBookingByPublicRef(reference, bookingScopeFor(session), true);
   if (!row) notFound();
   if (row.public_ref !== reference) redirect(`/dashboard/bookings/${encodeURIComponent(row.public_ref)}`);
   const piiAccess = bookingPiiAccessFor(session.role);

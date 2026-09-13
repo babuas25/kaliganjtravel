@@ -35,6 +35,7 @@ import type {
   BookingListSortKey,
 } from '@/lib/dashboard/booking-list-query';
 import { bookingUserVisibilitySchemaAvailable } from '@/lib/db/booking-visibility';
+import { BookingReadUnavailableError } from '@/lib/db/booking-read-error';
 
 const LIFECYCLE_VIEW = 'booking_lifecycle_v';
 const DASHBOARD_LIST_VIEW = 'booking_dashboard_creator_v';
@@ -926,10 +927,14 @@ export async function createBookingFromAttempt(
 /** Finds the business booking produced by an operational attempt. */
 export async function readBookingByAttemptId(
   attemptId: string,
-  scope?: BookingScope
+  scope?: BookingScope,
+  throwOnReadError = false
 ): Promise<BookingRow | null> {
   const supabase = supabaseAdmin();
-  if (!supabase) return null;
+  if (!supabase) {
+    if (throwOnReadError) throw new BookingReadUnavailableError();
+    return null;
+  }
   const visibilityAvailable = scope?.kind !== 'all'
     ? await bookingUserVisibilitySchemaAvailable()
     : false;
@@ -948,6 +953,7 @@ export async function readBookingByAttemptId(
   const { data, error } = await query.maybeSingle();
   if (error) {
     console.error('[db] readBookingByAttemptId failed:', error.message);
+    if (throwOnReadError) throw new BookingReadUnavailableError();
     return null;
   }
   return (data as BookingRow | null) ?? null;
@@ -1224,25 +1230,31 @@ export async function listBookings(
 }
 
 /** Resolve historical links without bypassing the caller's booking scope. */
-async function canonicalBookingReference(publicRef: string): Promise<string> {
+async function canonicalBookingReference(publicRef: string, throwOnReadError = false): Promise<string> {
   if (!publicRef.startsWith('STR')) return publicRef;
   const supabase = supabaseAdmin();
   if (!supabase) return publicRef;
-  const { data } = await supabase.from('booking_reference_aliases')
+  const { data, error } = await supabase.from('booking_reference_aliases')
     .select('booking_id').eq('alias', publicRef).maybeSingle();
+  if (error && throwOnReadError) throw new BookingReadUnavailableError();
   if (!data) return publicRef;
-  const { data: booking } = await supabase.from('flight_bookings')
+  const { data: booking, error: bookingError } = await supabase.from('flight_bookings')
     .select('public_ref').eq('id', data.booking_id).maybeSingle();
+  if (bookingError && throwOnReadError) throw new BookingReadUnavailableError();
   return booking?.public_ref || publicRef;
 }
 
 /** One business booking, constrained by the same scope as the dashboard list. */
 export async function readBookingByPublicRef(
   publicRef: string,
-  scope: BookingScope
+  scope: BookingScope,
+  throwOnReadError = false
 ): Promise<BookingRow | null> {
   const supabase = supabaseAdmin();
-  if (!supabase) return null;
+  if (!supabase) {
+    if (throwOnReadError) throw new BookingReadUnavailableError();
+    return null;
+  }
   const visibilityAvailable = scope.kind !== 'all'
     ? await bookingUserVisibilitySchemaAvailable()
     : false;
@@ -1250,7 +1262,7 @@ export async function readBookingByPublicRef(
   let query = supabase
     .from(LIFECYCLE_VIEW)
     .select('*')
-    .eq('public_ref', await canonicalBookingReference(publicRef))
+    .eq('public_ref', await canonicalBookingReference(publicRef, throwOnReadError))
     .limit(1);
 
   if (scope.kind === 'agency') query = query.eq('agency_code', scope.agencyCode);
@@ -1262,6 +1274,7 @@ export async function readBookingByPublicRef(
   const { data, error } = await query.maybeSingle();
   if (error) {
     console.error('[db] readBookingByPublicRef failed:', error.message);
+    if (throwOnReadError) throw new BookingReadUnavailableError();
     return null;
   }
   return (data as BookingRow | null) ?? null;
@@ -1275,19 +1288,24 @@ export async function readBookingByPublicRef(
  * caller must enforce the Super Admin role before using this raw-table read.
  */
 export async function readBookingByPublicRefForSuperAdmin(
-  publicRef: string
+  publicRef: string,
+  throwOnReadError = false
 ): Promise<BookingRow | null> {
   const supabase = supabaseAdmin();
-  if (!supabase) return null;
+  if (!supabase) {
+    if (throwOnReadError) throw new BookingReadUnavailableError();
+    return null;
+  }
 
   const { data, error } = await supabase
     .from('flight_bookings')
     .select('*')
-    .eq('public_ref', await canonicalBookingReference(publicRef))
+    .eq('public_ref', await canonicalBookingReference(publicRef, throwOnReadError))
     .limit(1)
     .maybeSingle();
   if (error) {
     console.error('[db] Super Admin booking read failed:', error.message);
+    if (throwOnReadError) throw new BookingReadUnavailableError();
     return null;
   }
   if (!data) return null;

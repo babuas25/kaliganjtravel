@@ -13,6 +13,7 @@ import type { FareBreakdown } from '@/lib/flights/types';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import type { TriploverSupplier } from '@/lib/triplover/config';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { BookingReadUnavailableError } from '@/lib/db/booking-read-error';
 
 /**
  * The operational record of a fare selection on its way to a supplier.
@@ -269,7 +270,7 @@ export async function readBookingAttempt(
   accessToken: string
 ): Promise<BookingAttemptRow | null> {
   const supabase = supabaseAdmin();
-  if (!supabase) return null;
+  if (!supabase) throw new BookingReadUnavailableError();
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
@@ -278,7 +279,7 @@ export async function readBookingAttempt(
     .maybeSingle();
   if (error) {
     console.error('[db] readBookingAttempt failed:', error.message);
-    return null;
+    throw new BookingReadUnavailableError();
   }
   return (data as BookingAttemptRow | null) ?? null;
 }

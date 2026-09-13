@@ -55,3 +55,12 @@ Limits:
 - The existing `verify:canonical-pricing-regression` requires `git show HEAD:lib/markup.ts`; it cannot run because Git history was previously removed. `lib/markup.ts` was not edited by rebranding.
 - The protected dashboard correctly redirects unauthenticated requests to login. Full role-by-role authenticated workflows and supplier transactions were not exercised. No owner password/account or role was created.
 - SMTP/SMS delivery, new marketing media uploads and deployment remain separate setup work.
+
+
+## Email design refresh — September 12, 2026
+
+Notification templates now use a charcoal masthead, orange actions, warm neutral backgrounds and revised account, invitation, deposit and ticket-request copy. Flight offer emails use the same orange accent. The ticket page itself is unchanged: booking and issued emails and the attached ticket PDF follow its white masthead, orange rule, square reference panel, light summary/table surfaces and warm fare total. Issued email passenger columns now include gender and date of birth alongside ticket numbers, matching the ticket page/PDF. Email HTML and PDF remain separate renderers, so browser/email-client typography can differ; these are not browser-print exports of the ticket page.
+
+Run `node scripts/preview-kaliganj-emails.mjs` for notification previews and `node scripts/verify-booking-email-template.mjs --output=output/email-preview/booking.html --pdf-output=output/pdf/kaliganj-ticket-preview.pdf` for held/issued email and PDF samples. `node scripts/verify-itinerary-offer-email.mjs` produces the flight-offer sample. Open `output/email-preview/index.html` after all three commands. Samples use fixture data and never send email.
+
+Validation: TypeScript, all booking status rendering checks, immutable snapshot rendering, identity audit, HTML escaping, desktop/mobile preview rendering and ticket PDF visual inspection. These checks do not validate delivery in Gmail/Outlook or publish changes. Clerk authentication email bodies remain supplied by Clerk; that external template configuration has not been changed by this refresh.

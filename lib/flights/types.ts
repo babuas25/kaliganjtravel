@@ -72,7 +72,7 @@ export type ItinerarySegment = {
 
 export function operatingCarrierLabel(segment: ItinerarySegment): string | null {
   if (segment.operatingCarrierCode) return `Operated by ${segment.operatingCarrierCode}`;
-  return segment.codeshare === true ? 'Codeshare: operating carrier not provided' : null;
+  return segment.codeshare === true ? 'Codeshare' : null;
 }
 
 /** One requested route's worth of flights within an itinerary. */

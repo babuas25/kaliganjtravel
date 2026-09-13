@@ -57,6 +57,7 @@ backups/
 
 # Local review output and machine settings
 /output/
+/outputs/
 /.claude/
 *.log
 # Environment files are private; only the template is published

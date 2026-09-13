@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE } from '@/lib/db/booking-read-error';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
@@ -50,10 +51,12 @@ export async function POST(request: Request) {
     return fail(401, 'SIGN_IN_REQUIRED', 'Please sign in to view this booking.');
   }
 
-  const attempt = await readBookingAttempt(
-    parsed.data.bookingId,
-    parsed.data.accessToken
-  );
+  let attempt: Awaited<ReturnType<typeof readBookingAttempt>>;
+  try {
+    attempt = await readBookingAttempt(parsed.data.bookingId, parsed.data.accessToken);
+  } catch {
+    return fail(503, BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE);
+  }
   if (
     !attempt ||
     (attempt.user_id !== session.clerkId &&
@@ -63,10 +66,12 @@ export async function POST(request: Request) {
   }
 
   if (attempt.state === 'succeeded') {
-    const booking = await readBookingByAttemptId(
-      attempt.id,
-      bookingScopeFor(session)
-    );
+    let booking: Awaited<ReturnType<typeof readBookingByAttemptId>>;
+    try {
+      booking = await readBookingByAttemptId(attempt.id, bookingScopeFor(session), true);
+    } catch {
+      return fail(503, BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE);
+    }
     if (!booking) {
       return fail(
         404,
@@ -102,7 +107,7 @@ export async function POST(request: Request) {
     return fail(502, 'BOOKING_FAILED', 'The airline declined the booking. Search and verify the fare again.');
   }
   if (attempt.state === 'unknown') {
-    return fail(503, 'BOOKING_OUTCOME_UNKNOWN', 'The airline outcome is unknown. Do not submit again; contact support.');
+    return fail(503, 'BOOKING_OUTCOME_UNKNOWN', 'Booking status: Unconfirmed. The airline has not confirmed this booking. Do not submit again; contact support.');
   }
 
   return NextResponse.json(

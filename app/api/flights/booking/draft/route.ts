@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE } from '@/lib/db/booking-read-error';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import {
@@ -83,10 +84,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const row = await readBookingAttempt(
-    parsed.data.bookingId,
-    parsed.data.accessToken
-  );
+  let row: Awaited<ReturnType<typeof readBookingAttempt>>;
+  try {
+    row = await readBookingAttempt(parsed.data.bookingId, parsed.data.accessToken);
+  } catch {
+    return fail(503, BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE);
+  }
   // An attempt nobody owns, or one owned by someone else, is treated the same
   // as one that does not exist — the reply must not confirm the id is real.
   if (

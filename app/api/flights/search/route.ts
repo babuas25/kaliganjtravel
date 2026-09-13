@@ -344,6 +344,13 @@ function searchControlFailure(
  * stable, user-safe explanation to the browser.
  */
 function publicSearchFailure(error: TriploverError): PublicSearchFailure {
+  if (error.kind === 'supplier' && error.status === 200) {
+    return {
+      status: 502,
+      errorCode: 'SUPPLIER_SEARCH_REJECTED',
+      errorMessage: 'The airline supplier could not complete this search. Try another date or route, or contact support. This does not mean no flights are available.',
+    };
+  }
   const diagnosticCode = error.diagnostic?.code;
   // The diagnostic and retry work is intentionally TakeOff-scoped. Preserve
   // the other accounts' stable browser contract while still emitting safe logs.

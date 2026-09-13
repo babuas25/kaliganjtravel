@@ -221,9 +221,9 @@ function mapSegment(raw: RawSegment): ItinerarySegment | null {
 
   const checked = raw.baggage?.find((b) => b.passengerTypeCode === 'ADT') ?? raw.baggage?.[0];
   const seats = Number.parseInt(raw.bookingCount ?? '', 10);
-  // Search documentation p.13 defines airlineCode as the operating airline.
-  // Prefer an explicit operating-carrier field when a supplier supplies one.
-  const operator = [raw.operationCarrier, raw.operatingCarrier, raw.airlineCode].find(
+  // Only explicit operating-carrier fields establish who operates the flight.
+  // airlineCode alone must not produce an "Operated by" claim.
+  const operator = [raw.operationCarrier, raw.operatingCarrier].find(
     (value): value is string => typeof value === 'string' && /^[A-Z0-9]{2}$/.test(value.trim().toUpperCase())
   );
   const codeshare = typeof raw.isCodeShared === 'boolean'
@@ -392,6 +392,33 @@ function completeSelectionSegmentRefs(
   return refs;
 }
 
+/** Reject impossible time ordering between adjoining airport-local legs. */
+function hasOverlappingLegs(legs: ItineraryLeg[]): boolean {
+  return legs.some((leg, index) => {
+    const previous = legs[index - 1];
+    if (!previous) return false;
+    const arrivalSegment = previous.segments[previous.segments.length - 1];
+    const departureSegment = leg.segments[0];
+    // Supplier times are airport-local. Only compare adjoining legs at the
+    // same airport; an open-jaw journey can cross time zones on the ground.
+    if (arrivalSegment.to.trim().toUpperCase() !== departureSegment.from.trim().toUpperCase()) {
+      return false;
+    }
+    const arrival = arrivalSegment.arrival.trim();
+    const departure = departureSegment.departure.trim();
+    const timestamp = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/i;
+    if (!timestamp.test(arrival) || !timestamp.test(departure)) return false;
+    const zone = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+    if (zone.test(arrival) !== zone.test(departure)) return false;
+    // Appending Z to two local times compares their calendar values without
+    // involving the server time zone. Explicit offsets retain their meaning.
+    const comparableTime = (value: string) => Date.parse(
+      value.replace(' ', 'T') + (zone.test(value) ? '' : 'Z')
+    );
+    return comparableTime(departure) <= comparableTime(arrival);
+  });
+}
+
 /** Maps one supplier offer into zero or more itineraries. */
 function mapOffer(
   offer: RawOffer,
@@ -415,6 +442,9 @@ function mapOffer(
     const legs = combination.map(mapLeg).filter((leg): leg is ItineraryLeg => leg !== null);
     // One unmappable leg means we do not know the whole journey — drop it all.
     if (legs.length !== combination.length) return;
+    // Grouped outbound/return alternatives may form impossible combinations.
+    // Drop those before exposing a card or persisting supplier references.
+    if (hasOverlappingLegs(legs)) return;
 
     const incompleteSegmentCodeRefs = combination.flatMap((direction) =>
       (direction.segments ?? [])

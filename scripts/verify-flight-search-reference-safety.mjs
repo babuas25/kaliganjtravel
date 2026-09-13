@@ -1095,6 +1095,40 @@ assert.equal(safeRoundTripRefs.selection.legs.length, 2);
 assert.equal(safeRoundTripRefs.selection.legs[0].segments.length, 2);
 assert.equal(safeRoundTripRefs.selection.legs[1].segments.length, 1);
 
+// Same-airport round trips must depart after the preceding arrival, including
+// combinations expanded from grouped supplier alternatives.
+const domesticDirection = (from, to, departure, arrival, ref) => ({
+  from, to, stops: 0,
+  segments: [rawRoundTripSegment({from, to, departure, arrival, segmentCodeRef: ref})],
+});
+for (const scenario of [
+  {name:'return before arrival', arrival:'2026-09-30 14:05:00', departure:'2026-09-30 13:40:00', expected:0},
+  {name:'grouped invalid and valid returns', arrival:'2026-09-30 14:05:00', departure:'2026-09-30 13:40:00', validAlternative:true, expected:1},
+  {name:'return at arrival', arrival:'2026-09-30 14:05:00', departure:'2026-09-30 14:05:00', expected:0},
+  {name:'later same day', arrival:'2026-09-30 14:05:00', departure:'2026-09-30 16:40:00', expected:1},
+  {name:'overnight arrival', arrival:'2026-10-01 01:05:00', departure:'2026-09-30 23:40:00', expected:0},
+  {name:'following day', arrival:'2026-09-30T14:05:00', departure:'2026-10-01T06:40:00', expected:1},
+  {name:'explicit offsets', arrival:'2026-09-30T14:05:00+06:00', departure:'2026-09-30T08:00:00Z', expected:0},
+  {name:'different airport local clocks', arrival:'2026-09-30 14:05:00', departure:'2026-09-30 13:40:00', returnFrom:'DOH', expected:1},
+]) {
+  const refs = new Map();
+  const checked = loadSearchModule({response:{airSearchResponses:[{
+    uniqueTransID:'chronology-trans', itemCodeRef:'chronology-item', totalPrice:1000, basePrice:900, taxes:100,
+    directions:[
+      [domesticDirection('DAC','CGP','2026-09-30 13:10:00',scenario.arrival,'chronology-out')],
+      [domesticDirection(scenario.returnFrom??'CGP','DAC',scenario.departure,'2026-10-01 12:00:00','chronology-in'),
+        ...(scenario.validAlternative ? [domesticDirection('CGP','DAC','2026-09-30 16:40:00','2026-09-30 17:35:00','chronology-valid-in')] : [])],
+    ],
+  }]},storedRefs:refs});
+  const result = await checked.searchFlights({tripType:'round',routes:[
+    {origin:'DAC',destination:'CGP',departureDate:'2026-09-30'},
+    {origin:scenario.returnFrom??'CGP',destination:'DAC',departureDate:'2026-09-30'},
+  ],adults:1,children:0,infants:0,childrenAges:[],cabinClass:1,preferredCarriers:[]},'takeoff');
+  assert.equal(result.result.itineraries.length,scenario.expected,scenario.name);
+  assert.equal(refs.get('refs')?.size??0,scenario.expected,`${scenario.name}: cached references`);
+  if(scenario.validAlternative)assert.deepEqual(Array.from(refs.get('refs').keys()),['itn-0-1']);
+}
+
 // A real grouped card must retain the exact public snapshot for every option,
 // not reconstruct its primary itinerary for an upsell click. These three
 // fares share flights but deliberately differ in the display RBD, which is
@@ -1211,7 +1245,8 @@ for (const option of groupedOptions) {
   }
   assert.equal(option.legs[0].segments[0].operatingCarrierCode, 'BA');
   assert.equal(option.legs[0].segments[0].codeshare, true);
-  assert.equal(option.legs[1].segments[0].operatingCarrierCode, option.legs[1].segments[0].airlineCode);
+  assert.equal(option.legs[1].segments[0].operatingCarrierCode, undefined,
+    'airlineCode alone must not become a claimed operating carrier');
 }
 assert.equal(
   matchesBookingSnapshot(groupedRefsById.get(groupedOptions[0].id), {

@@ -122,6 +122,12 @@ export async function POST(request: NextRequest) {
     }
     if (error instanceof TriploverError) {
       console.error(`Flight RePrice failed [${error.kind}]:`, error.message);
+      if (
+        error.kind === 'supplier' &&
+        /no eligible fare found/i.test(error.message)
+      ) {
+        return fail(422, 'NO_ELIGIBLE_FARE', 'No eligible fare found');
+      }
       const timedOut = error.kind === 'network';
       return fail(
         timedOut ? 504 : 502,

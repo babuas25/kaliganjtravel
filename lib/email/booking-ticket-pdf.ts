@@ -30,16 +30,16 @@ const PAYMENT_LABELS: Record<PublicBooking['paymentState'], string> = {
 };
 
 const COLORS = {
-  blue: '#073665',
-  blueBorder: '#94BCE0',
-  bluePale: '#C6DCF2',
-  navy: '#042551',
-  navyMuted: '#656B9D',
-  navyPale: '#f3f8fc',
+  blue: '#172b45',
+  blueBorder: '#e2e8f0',
+  bluePale: '#f8fafc',
+  navy: '#172b45',
+  navyMuted: '#626262',
+  navyPale: '#f8fafc',
   red: '#f68712',
   neutral: '#666666',
   neutralLight: '#929292',
-  line: '#DCE1F3',
+  line: '#e2e8f0',
   green: '#16A34A',
 } as const;
 
@@ -235,8 +235,9 @@ export async function confirmedBookingTicketPdf(input: {
     };
 
     const headerY = y;
-    document.rect(left, headerY, width, 123).fill(COLORS.blue);
-    document.roundedRect(left + 12, headerY + 13, 34, 34, 4).fill('#ffffff');
+    document.rect(left, headerY, width, 123).fill('#ffffff');
+    document.rect(left, headerY, width, 4).fill(COLORS.red);
+    document.roundedRect(left + 12, headerY + 13, 34, 34, 0).fill('#ffffff');
     if (headerLogo) {
       try {
         document.image(headerLogo, left + 15, headerY + 16, { fit: [28, 28], align: 'center', valign: 'center' });
@@ -248,31 +249,32 @@ export async function confirmedBookingTicketPdf(input: {
       document.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.navy)
         .text(booking.headerContact.name.split(/\s+/).slice(0, 2).map((word) => word[0]).join(''), left + 15, headerY + 27, { width: 28, align: 'center' });
     }
-    document.font('Helvetica-Bold').fontSize(6.2).fillColor('#ffffff')
+    document.font('Helvetica-Bold').fontSize(6.2).fillColor(COLORS.navy)
       .text(`License No: ${booking.headerContact.licenseNo || '--'}`, left + 12, headerY + 51, { width: 150 });
-    document.font('Helvetica-Bold').fontSize(14).fillColor('#ffffff')
+    document.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.navy)
       .text(booking.headerContact.name, left + 53, headerY + 15, { width: width - 250, height: 19, ellipsis: true });
-    document.font('Helvetica').fontSize(7.5).fillColor('#ffffff')
+    document.font('Helvetica').fontSize(7.5).fillColor(COLORS.navy)
       .text('Electronic ticket - carry a copy while travelling.', left + 53, headerY + 34, { width: width - 250 });
 
-    document.roundedRect(left + 12, headerY + 65, 300, 47, 5).fill('#155a8e');
+    document.roundedRect(left + 12, headerY + 65, 300, 47, 0).fill('#ffffff');
     document.image(iconPath('phone'), left + 20, headerY + 73, { fit: [10, 10] });
-    document.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff')
+    document.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.navy)
       .text(booking.headerContact.mobile, left + 36, headerY + 74, { width: 104, height: 10, ellipsis: true });
     document.image(iconPath('mail'), left + 150, headerY + 73, { fit: [10, 10] });
-    document.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff')
+    document.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.navy)
       .text(booking.headerContact.email, left + 166, headerY + 74, { width: 135, height: 10, ellipsis: true });
     document.image(iconPath('map-pin'), left + 20, headerY + 91, { fit: [10, 10] });
-    document.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff')
+    document.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.navy)
       .text(booking.headerContact.address, left + 36, headerY + 91, { width: 264, height: 18, ellipsis: true });
 
-    document.font('Helvetica-Bold').fontSize(7).fillColor('#DDEEFF')
+    document.rect(right - 200, headerY + 12, 190, 80).fillAndStroke('#f8fafc', COLORS.line);
+    document.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.neutral)
       .text('BOOKING REFERENCE', right - 185, headerY + 17, { width: 173, align: 'right', characterSpacing: 1 });
-    document.font('Helvetica-Bold').fontSize(12).fillColor('#ffffff')
+    document.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.navy)
       .text(booking.publicRef, right - 190, headerY + 34, { width: 178, align: 'right' });
-    document.roundedRect(right - 101, headerY + 59, 89, 21, 11).fill(COLORS.green);
+    document.roundedRect(right - 101, headerY + 59, 89, 21, 0).fill('#dcfce7');
     document.image(iconPath('ticket'), right - 92, headerY + 65, { fit: [9, 9] });
-    document.font('Helvetica-Bold').fontSize(7.5).fillColor('#ffffff')
+    document.font('Helvetica-Bold').fontSize(7.5).fillColor(COLORS.navy)
       .text('CONFIRMED', right - 78, headerY + 66, { width: 62, align: 'center' });
     y += 123;
 
@@ -297,7 +299,7 @@ export async function confirmedBookingTicketPdf(input: {
     const passengerWidths = [width * 0.45, width * 0.11, width * 0.1, width * 0.16, width * 0.18];
     const passengerHeaders = ['Passenger', 'Type', 'Gender', 'Date of Birth', 'Ticket Number'];
     let x = left;
-    document.roundedRect(left, y, width, 23, 4).fill(COLORS.navyPale);
+    document.roundedRect(left, y, width, 23, 0).fill(COLORS.navyPale);
     passengerHeaders.forEach((header, index) => {
       document.font('Helvetica-Bold').fontSize(6.5).fillColor(COLORS.navyMuted)
         .text(header.toUpperCase(), x + 7, y + 8, { width: passengerWidths[index] - 14 });
@@ -379,7 +381,7 @@ export async function confirmedBookingTicketPdf(input: {
         leg.segments.forEach((segment) => {
           ensureSpace(138);
           const cardY = y;
-          document.roundedRect(left, cardY, width, 132, 5).stroke(COLORS.line);
+          document.roundedRect(left, cardY, width, 132, 0).stroke(COLORS.line);
           document.rect(left, cardY, width, 31).fill(COLORS.navyPale);
           const airlineLogo = airlineLogos.get(segment.airlineCode.trim().toUpperCase());
           if (airlineLogo) {
@@ -390,11 +392,11 @@ export async function confirmedBookingTicketPdf(input: {
                 valign: 'center',
               });
             } catch {
-              document.roundedRect(left + 10, cardY + 7, 18, 18, 4).fill(COLORS.red);
+              document.roundedRect(left + 10, cardY + 7, 18, 18, 0).fill(COLORS.red);
               document.image(iconPath('plane'), left + 14, cardY + 11, { fit: [10, 10] });
             }
           } else {
-            document.roundedRect(left + 10, cardY + 7, 18, 18, 4).fill(COLORS.red);
+            document.roundedRect(left + 10, cardY + 7, 18, 18, 0).fill(COLORS.red);
             document.image(iconPath('plane'), left + 14, cardY + 11, { fit: [10, 10] });
           }
           document.font('Helvetica-Bold').fontSize(8.5).fillColor(COLORS.navy)
@@ -451,7 +453,7 @@ export async function confirmedBookingTicketPdf(input: {
       'AIT / VAT',
       'Amount',
     ];
-    document.roundedRect(left, y, width, 23, 4).fill(COLORS.navyPale);
+    document.roundedRect(left, y, width, 23, 0).fill(COLORS.navyPale);
     x = left;
     fareHeaders.forEach((header, index) => {
       document.font('Helvetica-Bold').fontSize(6.1).fillColor(COLORS.navyMuted)
@@ -486,9 +488,10 @@ export async function confirmedBookingTicketPdf(input: {
       });
       y += 27;
     });
-    bottomRoundedRect(left, y, width, 32, 4).fill(COLORS.blue);
-    document.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff')
-      .text(`Total price${totalAit > 0 ? ' (incl. AIT / VAT)' : ''}`, left + 9, y + 11)
+    bottomRoundedRect(left, y, width, 32, 0).fill('#fff4e6');
+    document.font('Helvetica-Bold').fontSize(8.5).fillColor(COLORS.navy)
+      .text(`Total price${totalAit > 0 ? ' (incl. AIT / VAT)' : ''}`, left + 9, y + 11);
+    document.font('Helvetica-Bold').fontSize(13).fillColor('#b75a08')
       .text(formatMoney(booking.totalPrice, booking.currency), left, y + 10, {
         width: width - 9,
         align: 'right',

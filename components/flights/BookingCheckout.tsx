@@ -295,6 +295,7 @@ export default function BookingCheckout({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submissionLocked, setSubmissionLocked] = useState(false);
   const [retryAt, setRetryAt] = useState(0);
   const [retrySeconds, setRetrySeconds] = useState(0);
   const [savingPassengers, setSavingPassengers] = useState(false);
@@ -665,7 +666,7 @@ export default function BookingCheckout({
     if (
       !attempt?.submissionEnabled ||
       (attempt.directTicketing && !attempt.ticketingEnabled) ||
-      submitting || Date.now() < retryAt
+      submitting || submissionLocked || Date.now() < retryAt
     ) return;
     if (expired) return;
     setSubmitting(true);
@@ -679,6 +680,13 @@ export default function BookingCheckout({
       });
       const envelope = (await response.json()) as BookingEnvelope;
       if (!envelope.success) {
+        if ([
+          'BOOKING_OUTCOME_UNKNOWN', 'BOOKING_ALREADY_STARTED',
+          'BOOKING_STORAGE_FAILED', 'BOOKING_FAILED',
+          'SUPPLIER_DUPLICATE_BOOKING', 'HOLD_RELEASE_FAILED',
+        ].includes(envelope.error.errorCode)) {
+          setSubmissionLocked(true);
+        }
         if (response.status === 429 && envelope.error.errorCode === 'RATE_LIMITED') {
           const seconds = Number(response.headers.get('Retry-After'));
           if (Number.isFinite(seconds) && seconds > 0) {
@@ -731,6 +739,7 @@ export default function BookingCheckout({
     } catch {
       // A serverless/gateway timeout can hide a successful supplier response.
       // Read our durable attempt instead of asking the supplier a second time.
+      setSubmissionLocked(true);
       try {
         const recovered = await recoverBooking();
         if (
@@ -798,7 +807,7 @@ export default function BookingCheckout({
   const bookingBlocked =
     !attempt.submissionEnabled ||
     (attempt.directTicketing && !attempt.ticketingEnabled) ||
-    expired || retrySeconds > 0;
+    expired || retrySeconds > 0 || submissionLocked;
 
   return (
     <div className="space-y-4">

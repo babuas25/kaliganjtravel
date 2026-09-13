@@ -41,34 +41,34 @@ function layout(input: {
     .filter((detail) => detail.label.trim() && detail.value.trim())
     .map(
       (detail, index, all) => `<tr>
-        <td style="padding:12px 16px;color:#6b7280;font-size:12px;border-bottom:${index === all.length - 1 ? '0' : '1px solid #e5e9fb'}">${escapeHtml(detail.label)}</td>
-        <td align="right" style="padding:12px 16px;color:#073665;font-size:14px;font-weight:700;border-bottom:${index === all.length - 1 ? '0' : '1px solid #e5e9fb'}">${escapeHtml(detail.value)}</td>
+        <td style="padding:12px 16px;color:#6b7280;font-size:12px;border-bottom:${index === all.length - 1 ? '0' : '1px solid #e5e5e5'}">${escapeHtml(detail.label)}</td>
+        <td align="right" style="padding:12px 16px;color:#262626;font-size:14px;font-weight:700;border-bottom:${index === all.length - 1 ? '0' : '1px solid #e5e5e5'}">${escapeHtml(detail.value)}</td>
       </tr>`
     )
     .join('');
   const detailsHtml = details
-    ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 24px;border:1px solid #e0edf5;border-radius:10px;background:#f8f9ff">${details}</table>`
+    ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 24px;border:1px solid #e5e5e5;border-radius:10px;background:#faf9f6">${details}</table>`
     : '';
 
   return `<!doctype html>
 <html lang="en">
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-  <body style="margin:0;background:#f3f8fc;color:#111827;font-family:Arial,Helvetica,sans-serif">
+  <body style="margin:0;background:#f7f5f2;color:#111827;font-family:Arial,Helvetica,sans-serif">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${preheader}</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f8fc;padding:32px 12px">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5f2;padding:32px 12px">
       <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e0edf5;border-radius:14px;overflow:hidden">
-          <tr><td style="height:5px;background:#f68712;font-size:0;line-height:0">&nbsp;</td></tr>
-          <tr><td style="background:#073665;padding:24px 32px;color:#ffffff;font-size:20px;font-weight:700">Kaliganj Travels</td></tr>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e5e5e5;border-radius:4px;overflow:hidden">
+          <tr><td style="height:8px;background:#f68712;font-size:0;line-height:0">&nbsp;</td></tr>
+          <tr><td style="background:#262626;padding:24px 32px;color:#ffffff;font-size:22px;font-weight:700">Kaliganj Travels<div style="margin-top:8px;color:#f0e8df;font-size:10px;font-weight:400;letter-spacing:2px">YOUR JOURNEY, OUR LOCAL KNOW-HOW</div></td></tr>
           <tr><td style="padding:34px 32px">
             <div style="color:#ad4f08;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase">${eyebrow}</div>
-            <h1 style="margin:10px 0 16px;font-size:26px;line-height:1.25;color:#073665">${title}</h1>
+            <h1 style="margin:10px 0 16px;font-size:26px;line-height:1.25;color:#262626">${title}</h1>
             <p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.65">${intro}</p>
             ${detailsHtml}
-            <table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="border-radius:8px;background:#f68712">
-              <a href="${buttonUrl}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">${buttonLabel}</a>
+            <table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="border-radius:4px;background:#f68712">
+              <a href="${buttonUrl}" style="display:inline-block;padding:13px 22px;color:#171717;text-decoration:none;font-size:15px;font-weight:700">${buttonLabel}</a>
             </td></tr></table>
-            <p style="margin:24px 0 0;color:#6b7280;font-size:13px;line-height:1.6">If the button does not work, <a href="${buttonUrl}" style="color:#155a8e;font-weight:600">open the secure link in your browser</a>.</p>
+            <p style="margin:24px 0 0;color:#6b7280;font-size:13px;line-height:1.6">If the button does not work, <a href="${buttonUrl}" style="color:#ad4f08;font-weight:600">open the secure link in your browser</a>.</p>
           </td></tr>
           ${automatedEmailFooterHtml(input.footer)}
         </table>
@@ -82,14 +82,14 @@ export function invitationEmail(input: {
   invitationUrl: string;
   roleLabel: string;
 }): RenderedEmail {
-  const subject = 'You are invited to Kaliganj Travels';
-  const intro = `An account invitation has been created for you with the ${input.roleLabel} role. Accept the invitation to set up your account securely.`;
+  const subject = 'Your invitation to join Kaliganj Travels';
+  const intro = `Your place at Kaliganj Travels is ready with ${input.roleLabel} access. Use the invitation below to finish setting up your account.`;
   return {
     subject,
     html: layout({
       preheader: 'Accept your secure Kaliganj Travels account invitation.',
       eyebrow: 'Account invitation',
-      title: 'Complete your account setup',
+      title: 'Your place is ready',
       intro,
       buttonLabel: 'Accept invitation',
       buttonUrl: input.invitationUrl,
@@ -104,7 +104,7 @@ export function accountCreatedEmail(input: {
   signInUrl: string;
   firstName: string;
 }): RenderedEmail {
-  const subject = 'Your Kaliganj Travels account has been created';
+  const subject = 'Your Kaliganj Travels account is ready';
   const greeting = input.firstName ? `${input.firstName}, your` : 'Your';
   const intro = `${greeting} account is ready. Sign in with the credentials provided to you by your administrator, then change your password from your account settings.`;
   return {
@@ -112,7 +112,7 @@ export function accountCreatedEmail(input: {
     html: layout({
       preheader: 'Your Kaliganj Travels account is ready.',
       eyebrow: 'Account created',
-      title: 'Welcome to Kaliganj Travels',
+      title: 'Your journey with Kaliganj Travels starts here',
       intro,
       buttonLabel: 'Sign in',
       buttonUrl: input.signInUrl,
@@ -127,15 +127,15 @@ export function welcomeEmail(input: {
   dashboardUrl: string;
   firstName: string;
 }): RenderedEmail {
-  const subject = 'Welcome to Kaliganj Travels';
+  const subject = 'Your journey with Kaliganj Travels starts here';
   const greeting = input.firstName ? `Welcome, ${input.firstName}.` : 'Welcome.';
-  const intro = `${greeting} Your account was created successfully and is ready to use.`;
+  const intro = `${greeting} You can now explore flights and keep your bookings together in your dashboard.`;
   return {
     subject,
     html: layout({
       preheader: 'Your Kaliganj Travels account is ready.',
       eyebrow: 'Registration complete',
-      title: 'Welcome to Kaliganj Travels',
+      title: 'Your journey with Kaliganj Travels starts here',
       intro,
       buttonLabel: 'Open dashboard',
       buttonUrl: input.dashboardUrl,
@@ -160,7 +160,7 @@ export function roleChangedEmail(input: {
     html: layout({
       preheader: `Your account role is now ${input.nextRoleLabel}.`,
       eyebrow: 'Access updated',
-      title: 'Your account role has changed',
+      title: 'A new level of access',
       intro,
       buttonLabel: 'Review dashboard',
       buttonUrl: input.dashboardUrl,
@@ -221,7 +221,7 @@ export function depositRequestConfirmationEmail(
     html: layout({
       preheader: `Your deposit request ${input.requestReference} is awaiting review.`,
       eyebrow: 'Deposit request received',
-      title: 'Your request is awaiting review',
+      title: 'We have your payment request',
       intro,
       details: depositRequestDetails(input),
       buttonLabel: 'View payment request',
@@ -255,7 +255,7 @@ export function depositRequestReviewEmail(
     html: layout({
       preheader: `A deposit request for ${input.amount} requires financial review.`,
       eyebrow: 'Financial review required',
-      title: 'A deposit request needs review',
+      title: 'Payment review: your next action',
       intro,
       details: depositRequestDetails(input, extraDetails),
       buttonLabel: 'Review deposit request',
@@ -306,7 +306,7 @@ export function depositRequestDecisionEmail(
         ? `Your deposit request ${input.requestReference} has been approved.`
         : `Your deposit request ${input.requestReference} has been rejected.`,
       eyebrow: approved ? 'Deposit approved' : 'Deposit rejected',
-      title: approved ? 'Your wallet has been credited' : 'Your request was not approved',
+      title: approved ? 'Your travel wallet is topped up' : 'Your deposit needs attention',
       intro,
       details,
       buttonLabel: 'View payment request',
@@ -327,19 +327,19 @@ export function depositRequestDecisionEmail(
   };
 }
 
-const AUTOMATED_EMAIL_FOOTER_TEXT = `Need help? Our Customer Support Team is here to assist you.
+const AUTOMATED_EMAIL_FOOTER_TEXT = `Questions about your journey? Talk to the Kaliganj team.
 
 Email: support@kaliganjtravel.com
 Customer Care: +880 1795-271171
 
-Thank you for choosing Kaliganj Travels. We look forward to serving you and ensuring a smooth travel experience.
+From your first booking to your next destination, thank you for travelling with Kaliganj Travels.
 
 Kaliganj Travels
 1st Floor, Janata Super Market
 Kaligonj, Jhenaidah
 Bangladesh
 
-Stay Connected
+Keep in touch
 Facebook: https://www.facebook.com/KaligonjTourTravel/
 WhatsApp: +880 1795-271171 (https://wa.me/8801795271171)
 Website: https://kaliganjtravel.com`;
@@ -348,13 +348,13 @@ function automatedEmailFooterHtml(note?: string): string {
   const noteHtml = note
     ? `<p style="margin:0 0 18px;color:#6b7280;font-size:12px;line-height:1.6">${escapeHtml(note)}</p>`
     : '';
-  return `<tr><td style="border-top:1px solid #e0edf5;padding:24px 32px;color:#4b5563;font-size:13px;line-height:1.65">
+  return `<tr><td style="background:#faf9f6;border-top:1px solid #e5e5e5;padding:24px 32px;color:#4b5563;font-size:13px;line-height:1.65">
     ${noteHtml}
-    <p style="margin:0 0 12px"><strong style="color:#073665">Need help?</strong> Our Customer Support Team is here to assist you.</p>
-    <p style="margin:0 0 16px"><strong>Email:</strong> <a href="mailto:support@kaliganjtravel.com" style="color:#155a8e;text-decoration:none">support@kaliganjtravel.com</a><br><strong>Customer Care:</strong> <a href="tel:+8801795271171" style="color:#155a8e;text-decoration:none">+880 1795-271171</a></p>
-    <p style="margin:0 0 16px">Thank you for choosing <strong style="color:#073665">Kaliganj Travels</strong>. We look forward to serving you and ensuring a smooth travel experience.</p>
-    <p style="margin:0 0 16px"><strong style="color:#073665">Kaliganj Travels</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</p>
-    <p style="margin:0"><strong style="color:#073665">Stay Connected</strong><br><a href="https://www.facebook.com/KaligonjTourTravel/" style="color:#155a8e;text-decoration:none">Facebook</a> &nbsp;·&nbsp; <a href="https://wa.me/8801795271171" style="color:#155a8e;text-decoration:none">WhatsApp +880 1795-271171</a> &nbsp;·&nbsp; <a href="https://kaliganjtravel.com" style="color:#155a8e;text-decoration:none">kaliganjtravel.com</a></p>
+    <p style="margin:0 0 12px"><strong style="color:#262626">Let’s plan the next step.</strong> Our Kaliganj team can help with your booking and travel questions.</p>
+    <p style="margin:0 0 16px"><strong>Email:</strong> <a href="mailto:support@kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">support@kaliganjtravel.com</a><br><strong>Customer Care:</strong> <a href="tel:+8801795271171" style="color:#ad4f08;text-decoration:none">+880 1795-271171</a></p>
+    <p style="margin:0 0 16px">Your next destination starts here. Thank you for travelling with <strong style="color:#262626">Kaliganj Travels</strong>.</p>
+    <p style="margin:0 0 16px"><strong style="color:#262626">Kaliganj Travels</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</p>
+    <p style="margin:0"><strong style="color:#262626">Keep in touch</strong><br><a href="https://www.facebook.com/KaligonjTourTravel/" style="color:#ad4f08;text-decoration:none">Facebook</a> &nbsp;·&nbsp; <a href="https://wa.me/8801795271171" style="color:#ad4f08;text-decoration:none">WhatsApp +880 1795-271171</a> &nbsp;·&nbsp; <a href="https://kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">kaliganjtravel.com</a></p>
   </td></tr>`;
 }
 
@@ -375,7 +375,7 @@ export function ticketManagementNotificationEmail(input: {
     : `Your ${input.actionLabel.toLowerCase()} request: ${input.eventLabel}`;
   const intro = internal
     ? `A Ticket Management ${input.actionLabel.toLowerCase()} request has been updated. Review the request and take the next required action.`
-    : `Your ${input.actionLabel.toLowerCase()} request has been updated. You can review its current status and full timeline in My Bookings.`;
+    : `Here is the latest on your ${input.actionLabel.toLowerCase()} request. Open My Bookings to see the decision and any next steps.`;
   const details = [
     { label: 'Request reference', value: input.requestReference },
     { label: 'Request type', value: input.actionLabel },
@@ -389,7 +389,7 @@ export function ticketManagementNotificationEmail(input: {
   ];
   const footer = internal
     ? 'This operational confirmation was sent to authorized Ticket Management staff.'
-    : 'Supplier payable and other internal commercial values are never included in customer emails.';
+    : 'Questions about this update? Contact our team with the request reference above.';
   return {
     subject,
     html: layout({
@@ -425,32 +425,32 @@ export function pendingTicketAlertEmail(input: {
     html: `<!doctype html>
 <html lang="en">
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-  <body style="margin:0;background:#f3f8fc;color:#111827;font-family:Arial,Helvetica,sans-serif">
+  <body style="margin:0;background:#f7f5f2;color:#111827;font-family:Arial,Helvetica,sans-serif">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">A paid booking is waiting for immediate manual ticket issuance.</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f8fc;padding:32px 12px">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5f2;padding:32px 12px">
       <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e0edf5;border-radius:14px;overflow:hidden">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e5e5e5;border-radius:4px;overflow:hidden">
           <tr><td style="height:6px;background:#f68712;font-size:0;line-height:0">&nbsp;</td></tr>
-          <tr><td style="background:#073665;padding:24px 32px;color:#ffffff">
+          <tr><td style="background:#262626;padding:24px 32px;color:#ffffff">
             <div style="font-size:20px;font-weight:700">Kaliganj Travels</div>
-            <div style="margin-top:5px;color:#cdd5ff;font-size:12px">Ticketing Operations Alert</div>
+            <div style="margin-top:5px;color:#f0e8df;font-size:12px">KALIGANJ OPERATIONS / TICKETING</div>
           </td></tr>
           <tr><td style="padding:32px">
             <div style="display:inline-block;border-radius:999px;background:#fff0f1;padding:7px 11px;color:#ad4f08;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">Urgent action required</div>
-            <h1 style="margin:14px 0 10px;font-size:26px;line-height:1.25;color:#073665">Paid ticket awaiting manual issuance</h1>
+            <h1 style="margin:14px 0 10px;font-size:26px;line-height:1.25;color:#262626">Payment received. Ticket issuance needs you.</h1>
             <p style="margin:0 0 22px;color:#4b5563;font-size:15px;line-height:1.65">The customer wallet was charged successfully, but the supplier API wallet has insufficient balance. Fund the supplier account and issue this ticket immediately.</p>
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e0edf5;border-radius:10px;background:#f8f9ff">
-              <tr><td style="padding:13px 16px;color:#6b7280;font-size:12px;border-bottom:1px solid #e5e9fb">Booking reference</td><td align="right" style="padding:13px 16px;color:#073665;font-size:14px;font-weight:700;border-bottom:1px solid #e5e9fb">${reference}</td></tr>
-              <tr><td style="padding:13px 16px;color:#6b7280;font-size:12px;border-bottom:1px solid #e5e9fb">Airline PNR</td><td align="right" style="padding:13px 16px;color:#111827;font-size:14px;font-weight:700;border-bottom:1px solid #e5e9fb">${pnr}</td></tr>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5e5e5;border-radius:10px;background:#faf9f6">
+              <tr><td style="padding:13px 16px;color:#6b7280;font-size:12px;border-bottom:1px solid #e5e5e5">Booking reference</td><td align="right" style="padding:13px 16px;color:#262626;font-size:14px;font-weight:700;border-bottom:1px solid #e5e5e5">${reference}</td></tr>
+              <tr><td style="padding:13px 16px;color:#6b7280;font-size:12px;border-bottom:1px solid #e5e5e5">Airline PNR</td><td align="right" style="padding:13px 16px;color:#111827;font-size:14px;font-weight:700;border-bottom:1px solid #e5e5e5">${pnr}</td></tr>
               <tr><td style="padding:13px 16px;color:#6b7280;font-size:12px">Amount captured</td><td align="right" style="padding:13px 16px;color:#ad4f08;font-size:14px;font-weight:700">${amount}</td></tr>
             </table>
             <div style="margin:18px 0 24px;border-left:4px solid #f68712;background:#fff7f7;padding:13px 15px;color:#7f1d1d;font-size:13px;line-height:1.55"><strong>Supplier response:</strong> ${reason}</div>
-            <table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="border-radius:8px;background:#f68712">
-              <a href="${bookingUrl}" style="display:inline-block;padding:14px 23px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700">Review &amp; issue ticket</a>
+            <table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="border-radius:4px;background:#f68712">
+              <a href="${bookingUrl}" style="display:inline-block;padding:14px 23px;color:#171717;text-decoration:none;font-size:15px;font-weight:700">Review &amp; issue ticket</a>
             </td></tr></table>
             <p style="margin:20px 0 0;color:#6b7280;font-size:12px;line-height:1.6">This is an operational alert sent to all active Super Administrators. The customer must not be charged again.</p>
           </td></tr>
-          ${automatedEmailFooterHtml('This is an operational alert sent to all active Super Administrators. The customer must not be charged again.')}
+          ${automatedEmailFooterHtml('Keep the booking reference with your issuance confirmation.')}
         </table>
       </td></tr>
     </table>

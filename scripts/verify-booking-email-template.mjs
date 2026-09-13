@@ -182,7 +182,7 @@ for (const expected of [
   'FARE CONDITIONS',
   'Validating carrier',
   'System generated document',
-  'View Booking',
+  'Open journey details',
   'Kaliganj Travels',
   'https://wa.me/8801795271171',
   'WhatsApp +880 1795-271171',
@@ -195,7 +195,7 @@ for (const forbidden of ['undefined', 'NaN', '[object Object]', 'REFUNDED', 'suc
   assert.ok(!onHold.html.includes(forbidden), `ON HOLD HTML must not include ${forbidden}`);
 }
 assert.ok(!onHold.html.includes('https://wa.me/8800000000000'));
-assert.ok(!onHold.html.includes('booking-email-shell" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:840px;background:#ffffff;border:1px solid #dce7f3;border-radius'));
+assert.ok(!onHold.html.includes('booking-email-shell" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:840px;background:#ffffff;border:1px solid #e2e8f0;border-radius'));
 assert.ok(!onHold.html.includes('TICKET NUMBER'), 'ON HOLD must not invent a ticket column');
 assert.ok(onHold.html.includes('images.kiwi.com/airlines/64x64/BS.png'));
 assert.ok(onHold.html.includes('class="booking-header-contact"'));
@@ -232,6 +232,10 @@ assert.ok(confirmed.html.includes('CONFIRMED'));
 assert.ok(confirmed.html.includes('ISSUED AT'));
 assert.ok(confirmed.html.includes('TICKET NUMBER'));
 assert.ok(confirmed.html.includes('BS-1234567890'));
+assert.ok(confirmed.html.includes('GENDER') && confirmed.html.includes('DATE OF BIRTH'), 'Issued email keeps the ticket page identity columns');
+assert.match(confirmed.html, /border-top:5px solid #f68712;padding:16px 20px;background:#ffffff/);
+assert.doesNotMatch(confirmed.html, /border-radius:(?:[1-9])/);
+
 assert.ok(confirmed.html.includes('Paid'));
 assert.ok(!confirmed.html.includes('ota.kaliganjtravel.com@gmail.com'));
 assert.ok(!confirmed.text.includes('ota.kaliganjtravel.com@gmail.com'));
@@ -278,7 +282,7 @@ for (const required of [
   "sectionTitle('Passenger & Ticket Details'",
   "sectionTitle('Flight Itinerary'",
   "sectionTitle('Fare Breakdown'",
-  'bottomRoundedRect(left, y, width, 32, 4).fill(COLORS.blue)',
+  "bottomRoundedRect(left, y, width, 32, 0).fill('#fff4e6')",
 ]) {
   assert.ok(pdfSource.includes(required), `Confirmed ticket PDF layout needs ${required}`);
 }
@@ -448,6 +452,10 @@ if (outputArg) {
   }, companyEmail.html).replaceAll('cid:kaliganj-logo', `data:image/png;base64,${fs.readFileSync(path.join(root, 'public/brand/kaliganj-logo.png')).toString('base64')}`);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, previewHtml, 'utf8');
+  const issuedHtml = confirmedBookingEmail({ booking: { ...confirmedBooking, headerContact: companyBooking.headerContact }, travellers, bookingUrl }).html;
+  const issuedPreview = BOOKING_ICON_NAMES.reduce((html, name) => html.replaceAll(`cid:kaliganj-${name}`, `data:image/png;base64,${fs.readFileSync(path.join(root, 'public/email-icons', `${name}.png`)).toString('base64')}`), issuedHtml).replaceAll('cid:kaliganj-logo', `data:image/png;base64,${fs.readFileSync(path.join(root, 'public/brand/kaliganj-logo.png')).toString('base64')}`);
+  fs.writeFileSync(path.join(path.dirname(outputPath), 'issued.html'), issuedPreview);
+
   console.log(`ON HOLD booking email preview written to ${outputPath}`);
 }
 

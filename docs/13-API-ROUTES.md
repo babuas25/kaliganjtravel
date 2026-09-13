@@ -398,7 +398,7 @@ All API routes follow these conventions:
 }
 ```
 
-**Rate Limiting**: 5 requests per hour per user (strictest limit)
+**Rate Limiting**: 30 requests per hour per user
 
 **Error Codes**:
 - `BOOKING_DISABLED` (503) - Booking submission not enabled
@@ -1846,7 +1846,7 @@ export const LIMITS = {
   flightFareRules: { limit: 60, windowMs: 5 * MINUTE },
   flightReprice: { limit: 30, windowMs: 5 * MINUTE },
   flightBookingPrepare: { limit: 20, windowMs: 5 * MINUTE },
-  flightBookingSubmit: { limit: 5, windowMs: HOUR },
+  flightBookingSubmit: { limit: 30, windowMs: HOUR },
   walletDeposit: { limit: 20, windowMs: HOUR },
   walletManage: { limit: 60, windowMs: HOUR },
   managePaymentAccounts: { limit: 40, windowMs: HOUR },

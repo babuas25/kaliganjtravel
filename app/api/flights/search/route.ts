@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
@@ -75,6 +75,11 @@ const routeSchema = z.object({
 const searchSchema = z
   .object({
     tripType: z.enum(['oneway', 'round', 'multicity']),
+    // Reject unsupported fare preferences instead of stripping them and
+    // silently returning ordinary fares.
+    fareType: z.literal('regular', {
+      errorMap: () => ({ message: 'Only regular fares are currently available.' }),
+    }).optional(),
     routes: z.array(routeSchema).min(1).max(MAX_ROUTES),
     adults: z.number().int().min(1).max(MAX_SEATS),
     children: z.number().int().min(0).max(8),
@@ -619,20 +624,13 @@ function streamedSearch(request: NextRequest): Response {
         send('progress', { stage: currentStage } satisfies StreamProgress);
       }, 5_000);
 
-      void (async () => {
+      const executionTask = (async () => {
         const streamFailure = async (
           status: number,
           errorCode: string,
           errorMessage: string
         ) => {
           trace.mark({ name: 'search_failed', details: { status, errorCode } });
-          const serializationStartedAt = performance.now();
-          const payload = { errorCode, errorMessage };
-          // Account for event encoding in the same timing field used by the
-          // one-shot JSON response, even though HTTP headers are already sent.
-          send('error', payload);
-          timing.serializationMs = performance.now() - serializationStartedAt;
-          close();
           timing.totalMs = performance.now() - routeStartedAt;
           await finishFlightSearchUsage({
             eventId: usageEventId,
@@ -646,6 +644,12 @@ function streamedSearch(request: NextRequest): Response {
             totalMs: timing.totalMs,
             supplierMs: timing.apiRequestMs,
           });
+          // Persist the terminal outcome before sending the final event:
+          // consumers may disconnect as soon as they receive it.
+          const serializationStartedAt = performance.now();
+          send('error', { errorCode, errorMessage });
+          timing.serializationMs = performance.now() - serializationStartedAt;
+          close();
           logSearchTiming(timing, status, { outcome: 'error', errorCode }, trace);
         };
 
@@ -786,6 +790,16 @@ function streamedSearch(request: NextRequest): Response {
             parsed.data as FlightSearchInput
           );
 
+          timing.totalMs = performance.now() - routeStartedAt;
+          await finishFlightSearchUsage({
+            eventId: usageEventId,
+            outcome: 'success',
+            httpStatus: 200,
+            itineraryCount: execution.result.itineraries.length,
+            partial: execution.result.partial,
+            totalMs: timing.totalMs,
+            supplierMs: timing.apiRequestMs,
+          });
           const serializationStartedAt = performance.now();
           const resultEnqueued = send('result', { data: execution.result });
           timing.serializationMs = performance.now() - serializationStartedAt;
@@ -800,15 +814,6 @@ function streamedSearch(request: NextRequest): Response {
           }
           close();
           timing.totalMs = performance.now() - routeStartedAt;
-          await finishFlightSearchUsage({
-            eventId: usageEventId,
-            outcome: 'success',
-            httpStatus: 200,
-            itineraryCount: execution.result.itineraries.length,
-            partial: execution.result.partial,
-            totalMs: timing.totalMs,
-            supplierMs: timing.apiRequestMs,
-          });
           logSearchTiming(
             timing,
             200,
@@ -848,8 +853,12 @@ function streamedSearch(request: NextRequest): Response {
           );
         } finally {
           if (searchSlotHeld) inFlightSearches -= 1;
+          if (streamOpen || heartbeat) close();
         }
       })();
+      // Keep an admitted search and its terminal usage write alive even if
+      // the browser closes the stream. Bounded by this route's maxDuration.
+      after(() => executionTask);
     },
   });
 

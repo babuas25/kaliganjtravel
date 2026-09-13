@@ -62,8 +62,8 @@ type TriploverSearchRequest = {
  * fares, but the supplier documents the field without ever defining its values
  * (their own multicity fixture sends `1` and the enum appears nowhere). Sending
  * a guessed integer would silently change which fares are returned. Student
- * Fare therefore stays visible in the UI and inert here until Triplover
- * publishes the enum.
+ * Fare is therefore unavailable in the UI and rejected by the public search
+ * endpoint until Triplover publishes the enum.
  */
 export function buildSearchRequest(input: FlightSearchInput): TriploverSearchRequest {
   return {
@@ -97,6 +97,10 @@ type RawSegment = {
   arrival?: string;
   airline?: string;
   airlineCode?: string;
+  operationCarrier?: unknown;
+  operatingCarrier?: unknown;
+  isCodeShared?: unknown;
+  isCodeshare?: unknown;
   flightNumber?: string;
   segmentCodeRef?: string;
   serviceClass?: string;
@@ -140,6 +144,7 @@ type RawOffer = {
   platingCarrierName?: string;
   refundable?: boolean;
   bookable?: boolean;
+  isCodeShared?: boolean;
   directions?: RawDirection[][];
   passengerFares?: Record<string, RawPassengerFare | null>;
   passengerCounts?: Record<string, number>;
@@ -216,6 +221,14 @@ function mapSegment(raw: RawSegment): ItinerarySegment | null {
 
   const checked = raw.baggage?.find((b) => b.passengerTypeCode === 'ADT') ?? raw.baggage?.[0];
   const seats = Number.parseInt(raw.bookingCount ?? '', 10);
+  // Search documentation p.13 defines airlineCode as the operating airline.
+  // Prefer an explicit operating-carrier field when a supplier supplies one.
+  const operator = [raw.operationCarrier, raw.operatingCarrier, raw.airlineCode].find(
+    (value): value is string => typeof value === 'string' && /^[A-Z0-9]{2}$/.test(value.trim().toUpperCase())
+  );
+  const codeshare = typeof raw.isCodeShared === 'boolean'
+    ? raw.isCodeShared
+    : typeof raw.isCodeshare === 'boolean' ? raw.isCodeshare : undefined;
 
   return {
     from,
@@ -231,6 +244,8 @@ function mapSegment(raw: RawSegment): ItinerarySegment | null {
     arrival,
     airline: raw.airline ?? raw.airlineCode ?? '',
     airlineCode: raw.airlineCode ?? '',
+    ...(operator ? { operatingCarrierCode: operator.trim().toUpperCase() } : {}),
+    ...(codeshare !== undefined ? { codeshare } : {}),
     flightNumber: raw.flightNumber ?? '',
     cabinClass: raw.cabinClass ?? '',
     bookingClass: raw.bookingClass ?? raw.serviceClass ?? '',
@@ -428,6 +443,7 @@ function mapOffer(
       ).toUpperCase(),
       carrierName: offer.platingCarrierName ?? legs[0]?.segments[0]?.airline ?? '',
       refundable: offer.refundable === true,
+      ...(typeof offer.isCodeShared === 'boolean' ? { codeshare: offer.isCodeShared } : {}),
       bookable: offer.bookable !== false,
       legs,
       fares,
@@ -720,6 +736,7 @@ export async function searchFlights(
         carrierCode: supplier.carrierCode,
         carrierName: supplier.carrierName,
         refundable: supplier.refundable,
+        ...(supplier.codeshare !== undefined ? { codeshare: supplier.codeshare } : {}),
         legs: supplier.legs,
       });
       // A malformed public snapshot belongs only to this independently
@@ -805,6 +822,7 @@ export async function searchFlights(
         carrierCode: bookingSnapshot.carrierCode,
         carrierName: bookingSnapshot.carrierName,
         refundable: bookingSnapshot.refundable,
+        ...(bookingSnapshot.codeshare !== undefined ? { codeshare: bookingSnapshot.codeshare } : {}),
         bookable: supplier.bookable,
         // Public Search, Redis digest, and Prepare now share precisely this
         // normalized object, including explicit nulls for missing terminals.

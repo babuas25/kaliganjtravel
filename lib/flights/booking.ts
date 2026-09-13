@@ -11,6 +11,8 @@ export type BookedItinerary = {
   carrierCode: string;
   carrierName: string;
   refundable: boolean;
+  /** Explicit itinerary-level supplier codeshare flag, when supplied. */
+  codeshare?: boolean;
   legs: ItineraryLeg[];
 };
 

@@ -985,6 +985,9 @@ export default function ItineraryCard({
                   })
                 : '--'}
             </p>
+            {itinerary.codeshare === true && (
+              <p className="mt-1 text-xs font-medium text-navy-950">Codeshare</p>
+            )}
           </div>
           <AircraftSummary
             aircraftModels={aircraftModels}

@@ -19,6 +19,7 @@ import {
   legColumns,
   legLabel,
   minutesBetween,
+  operatingCarrierLabel,
   timeOf,
   type FareRuleSection,
   type FlightFareOption,
@@ -152,6 +153,9 @@ function SegmentDetails({
                 <p className="mt-0.5 truncate text-[11px] leading-tight text-neutral-500">
                   {cabin}
                 </p>
+              )}
+              {operatingCarrierLabel(segment) && (
+                <p className="mt-1 text-[11px] leading-tight text-neutral-600">{operatingCarrierLabel(segment)}</p>
               )}
             </div>
           </div>

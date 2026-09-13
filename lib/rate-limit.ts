@@ -180,7 +180,7 @@ export const LIMITS = {
   /** Creates a short-lived private draft after a successful RePrice. */
   flightBookingPrepare: { limit: 20, windowMs: 5 * MINUTE },
   /** Irreversible supplier call: hold creation or immediate ticketing. */
-  flightBookingSubmit: { limit: 5, windowMs: HOUR },
+  flightBookingSubmit: { limit: 30, windowMs: HOUR },
   /** Privileged read-only preview from an external supplier. */
   impexpRetrieve: { limit: 40, windowMs: HOUR },
   /** Privileged imported-booking creation, including direct-confirmed capture. */

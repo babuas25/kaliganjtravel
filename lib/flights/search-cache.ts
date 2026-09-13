@@ -636,12 +636,13 @@ export function canonicalBookingSnapshot(
 ): BookedItinerary | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
-  const allowedRootKeys = new Set(['carrierCode', 'carrierName', 'refundable', 'legs']);
+  const allowedRootKeys = new Set(['carrierCode', 'carrierName', 'refundable', 'codeshare', 'legs']);
   if (
     !Object.keys(candidate).every((key) => allowedRootKeys.has(key)) ||
     typeof candidate.carrierCode !== 'string' ||
     typeof candidate.carrierName !== 'string' ||
     typeof candidate.refundable !== 'boolean' ||
+    (candidate.codeshare !== undefined && typeof candidate.codeshare !== 'boolean') ||
     !Array.isArray(candidate.legs) ||
     candidate.legs.length === 0
   ) {
@@ -669,6 +670,8 @@ export function canonicalBookingSnapshot(
     'arrival',
     'airline',
     'airlineCode',
+    'operatingCarrierCode',
+    'codeshare',
     'flightNumber',
     'cabinClass',
     'bookingClass',
@@ -718,6 +721,9 @@ export function canonicalBookingSnapshot(
         !nonEmptyText(record.arrival) ||
         typeof record.airline !== 'string' ||
         typeof record.airlineCode !== 'string' ||
+        (record.operatingCarrierCode !== undefined && record.operatingCarrierCode !== null &&
+          (typeof record.operatingCarrierCode !== 'string' || !/^[A-Z0-9]{2}$/.test(record.operatingCarrierCode))) ||
+        (record.codeshare !== undefined && record.codeshare !== null && typeof record.codeshare !== 'boolean') ||
         typeof record.flightNumber !== 'string' ||
         typeof record.cabinClass !== 'string' ||
         typeof record.bookingClass !== 'string' ||
@@ -744,6 +750,8 @@ export function canonicalBookingSnapshot(
         arrival: record.arrival,
         airline: record.airline,
         airlineCode: record.airlineCode,
+        ...(record.operatingCarrierCode !== undefined ? { operatingCarrierCode: record.operatingCarrierCode as string | null } : {}),
+        ...(record.codeshare !== undefined ? { codeshare: record.codeshare as boolean | null } : {}),
         flightNumber: record.flightNumber,
         cabinClass: record.cabinClass,
         bookingClass: record.bookingClass,
@@ -769,6 +777,7 @@ export function canonicalBookingSnapshot(
     carrierCode: candidate.carrierCode,
     carrierName: candidate.carrierName,
     refundable: candidate.refundable,
+    ...(candidate.codeshare !== undefined ? { codeshare: candidate.codeshare as boolean } : {}),
     legs,
   };
 }

@@ -464,7 +464,7 @@ disagree.
 | `travelers`                     | 1 adult, Economy                 | counts, per-child ages, cabin class            |
 | `segments`                      | empty until Multi City is opened | the legs of a multi-city trip                  |
 | `preferredAirlines`             | empty                            | IATA chips; sent as `preferredCarriers`        |
-| `fareType`                      | Regular                          | **collected but never sent** — see below       |
+| Fare preference                | Regular                          | Student unavailable pending supplier mapping  |
 | `error`                         | none                             | the one validation line, under both branches   |
 
 **All three Search buttons are wired** — the desktop icon button, the Multi City button and the
@@ -631,10 +631,10 @@ engine's internal gross ceiling remains the broader
 `basePrice + taxes + ait + serviceCharge` described in
 [Selling-price markup](#selling-price-markup).
 
-> **Student Fare is deliberately inert.** The radio is still there and `fareType` is still tracked,
-> but nothing sends it. The supplier documents a `fareType` field without ever defining its values,
-> so a guessed integer would quietly search a different fare. It stays visible and unsent until
-> Triplover publishes the enum — do not "finish" it by picking a number.
+> **Student Fare is unavailable.** Its control is disabled with an explanatory notice.
+> Non-regular API preferences and search URLs are rejected instead of silently becoming regular searches.
+> The supplied 39-page PDF does not define `fareType`; a later multicity fixture contains `1`
+> without defining its meaning. Student support requires a supplier-confirmed enum and eligibility rules.
 
 > **The cabin ladder lost three rungs.** It used to offer combined entries ("Economy/Premium
 > Economy" and friends). The API takes one cabin integer with no value for "either of these", so

@@ -62,6 +62,8 @@ export function decodeSearchParams(
 ): FlightSearchInput | null {
   const legs = readOne(params, 'legs');
   if (!legs) return null;
+  const fareType = readOne(params, 'fareType');
+  if (fareType && fareType !== 'regular') return null;
 
   const routes: SearchRoute[] = legs
     .split(LEG_SEPARATOR)

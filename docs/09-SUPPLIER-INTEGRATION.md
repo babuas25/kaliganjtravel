@@ -821,7 +821,7 @@ export function buildSearchRequest(input: FlightSearchInput): TriploverSearchReq
 ```
 
 **Important Notes**:
-- `fareType` is deliberately not sent (supplier documents it without defining values)
+- `fareType` is deliberately not sent (supplier documents it without defining values). The Student Fare option is unavailable, and non-regular API fare preferences are rejected pending a confirmed mapping.
 - Supplier splits children into `chd` (5-11) and `cnn` (2-4) using `childrenAges`
 - All codes are uppercased
 

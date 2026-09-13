@@ -242,7 +242,7 @@ supplier API or a supplier-approved integration host/network.
 
 **Rate Limits**:
 - Flight search: 10 requests per minute
-- Booking submission: 5 requests per hour
+- Booking submission: 30 requests per hour per user
 - Wallet operations: 20 requests per minute
 - Deposit requests: 10 requests per hour
 

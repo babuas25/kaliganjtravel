@@ -12,9 +12,12 @@ import type {
 function scheduleKey(itinerary: StandaloneFlightItinerary): string {
   return JSON.stringify([
     itinerary.carrierCode,
+    itinerary.codeshare ?? null,
     itinerary.legs.map((leg) =>
       leg.segments.map((segment) => [
         segment.airlineCode,
+        segment.operatingCarrierCode ?? null,
+        segment.codeshare ?? null,
         segment.flightNumber,
         segment.from,
         segment.to,
@@ -39,6 +42,7 @@ function fareOption(
     serviceMargin: itinerary.serviceMargin,
     carrierCode: itinerary.carrierCode,
     carrierName: itinerary.carrierName,
+    ...(itinerary.codeshare !== undefined ? { codeshare: itinerary.codeshare } : {}),
     refundable: itinerary.refundable,
     bookable: itinerary.bookable,
     legs: itinerary.legs,

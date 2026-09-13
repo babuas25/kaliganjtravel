@@ -47,6 +47,7 @@ import {
   formatPrice,
   legDurationMinutes,
   minutesBetween,
+  operatingCarrierLabel,
   timeOf,
   type FareBreakdown,
   type ItineraryLeg,
@@ -687,6 +688,9 @@ function SegmentBlock({
               {segment.flightNumber}
               {segment.cabinClass ? ` · ${segment.cabinClass}` : ''}
             </p>
+            {operatingCarrierLabel(segment) && (
+              <p className="mt-1 text-[11px] leading-tight text-neutral-600">{operatingCarrierLabel(segment)}</p>
+            )}
           </div>
         </div>
         {total > 1 && (
@@ -1031,6 +1035,9 @@ export default function BookingDetails({
 
           {legs.length > 0 && (
             <Section title="Flight Itinerary" icon={PlaneTakeoff}>
+              {booking.itinerary?.codeshare === true && (
+                <p className="px-3 py-2 text-xs font-medium text-navy-950">Includes codeshare flights</p>
+              )}
               <div className="space-y-3">
                 {legs.map((leg, index) => (
                   <LegBlock

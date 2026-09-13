@@ -148,7 +148,7 @@ export function buildSearchRequest(input: FlightSearchInput): TriploverSearchReq
 
 **Important Notes**:
 - Airport codes are normalized to uppercase
-- `fareType` is deliberately not sent (Triplover doesn't document its values)
+- `fareType` is deliberately not sent (Triplover doesn't document its values). Student Fare is disabled with an unavailable notice; the API rejects non-regular fare preferences instead of silently searching regular fares.
 - `childs` counts all children 2-11, supplier splits into CHD (5-11) and CNN (2-4)
 
 ## Supplier API Integration

@@ -53,6 +53,10 @@ export type ItinerarySegment = {
   arrival: string;
   airline: string;
   airlineCode: string;
+  /** Explicit supplier operating carrier. Missing means unknown, not same-carrier. */
+  operatingCarrierCode?: string | null;
+  /** Supplier-authored flag. Never inferred from flight-number length. */
+  codeshare?: boolean | null;
   flightNumber: string;
   cabinClass: string;
   bookingClass: string;
@@ -65,6 +69,11 @@ export type ItinerarySegment = {
   /** Seats left in this RBD, when the supplier reports it. */
   seatsLeft: number | null;
 };
+
+export function operatingCarrierLabel(segment: ItinerarySegment): string | null {
+  if (segment.operatingCarrierCode) return `Operated by ${segment.operatingCarrierCode}`;
+  return segment.codeshare === true ? 'Codeshare: operating carrier not provided' : null;
+}
 
 /** One requested route's worth of flights within an itinerary. */
 export type ItineraryLeg = {
@@ -117,6 +126,8 @@ export type FlightFareOption = {
   carrierCode: string;
   carrierName: string;
   refundable: boolean;
+  /** Explicit itinerary-level flag; missing means the supplier did not report it. */
+  codeshare?: boolean;
   /** False means the supplier issues tickets at Booking, with no hold step. */
   bookable: boolean;
   legs: ItineraryLeg[];
@@ -140,7 +151,7 @@ export type StandaloneFlightItinerary = FlightFareOption;
  */
 export type FlightBookingItinerarySnapshot = Pick<
   FlightFareOption,
-  'carrierCode' | 'carrierName' | 'refundable' | 'legs'
+  'carrierCode' | 'carrierName' | 'refundable' | 'codeshare' | 'legs'
 >;
 
 export function bookingItinerarySnapshotFor(
@@ -149,6 +160,7 @@ export function bookingItinerarySnapshotFor(
   return {
     carrierCode: option.carrierCode,
     carrierName: option.carrierName,
+    ...(option.codeshare !== undefined ? { codeshare: option.codeshare } : {}),
     refundable: option.refundable,
     legs: option.legs,
   };

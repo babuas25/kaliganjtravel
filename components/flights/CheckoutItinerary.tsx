@@ -15,6 +15,7 @@ import {
   formatDuration,
   formatPrice,
   legDurationMinutes,
+  operatingCarrierLabel,
   timeOf,
   type ItineraryLeg,
 } from '@/lib/flights/types';
@@ -232,6 +233,10 @@ export function ItineraryPanel({
       )
     )
   ).join(', ');
+  const operators = legs.flatMap((leg) => leg.segments.flatMap((segment) => {
+    const label = operatingCarrierLabel(segment);
+    return label ? [`${segment.airlineCode}${segment.flightNumber}: ${label}`] : [];
+  }));
 
   if (legs.length === 0) return null;
 
@@ -262,6 +267,10 @@ export function ItineraryPanel({
           {flightNumbers && (
             <div className="mx-4 border-b border-dashed border-neutral-200 py-3 sm:mx-5">
               <p className="text-sm font-bold text-navy-950">{flightNumbers}</p>
+              {offer.itinerary?.codeshare === true && <p className="mt-1 text-xs font-medium">Includes codeshare flights</p>}
+              {operators.map((label, index) => (
+                <p key={`${index}-${label}`} className="mt-1 text-xs text-neutral-600">{label}</p>
+              ))}
             </div>
           )}
           <div className="divide-y divide-neutral-200">

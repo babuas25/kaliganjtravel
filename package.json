@@ -14,6 +14,7 @@
     "verify:migration-order": "node scripts/verify-migration-order.mjs",
     "verify:triplover-login-resilience": "node scripts/verify-triplover-login-resilience.mjs",
     "verify:flight-search-reference-safety": "node scripts/verify-flight-search-reference-safety.mjs",
+    "verify:search-stream-finalization": "node scripts/verify-search-stream-finalization.mjs",
     "verify:booking-step3": "node scripts/verify-booking-step3.mjs",
     "verify:booking-lifecycle": "node scripts/verify-booking-lifecycle.mjs",
     "verify:booking-observability": "node scripts/verify-booking-lifecycle-observability.mjs",

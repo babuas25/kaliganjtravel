@@ -721,6 +721,19 @@ assert.equal(
   'match'
 );
 const malformedTerminalItinerary = structuredClone(issuedPrimaryItinerary);
+const codeshareItinerary = structuredClone(issuedPrimaryItinerary);
+codeshareItinerary.legs[0].segments[0].operatingCarrierCode = 'BA';
+codeshareItinerary.legs[0].segments[0].codeshare = true;
+assert.equal(canonicalBookingSnapshot(codeshareItinerary).legs[0].segments[0].operatingCarrierCode, 'BA');
+assert.notEqual(bookingSnapshotDigestFor(codeshareItinerary), bookingSnapshotDigestFor(issuedPrimaryItinerary));
+assert.equal(matchesBookingSnapshot(issuedPrimaryRefs, codeshareItinerary), false,
+  'a browser cannot add an unsigned operating carrier');
+const malformedOperator = structuredClone(codeshareItinerary);
+malformedOperator.legs[0].segments[0].operatingCarrierCode = { code: 'BA' };
+assert.equal(canonicalBookingSnapshot(malformedOperator), null);
+const malformedCodeshare = structuredClone(codeshareItinerary);
+malformedCodeshare.legs[0].segments[0].codeshare = 'true';
+assert.equal(canonicalBookingSnapshot(malformedCodeshare), null);
 malformedTerminalItinerary.legs[0].segments[0].departureTerminal = 99;
 assert.equal(
   matchesBookingSnapshot(issuedPrimaryRefs, malformedTerminalItinerary),
@@ -1101,6 +1114,8 @@ const groupedOffer = (index, bookingClass, totalPrice) => ({
         segments: validOutbound.segments.map((segment) => ({
           ...segment,
           bookingClass,
+          operatingCarrier: ' ba ',
+          isCodeShared: true,
         })),
       },
     ],
@@ -1145,6 +1160,33 @@ const groupedSearch = await groupedMapper.searchFlights(
 assert.equal(groupedSearch.result.itineraries.length, 1);
 const groupedCard = groupedSearch.result.itineraries[0];
 assert.equal(groupedCard.upsellOptions.length, 2);
+const codeshareOffer = groupedOffer(10, 'O', 1000);
+codeshareOffer.isCodeShared = true;
+const codeshareStoredRefs = new Map();
+const codeshareMapper = loadSearchModule({
+  response: { airSearchResponses: [codeshareOffer] },
+  storedRefs: codeshareStoredRefs,
+});
+const codeshareSearch = await codeshareMapper.searchFlights({
+  tripType: 'round', routes: [
+    { origin: 'DAC', destination: 'JFK', departureDate: '2026-09-10' },
+    { origin: 'JFK', destination: 'DAC', departureDate: '2026-09-30' },
+  ], adults: 1, children: 0, infants: 0, childrenAges: [], cabinClass: 1, preferredCarriers: [],
+}, 'takeoff');
+const codeshareCard = codeshareSearch.result.itineraries[0];
+assert.equal(codeshareCard.codeshare, true);
+const codeshareSnapshot = {
+  carrierCode: codeshareCard.carrierCode, carrierName: codeshareCard.carrierName,
+  refundable: codeshareCard.refundable, codeshare: true, legs: codeshareCard.legs,
+};
+assert.equal(matchesBookingSnapshot(codeshareStoredRefs.get('refs').get(codeshareCard.id), codeshareSnapshot), true);
+assert.equal(matchesBookingSnapshot(codeshareStoredRefs.get('refs').get(codeshareCard.id), {...codeshareSnapshot, codeshare: false}), false);
+assert.equal(groupedCard.codeshare, undefined, 'missing codeshare flag must remain unknown');
+const changedOperator = structuredClone(groupedCard);
+changedOperator.id = 'different-operator';
+changedOperator.legs[0].segments[0].operatingCarrierCode = 'AA';
+assert.equal(groupUpsellOptions([groupedCard, changedOperator]).length, 2,
+  'different operating carriers must not merge into a single schedule card');
 const groupedOptions = [groupedCard, ...groupedCard.upsellOptions];
 const groupedRefsById = groupedStoredRefs.get('refs');
 assert.equal(groupedRefsById.size, 3);
@@ -1167,6 +1209,9 @@ for (const option of groupedOptions) {
       assert.equal(segment.arrivalTerminal, null);
     }
   }
+  assert.equal(option.legs[0].segments[0].operatingCarrierCode, 'BA');
+  assert.equal(option.legs[0].segments[0].codeshare, true);
+  assert.equal(option.legs[1].segments[0].operatingCarrierCode, option.legs[1].segments[0].airlineCode);
 }
 assert.equal(
   matchesBookingSnapshot(groupedRefsById.get(groupedOptions[0].id), {

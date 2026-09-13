@@ -36,8 +36,6 @@ import { CABIN_CLASSES, cabinClassValue } from '@/lib/flights/cabin';
 import { encodeSearchParams } from '@/lib/flights/search-params';
 import type { FlightSearchInput, SearchRoute, TripType } from '@/lib/flights/types';
 
-type FareType = 'regular' | 'student';
-
 /** Turn an entry of the popular shortlist into a pre-filled From / To value. */
 function popularAirport(iata: string): AirportOption | null {
   const airport = POPULAR_BANGLADESH_AIRPORTS.find((a) => a.iata === iata);
@@ -186,7 +184,6 @@ export default function FlightSearchPanel({
   const initialFirstRoute = initialInput?.routes[0];
   // One Way is the landing state; existing searches retain their selected trip type.
   const [tripType, setTripType] = useState<TripType>(initialInput?.tripType ?? 'oneway');
-  const [fareType, setFareType] = useState<FareType>('regular');
   // Lifted out of PreferredAirlines so both layout branches share one list and
   // the search request can read it.
   const [preferredAirlines, setPreferredAirlines] = useState<string[]>(
@@ -381,9 +378,8 @@ export default function FlightSearchPanel({
    * the panel is rendered on the home page and in the dashboard, and a
    * shareable, refreshable `/flights?…` keeps both behaving the same.
    *
-   * Note that `fareType` is collected but not sent. Student Fare has no
-   * documented value in the supplier's API, so sending a guess would quietly
-   * search a different fare — it stays inert until they publish the enum.
+   * Student fares stay unavailable until the supplier defines their request
+   * value. Never let a student selection silently become a regular search.
    */
   const submit = () => {
     const collected = collectRoutes();
@@ -489,9 +485,10 @@ export default function FlightSearchPanel({
             <div className="shrink-0">
               <p className="mb-2 text-xs font-medium text-neutral-500">Fare preference</p>
               <div role="group" aria-label="Fare preference" className="inline-flex gap-1 rounded-xl bg-neutral-100 p-1">
-                <Radio compact active={fareType === 'regular'} label="Regular Fare" onClick={() => setFareType('regular')} />
-                <Radio compact active={fareType === 'student'} label="Student Fare" onClick={() => setFareType('student')} />
+                <Radio compact active label="Regular Fare" onClick={() => {}} />
+                <button type="button" disabled aria-describedby="student-fare-availability" className="min-h-10 cursor-not-allowed rounded-xl px-3 py-2 text-xs text-neutral-500 sm:text-sm">Student Fare</button>
               </div>
+              <p id="student-fare-availability" className="mt-1 text-xs text-neutral-500">Student fares are currently unavailable.</p>
             </div>
             <PreferredAirlines className="min-w-0 md:w-72 lg:w-80" value={preferredAirlines} onChange={setPreferredAirlines} />
             <button type="button" onClick={submit} className="group inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-3 rounded-xl bg-brand-orange px-6 py-3 text-sm font-bold text-navy-950 shadow-sm transition hover:bg-brand-orange-dark hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 md:ml-auto md:w-auto">

@@ -295,7 +295,17 @@ export default function BookingCheckout({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [retryAt, setRetryAt] = useState(0);
+  const [retrySeconds, setRetrySeconds] = useState(0);
   const [savingPassengers, setSavingPassengers] = useState(false);
+
+  useEffect(() => {
+    if (!retryAt) return;
+    const tick = () => setRetrySeconds(Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAt]);
 
   const accessToken =
     typeof window === 'undefined'
@@ -655,7 +665,7 @@ export default function BookingCheckout({
     if (
       !attempt?.submissionEnabled ||
       (attempt.directTicketing && !attempt.ticketingEnabled) ||
-      submitting
+      submitting || Date.now() < retryAt
     ) return;
     if (expired) return;
     setSubmitting(true);
@@ -669,6 +679,14 @@ export default function BookingCheckout({
       });
       const envelope = (await response.json()) as BookingEnvelope;
       if (!envelope.success) {
+        if (response.status === 429 && envelope.error.errorCode === 'RATE_LIMITED') {
+          const seconds = Number(response.headers.get('Retry-After'));
+          if (Number.isFinite(seconds) && seconds > 0) {
+            setRetryAt(Date.now() + seconds * 1000);
+            setRetrySeconds(Math.ceil(seconds));
+            return;
+          }
+        }
         // A prior click may already own the attempt. Read the durable result
         // instead of leaving the traveller with a misleading retry prompt.
         if (envelope.error.errorCode === 'BOOKING_ALREADY_STARTED') {
@@ -780,7 +798,7 @@ export default function BookingCheckout({
   const bookingBlocked =
     !attempt.submissionEnabled ||
     (attempt.directTicketing && !attempt.ticketingEnabled) ||
-    expired;
+    expired || retrySeconds > 0;
 
   return (
     <div className="space-y-4">
@@ -1463,6 +1481,12 @@ export default function BookingCheckout({
                   </p>
                 )}
 
+                {retrySeconds > 0 && (
+                  <p role="status" className="rounded-md bg-amber-50 p-2.5 text-xs text-amber-900">
+                    Booking limit reached. You can try again in {Math.floor(retrySeconds / 60)}m {retrySeconds % 60}s.
+                    {' '}If this quote expires first, search again for a new fare.
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => void submit()}
@@ -1494,7 +1518,7 @@ export default function BookingCheckout({
                 <p className="text-center text-[11px] leading-relaxed text-neutral-500">
                   By confirming, you agree to our{' '}
                   <Link
-                    href="/terms"
+                    href="/terms-and-conditions"
                     className="font-semibold text-brand-orange-dark hover:underline"
                   >
                     Terms &amp; Conditions

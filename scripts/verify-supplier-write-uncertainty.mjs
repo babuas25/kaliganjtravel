@@ -84,6 +84,7 @@ const cases = [
   [new TriploverError('protocol', 'returned non-JSON'), response200, 'uncertain', 'protocol_response'],
   [new TriploverError('supplier', 'upstream failed', 503), { ...response200, httpStatus: 503 }, 'uncertain', 'supplier_upstream_failure'],
   [new TriploverError('supplier', 'business error', 200), response200, 'uncertain', 'supplier_http_200_failure'],
+  [new TriploverError('supplier', 'Unable to Satisfy, Need Confirmed Flight Status.', 200), response200, 'uncertain', 'supplier_http_200_failure'],
   [new TriploverError('supplier', 'Duplicate booking for Passenger: Mr TEST USER', 200), response200, 'definitive-failure', 'supplier_duplicate_booking'],
   [new TriploverError('supplier', 'declined', 400), { ...response200, httpStatus: 400 }, 'definitive-failure', 'supplier_rejected'],
   [new TriploverError('supplier', 'isCancel false'), response200, 'definitive-failure', 'supplier_rejected'],

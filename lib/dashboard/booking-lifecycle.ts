@@ -82,6 +82,12 @@ export function canRefreshBookingSupplierDetails(role: Role): boolean {
   return bookingLifecycleAccessForRole(role) !== null;
 }
 
+/** Deadline-only reads use the same user/agency scope as the ticket page. */
+export function canRefreshBookingTicketingTime(role: Role): boolean {
+  return canRefreshBookingSupplierDetails(role) ||
+    role === 'customer' || role === 'b2b' || role === 'b2b_sub';
+}
+
 /** Supplier evidence contains operational identifiers, so Accounts is view-only. */
 export function canAcquireBookingLifecycleEvidence(role: Role): boolean {
   return canBookingReconciliation(role, 'investigate_supplier_evidence');

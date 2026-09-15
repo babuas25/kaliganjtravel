@@ -14,6 +14,7 @@ import {
   type SupplierWriteLifecycleHooks,
 } from '@/lib/triplover/client';
 import type { TriploverSupplier } from '@/lib/triplover/config';
+import { completeTicketNumbers } from '@/lib/triplover/ticket-payload';
 
 export type SupplierBookingOutcome = {
   status: 'held' | 'ticketed';
@@ -23,6 +24,7 @@ export type SupplierBookingOutcome = {
   bookingStatus: string | null;
   ticketingTimeLimit: string | null;
   bookingCodeRef: string;
+  supplierRefs: PrivateBookingRefs;
   ticketCodeRef: string | null;
   ticketNumbers: string[];
   warnings: string[];
@@ -99,12 +101,15 @@ export async function bookFlight(
     bookingStatus?: string;
     ticketingTimeLimit?: string;
     bookingCodeRef?: string;
+    uniqueTransID?: string;
+    itemCodeRef?: string;
+    priceCodeRef?: string;
     ticketCodeRef?: string;
     ticketInfoes?: { ticketNumbers?: unknown }[];
     warnings?: unknown;
     message?: string;
   };
-  const pnr = raw.pnr || raw.bookingRefNumber || '';
+  const pnr = raw.pnr?.trim() || raw.bookingRefNumber?.trim() || '';
   if (!pnr) {
     throw new TriploverError('protocol', 'Triplover Book returned no PNR.');
   }
@@ -115,29 +120,43 @@ export async function bookFlight(
       'Triplover Book returned no bookingCodeRef.'
     );
   }
-  const ticketNumbers = Array.isArray(raw.ticketInfoes)
-    ? raw.ticketInfoes.flatMap((ticket) =>
-        Array.isArray(ticket.ticketNumbers)
-          ? ticket.ticketNumbers.filter(
-              (value): value is string => typeof value === 'string'
-            )
-          : []
-      )
+  const hasDirectTicketPayload = raw.ticketInfoes != null;
+  const ticketNumbers = hasDirectTicketPayload
+    ? completeTicketNumbers(raw.ticketInfoes, travellers.length || undefined)
     : [];
-  const hasDirectTicketPayload = Array.isArray(raw.ticketInfoes);
-  if (hasDirectTicketPayload && ticketNumbers.length === 0) {
+  if (!ticketNumbers) {
     throw new TriploverError(
       'protocol',
-      'Triplover Book returned a direct-ticket response without ticket numbers.'
+      'Triplover Book returned an incomplete direct-ticket response.'
     );
   }
-  const directTicketed = hasDirectTicketPayload && ticketNumbers.length > 0;
+  const directTicketed = hasDirectTicketPayload;
   const ticketCodeRef = raw.ticketCodeRef?.trim() || null;
   if (directTicketed && !ticketCodeRef) {
     throw new TriploverError(
       'protocol',
       'Triplover Book returned tickets without a ticketCodeRef.'
     );
+  }
+  if (!directTicketed && (ticketCodeRef || !raw.bookingStatus?.trim())) {
+    throw new TriploverError('protocol', 'Triplover Book returned no definite hold or ticket outcome.');
+  }
+  // Book may return updated item/price tokens. Keep them for delayed issue;
+  // older supplier responses that omit echoes retain the submitted tokens.
+  const returnedRef = (value: unknown, fallback: string): string => {
+    if (value == null || value === '') return fallback;
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new TriploverError('protocol', 'Triplover Book returned an invalid reference.');
+    }
+    return value;
+  };
+  const supplierRefs = {
+    uniqueTransId: returnedRef(raw.uniqueTransID, refs.uniqueTransId),
+    itemCodeRef: returnedRef(raw.itemCodeRef, refs.itemCodeRef),
+    priceCodeRef: returnedRef(raw.priceCodeRef, refs.priceCodeRef),
+  };
+  if (supplierRefs.uniqueTransId !== refs.uniqueTransId) {
+    throw new TriploverError('protocol', 'Triplover Book returned a different transaction reference.');
   }
 
   return {
@@ -148,13 +167,12 @@ export async function bookFlight(
       airlinesPnr: validAirlinePnrs(raw.airlinesPNR),
       bookingRefNumber: raw.bookingRefNumber ?? null,
       bookingStatus: raw.bookingStatus ?? null,
-      // A successful Book response must be persisted immediately. PNR is a
-      // safe enrichment, but its propagation retries can outlive a serverless
-      // request and must never leave a real airline booking unfinalized.
-      // A later PNR refresh replaces this provisional supplier value with
-      // PNR.lastTicketTime.
+      // Persist the supplier's deadline with the booking. NewTicket uses saved
+      // references even when this value is absent; there is no automatic PNR
+      // lookup or invented hold duration in the certification flow.
       ticketingTimeLimit: raw.ticketingTimeLimit ?? null,
       bookingCodeRef,
+      supplierRefs,
       ticketCodeRef,
       ticketNumbers,
       warnings: Array.isArray(raw.warnings)

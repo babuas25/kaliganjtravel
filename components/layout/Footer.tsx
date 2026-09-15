@@ -19,6 +19,7 @@ const cols = [
       { label: 'Careers', href: '/careers' },
       { label: 'Blog', href: '/blog' },
       { label: 'Affiliates', href: '/affiliates' },
+      { label: 'Bank Details', href: '/bank-details' },
     ],
   },
   {

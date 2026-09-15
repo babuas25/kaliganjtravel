@@ -165,7 +165,7 @@ assert.match(
 );
 assert.match(
   airTicketingDetails,
-  /supplier: TriploverSupplier[\s\S]*?triploverCall\([\s\S]*?\{ supplier, method: 'GET', topLevelPayload: true \}/,
+  /supplier: TriploverSupplier[\s\S]*?triploverCall\([\s\S]*?\{ supplier, method: 'GET', topLevelPayload: true(?:, timeoutMs)? \}/,
   'AirTicketingDetails must receive and forward an explicit bound supplier account'
 );
 assert.match(
@@ -180,7 +180,7 @@ assert.match(
 );
 assert.match(
   issueRoute,
-  /const supplierAccount = booking\.supplier_account;[\s\S]*?supplier: supplierAccount[\s\S]*?issueTicket\(supplierInput[\s\S]*?readAirTicketingDetails\([\s\S]*?supplierAccount/,
+  /const supplierAccount = booking\.supplier_account;[\s\S]*?supplier: supplierAccount[\s\S]*?issueTicket\(supplierInput[\s\S]*?enrichIssuedTicket\([\s\S]*?supplierAccount/,
   'an existing booking must use its persisted supplier account for Issue and its follow-up ticket read'
 );
 assert.match(
@@ -198,10 +198,10 @@ assert.match(
   /input\.booking\.supplier_account[\s\S]*?readPnr\([\s\S]*?supplier,[\s\S]*?readAirTicketingDetails\([\s\S]*?supplier\n\s*\)/,
   'reconciliation evidence reads must derive and pass the supplier only from the locked booking'
 );
-assert.match(
+assert.doesNotMatch(
   deadlineRefresh,
-  /job\.supplier_account[\s\S]*?readPnr\([\s\S]*?supplier,[\s\S]*?\)/,
-  'deadline refresh jobs must use their persisted supplier account'
+  /readPnr|syncPnrDetails/,
+  'retired post-Book deadline jobs must not call any supplier account'
 );
 assert.match(
   ticketedResolver,

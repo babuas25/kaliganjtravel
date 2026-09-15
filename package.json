@@ -20,6 +20,9 @@
     "verify:booking-observability": "node scripts/verify-booking-lifecycle-observability.mjs",
     "verify:booking-operation": "node scripts/verify-booking-operation-request.mjs",
     "verify:booking-issue-ui-recovery": "node scripts/verify-booking-issue-ui-recovery.mjs",
+    "verify:booking-without-pnr": "node scripts/verify-booking-without-pnr.mjs && node scripts/verify-booking-without-pnr-db.mjs",
+    "verify:booking-ticketing-time": "node scripts/verify-booking-ticketing-time.mjs",
+    "verify:booking-read-recovery": "node scripts/verify-booking-read-recovery.mjs",
     "verify:on-hold-cancellation": "node scripts/verify-on-hold-cancellation.mjs",
     "verify:booking-attempt-reconciliation": "node scripts/verify-booking-attempt-reconciliation.mjs",
     "verify:booking-post-write-finalization": "node scripts/verify-booking-post-write-finalization.mjs",
@@ -130,6 +133,7 @@
     "verify:b2b-agency-identity-lock": "node scripts/verify-b2b-agency-identity-lock.mjs",
     "verify:email": "node scripts/verify-email.mjs",
     "verify:wallet": "node scripts/verify-wallet.mjs",
+    "verify:booking-currency": "node scripts/verify-booking-currency.mjs",
     "verify:impexp-wallet": "node scripts/verify-impexp-wallet.mjs",
     "verify:impexp-trip-scope": "node scripts/verify-impexp-trip-scope.mjs",
     "verify:manual-booking-import": "node scripts/verify-manual-booking-import.mjs",
@@ -143,7 +147,7 @@
     "verify:staff-on-behalf-booking:live": "node scripts/verify-staff-on-behalf-booking-live.mjs",
     "verify:kaliganj-branding": "node scripts/verify-kaliganj-branding.mjs",
     "verify:kaliganj-markup": "node scripts/verify-kaliganj-markup.mjs",
-    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && node scripts/verify-kt-passenger-references.mjs && npm run verify:flight-search-reference-safety"
+    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && node scripts/verify-kt-passenger-references.mjs && npm run verify:flight-search-reference-safety && npm run verify:booking-currency && npm run verify:impexp-trip-scope && npm run verify:search-stream-finalization && npm run verify:booking-without-pnr && npm run verify:booking-read-recovery && npm run verify:booking-ticketing-time && npm run verify:booking-deadline-notice"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.1",

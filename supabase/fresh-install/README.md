@@ -4,6 +4,18 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Saved-reference ticketing, 2026-09-15:** applied
+`20260915000000_booking_without_pnr_ticketing.sql` to the linked Kaliganj
+database. The application had already adopted the new flow while the database
+still rejected missing deadlines with `BOOKING_DEADLINE_REQUIRED`, before any
+NewTicket call or wallet reservation. Hosted checks now confirm the saved-reference
+issue policy and Book reference persistence are installed. Booking rows and wallet
+accounts matched their pre-migration hashes; ledger, reservation, operation and
+status-event counts were unchanged. Anonymous issue permissions remain denied.
+Full-schema local tests cover missing deadlines, known expiry, reference guards,
+wallet capture and duplicate-request protection. This deployment did not send a
+supplier ticket request or issue a ticket.
+
 **Migration sync, 2026-09-12:** applied the remaining
 `20260912020000_kaliganj_support_email.sql` migration. Hosted verification confirmed
 `support@kaliganjtravel.com`; a subsequent migration dry run reported the database

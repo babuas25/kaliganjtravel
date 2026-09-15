@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
+import { currencyModule } from './helpers/currency.mjs';
 const require=createRequire(import.meta.url);
 const ts=require('typescript');
 const source=fs.readFileSync('app/api/flights/search/route.ts','utf8');
@@ -15,6 +16,7 @@ function harness({fail=false}={}) {
  const afterTasks=[],events=[];
  class TriploverError extends Error {}
  const modules={
+  '@/lib/currency':currencyModule,
   'next/server':{NextResponse:Response,after:callback=>afterTasks.push(callback)},
   crypto:require('node:crypto'),zod:require('zod'),
   '@/lib/flights/cabin':{CABIN_CLASSES:[1,2,3,4,5].map(value=>({value}))},
@@ -32,7 +34,7 @@ function harness({fail=false}={}) {
    claimFlightSearchSupplierHit:async()=>({allowed:true}),
    finishFlightSearchUsage:async outcome=>{events.push(outcome);await finish.promise;},
   },
-  '@/lib/triplover/search':{searchFlights:async()=>{await search.promise;if(fail==='supplier')throw Object.assign(new TriploverError('supplier business failure'),{kind:'supplier',status:200});if(fail)throw new Error('test supplier failure');return {result:{itineraries:[],partial:true},timing:{}};}},
+  '@/lib/triplover/search':{searchFlights:async()=>{await search.promise;if(fail==='currency')throw new currencyModule.UnsupportedCurrencyError();if(fail==='supplier')throw Object.assign(new TriploverError('supplier business failure'),{kind:'supplier',status:200});if(fail)throw new Error('test supplier failure');return {result:{itineraries:[],partial:true},timing:{}};}},
  };
  const module={exports:{}};
  vm.runInNewContext(compiled,{module,exports:module.exports,require:id=>{if(!(id in modules))throw new Error('Unexpected import '+id);return modules[id];},performance,ReadableStream,TextEncoder,Response,Headers,setInterval,clearInterval,console:{log(){},info(){},error(){},warn(){}},process:{env:{}}});
@@ -80,4 +82,17 @@ for(const stream of [true,false]) {
  if(!stream)assert.equal(response.status,502);
  await Promise.all(h.afterTasks.map(f=>f()));
 }
-console.log('Search finalization, supplier business-error classification, disconnect lifecycle and unsupported-fare checks passed.');
+for(const stream of [true,false]) {
+ const h=harness({fail:'currency'});
+ const pending=h.route.POST(new Request('https://example.test/api/flights/search',{method:'POST',headers:{accept:stream?'text/event-stream':'application/json'},body:JSON.stringify(input)}));
+ h.search.resolve();h.finish.resolve();const response=await pending;
+ const body=await response.text();
+ assert.ok(body.includes('UNSUPPORTED_CURRENCY'));
+ assert.ok(body.includes('Only BDT is supported.'));
+ assert.ok(!body.includes('event: result'));
+ assert.equal(h.events[0].errorCode,'UNSUPPORTED_CURRENCY');
+ assert.equal(h.events[0].outcome,'failed');
+ if(!stream)assert.equal(response.status,502);
+ await Promise.all(h.afterTasks.map(f=>f()));
+}
+console.log('Search finalization, currency and supplier error classification, disconnect lifecycle and unsupported-fare checks passed.');

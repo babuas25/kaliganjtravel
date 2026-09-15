@@ -414,10 +414,16 @@ function DocumentHeader({
   booking,
   ticketed,
   ticketManagementReferences,
+  allowTicketingTimeRefresh,
+  supplierActionBusy,
+  onTicketingTimeRefreshChange,
 }: {
   booking: PublicBooking;
   ticketed: boolean;
   ticketManagementReferences: TicketManagementRequestReference[];
+  allowTicketingTimeRefresh: boolean;
+  supplierActionBusy: boolean;
+  onTicketingTimeRefreshChange: (refreshing: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const activity =
@@ -539,10 +545,14 @@ function DocumentHeader({
               {booking.statusMessage}
             </p>
           )}
-          {booking.status === 'on-hold' && (
+          {(booking.status === 'on-hold' || allowTicketingTimeRefresh) && (
             <BookingDeadlineNotice
+              key={booking.publicRef}
               deadline={booking.ticketingDeadlineAt}
               bookingReference={booking.publicRef}
+              allowRefresh={allowTicketingTimeRefresh}
+              disabled={supplierActionBusy}
+              onRefreshingChange={onTicketingTimeRefreshChange}
             />
           )}
         </div>
@@ -833,6 +843,7 @@ export default function BookingDetails({
   passengerPrivacyNotice,
   allowCancellation = true,
   allowSupplierRefresh = false,
+  allowTicketingTimeRefresh = false,
   autoRefreshDeadline = false,
   allowTicketing = true,
   showPostTicketActions = false,
@@ -855,6 +866,7 @@ export default function BookingDetails({
   passengerPrivacyNotice?: string;
   allowCancellation?: boolean;
   allowSupplierRefresh?: boolean;
+  allowTicketingTimeRefresh?: boolean;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
   showPostTicketActions?: boolean;
@@ -874,6 +886,8 @@ export default function BookingDetails({
   /** Optional staff-only content displayed below the quick actions card. */
   sidebarContent?: ReactNode;
 }) {
+  const [refreshingTicketingTime, setRefreshingTicketingTime] = useState(false);
+  const [supplierActionBusy, setSupplierActionBusy] = useState(false);
   const ticketed = booking.status === 'confirmed';
   const footerEmail = booking.headerContact.email.trim() &&
     booking.headerContact.email !== '--'
@@ -925,6 +939,9 @@ export default function BookingDetails({
             booking={booking}
             ticketed={ticketed}
             ticketManagementReferences={ticketManagementReferences}
+            allowTicketingTimeRefresh={allowTicketingTimeRefresh}
+            supplierActionBusy={supplierActionBusy}
+            onTicketingTimeRefreshChange={setRefreshingTicketingTime}
           />
 
           <Section title="Passenger & Ticket Details" icon={Users}>
@@ -1171,6 +1188,8 @@ export default function BookingDetails({
           directTicketing={booking.directTicketing}
           allowCancellation={allowCancellation}
           allowSupplierRefresh={allowSupplierRefresh}
+          refreshingTicketingTime={refreshingTicketingTime}
+          onSupplierActionBusyChange={setSupplierActionBusy}
           autoRefreshDeadline={autoRefreshDeadline}
           allowTicketing={allowTicketing}
           showPostTicketActions={showPostTicketActions}

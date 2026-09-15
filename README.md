@@ -4,6 +4,13 @@ Flight booking and agency management application, rebranded using the logo, oran
 
 Existing booking, supplier, wallet, ticket management, agency and staff workflows are retained.
 
+Booking prices, fixed markups and wallet accounts support BDT only. Search,
+RePrice and supplier imports reject explicitly reported foreign currencies,
+including conflicting currency aliases or passenger fares. Omitted supplier
+currency retains the existing BDT contract; manual imports and stored checkout
+quotes require BDT. Currency conversion is not supported. Regression coverage
+runs with `npm run verify:booking-currency` and the Search/import checks in CI.
+
 ## Local development
 
 ```bash

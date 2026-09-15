@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { currencyForBdtContract } from '@/lib/currency';
 import { activeMarkupRulesFor } from '@/lib/db/markup-rules';
 import {
   readSearch,
@@ -25,6 +26,8 @@ import {
 import { TriploverError, triploverCall } from '@/lib/triplover/client';
 
 type RawPassengerFare = {
+  currency?: unknown;
+  currencyCode?: unknown;
   basePrice?: number;
   taxes?: number;
   ait?: number;
@@ -54,7 +57,8 @@ type RawReprice = {
   priceCodeRef?: string;
   itemCodeRef?: string;
   uniqueTransID?: string;
-  currency?: string | null;
+  currency?: unknown;
+  currencyCode?: unknown;
   totalPrice?: number;
   basePrice?: number;
   taxes?: number;
@@ -362,6 +366,11 @@ export async function repriceFlight({
   const rulesResult = await rulesPromise;
 
   const response = (call.data ?? {}) as RawReprice;
+  const currency = currencyForBdtContract(
+    response.currency,
+    response.currencyCode,
+    ...Object.values(response.passengerFares ?? {}).flatMap((fare) => [fare?.currency, fare?.currencyCode]),
+  );
   if (
     !finiteMoney(response.totalPrice) ||
     !finiteMoney(response.basePrice) ||
@@ -425,10 +434,6 @@ export async function repriceFlight({
     previousTotalPrice
   );
   const requiresConfirmation = supplierPriceChanged || sellingPriceChanged;
-  const currency =
-    typeof response.currency === 'string' && response.currency.length > 0
-      ? response.currency
-      : 'BDT';
   const bookable = response.bookable !== false;
 
   let saved: boolean;

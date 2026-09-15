@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BOOKING_CURRENCY, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
 
 const money = z
   .string()
@@ -59,7 +60,9 @@ const commonSchema = z.object({
   externalReference: z.string().trim().min(2).max(120),
   pnr: z.string().trim().min(2).max(120),
   airlinePnr: z.string().trim().min(2).max(120),
-  currency: z.string().trim().regex(/^[A-Za-z]{3}$/),
+  currency: z.string().trim().toUpperCase()
+    .refine((value) => value === BOOKING_CURRENCY, UNSUPPORTED_CURRENCY_MESSAGE)
+    .transform(() => BOOKING_CURRENCY),
   userPayableAmount: money,
   supplierGrossAmount: money,
   supplierPayableAmount: money,

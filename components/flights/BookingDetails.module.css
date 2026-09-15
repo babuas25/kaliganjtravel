@@ -14,7 +14,7 @@
   .reference > div { justify-content: flex-start; }
   .reference > div > span { font-size: 16px; letter-spacing: .035em; overflow-wrap: anywhere; }
   .reference button { color: #526174; }
-  .reference button:hover { background: #e2e8f0; }
+  .reference button:not([role='switch']):hover { background: #e2e8f0; }
   .reference button:focus-visible { outline: 2px solid #e5790c; outline-offset: 3px; }
   .status { margin-top: 6px; font-size: 12px; }
   .summary { background: #f8fafc; border-color: #e2e8f0; padding: 0 8px; }
@@ -68,6 +68,12 @@
 .ticket,
 .ticket * {
   border-radius: 0 !important;
+}
+
+/* Keep the interactive time-limit switch recognizable within the square document. */
+.ticket button[role='switch'],
+.ticket button[role='switch'] > span {
+  border-radius: 9999px !important;
 }
 
 /* Keep the desktop document composition on A4, including when printing from a phone. */

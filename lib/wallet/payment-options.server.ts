@@ -128,6 +128,20 @@ async function listMfsAccounts(): Promise<CompanyMfsAccountOption[]> {
   });
 }
 
+const PUBLIC_BANK_ACCOUNT_NAMES = new Set([
+  'kaliganj tour and travel',
+  // The company account at Dutch Bangla Bank uses this approved spelling.
+  'kaliganj tour and travels',
+]);
+
+/** Public receiving accounts, restricted to the company names approved for the footer. */
+export async function listPublicCompanyBankAccounts(): Promise<CompanyBankAccountOption[]> {
+  const accounts = await listBankAccounts();
+  return accounts.filter((account) =>
+    PUBLIC_BANK_ACCOUNT_NAMES.has(account.accountName.trim().replace(/\s+/g, ' ').toLowerCase())
+  );
+}
+
 async function listReceivers(): Promise<DepositReceiverOption[]> {
   try {
     const client = await clerkClient();

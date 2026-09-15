@@ -249,6 +249,8 @@ export default function BookingActions({
   allowPostTicketOwnerActions = false,
   allowedPostTicketActions = [],
   allowSupplierRefresh = false,
+  refreshingTicketingTime = false,
+  onSupplierActionBusyChange,
   autoRefreshDeadline = false,
   allowTicketing = true,
   issuingForAssignedOwner = false,
@@ -280,6 +282,8 @@ export default function BookingActions({
   allowPostTicketOwnerActions?: boolean;
   allowedPostTicketActions?: readonly TicketManagementAction[];
   allowSupplierRefresh?: boolean;
+  refreshingTicketingTime?: boolean;
+  onSupplierActionBusyChange?: (busy: boolean) => void;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
   issuingForAssignedOwner?: boolean;
@@ -319,6 +323,9 @@ export default function BookingActions({
   const [importedVerification, setImportedVerification] =
     useState<ImportedTicketVerification | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    onSupplierActionBusyChange?.(issuing || cancelling || refreshing || completingImported);
+  }, [issuing, cancelling, refreshing, completingImported, onSupplierActionBusyChange]);
   const showFeedback = useStatusFeedback();
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('created') !== '1') return;
@@ -493,6 +500,7 @@ export default function BookingActions({
   const issueInteractionLocked =
     issuing ||
     cancelling ||
+    refreshingTicketingTime ||
     refreshingIssueState ||
     reconciliationActive ||
     !serverCanSubmit;
@@ -502,6 +510,7 @@ export default function BookingActions({
   const cancelInteractionLocked =
     issuing ||
     cancelling ||
+    refreshingTicketingTime ||
     issueActionStatus?.reconciliationRequired === true ||
     Boolean(issueActionStatus?.operationState);
 
@@ -1391,7 +1400,7 @@ export default function BookingActions({
             <button
               type="button"
               onClick={() => void refreshSupplierDetails()}
-              disabled={refreshing || completingImported || issuing || cancelling}
+              disabled={refreshing || refreshingTicketingTime || completingImported || issuing || cancelling}
               className={buttonClass}
             >
               <RefreshCw

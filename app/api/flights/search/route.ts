@@ -19,6 +19,7 @@ import type {
 import { requestActorKey } from '@/lib/http/actor-key';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import { TriploverError } from '@/lib/triplover/client';
+import { UnsupportedCurrencyError } from '@/lib/currency';
 import { isTriploverConfigured } from '@/lib/triplover/config';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { recordFlightSearch } from '@/lib/db/flight-search-history';
@@ -832,6 +833,10 @@ function streamedSearch(request: NextRequest): Response {
             trace
           );
         } catch (error) {
+          if (error instanceof UnsupportedCurrencyError) {
+            await streamFailure(502, error.code, error.message);
+            return;
+          }
           if (error instanceof SearchReferenceStoreError) {
             const failure = publicSearchReferenceFailure(error);
             logSearchReferenceFailure(error);
@@ -1110,6 +1115,17 @@ export async function POST(request: NextRequest) {
         traceHeaders,
         trace
       );
+    }
+    if (error instanceof UnsupportedCurrencyError) {
+      await finishFlightSearchUsage({
+        eventId: usageEventId,
+        outcome: 'failed',
+        httpStatus: 502,
+        errorCode: error.code,
+        totalMs: performance.now() - routeStartedAt,
+        supplierMs: timing.apiRequestMs,
+      });
+      return fail(502, error.code, error.message, routeStartedAt, timing, traceHeaders, trace);
     }
     if (error instanceof TriploverError) {
       const failure = publicSearchFailure(error);

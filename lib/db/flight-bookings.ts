@@ -872,6 +872,7 @@ export type SupplierBookingResult = {
   bookingStatus: string | null;
   ticketingTimeLimit: string | null;
   bookingCodeRef: string;
+  supplierRefs?: PrivateBookingRefs;
   ticketCodeRef: string | null;
   ticketNumbers: string[];
   warnings: string[];

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { BOOKING_CURRENCY, isBookingCurrency, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
 
 import { passportRequiredFor } from '@/lib/airports/country';
 import { getDashboardSession } from '@/lib/dashboard/session';
@@ -204,6 +205,9 @@ export async function POST(request: NextRequest) {
       'Verify this fare again while signed in before continuing.'
     );
   }
+  if (!isBookingCurrency(reprice.currency)) {
+    return fail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
+  }
   const repricedAtMs = Date.parse(reprice.repricedAt);
   if (
     !Number.isFinite(repricedAtMs) ||
@@ -336,7 +340,7 @@ export async function POST(request: NextRequest) {
     offerSnapshot: {
       itinerary,
       fares: reprice.fares ?? [],
-      currency: reprice.currency,
+      currency: BOOKING_CURRENCY,
       pricing,
       passengerCounts,
       travelDate,

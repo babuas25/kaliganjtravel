@@ -54,18 +54,12 @@ assert.doesNotMatch(
   /update\s+public\.flight_bookings/i,
   'Queue migration must not reconcile or rewrite existing flight bookings'
 );
-assert.match(
-  worker,
-  /if \(!pnr\.lastTicketTime\)[\s\S]*?finishJob\(job\.job_id, 'deadline_missing'/,
-  'A null PNR deadline must remain retryable'
-);
-assert.match(
-  worker, /await syncPnrDetails\(/);
-assert.ok(
-  worker.indexOf('if (!pnr.lastTicketTime)') < worker.indexOf('await syncPnrDetails('),
-  'A null PNR deadline must never overwrite provisional supplier evidence'
-);
-assert.doesNotMatch(worker, /bookFlight\(/, 'PNR queue must never retry Book');
+assert.doesNotMatch(worker, /readPnr|syncPnrDetails|bookFlight\(/,
+  'Retired automatic workers must not call the supplier');
+assert.match(worker, /finishJob\(job\.job_id, 'skipped', 'STORED_REFERENCE_TICKETING'\)/);
+const currentMigration = read('supabase', 'migrations', '0163_booking_without_pnr_ticketing.sql');
+assert.match(currentMigration, /completion_reason = 'stored_reference_ticketing'/);
+assert.match(currentMigration, /create or replace function public\.enqueue_booking_pnr_refresh_job_v1\(\)[\s\S]*?begin\s+return new;/);
 assert.match(scheduler, /rollout\.pnrDeadlineRefresh[\s\S]*?processBookingPnrRefreshJob\(\)/);
 
 for (const source of [refreshRoute, cancelRoute, evidenceRead]) {
@@ -80,9 +74,9 @@ console.log(
   JSON.stringify(
     {
       checks: 'passed',
-      bsScheduleMinutes: [0, 1, 3],
-      nonBsScheduleMinutes: [2, 4, 6],
-      maxSupplierPnrReadsPerBooking: 3,
+      legacyBsScheduleMinutes: [0, 1, 3],
+      legacyNonBsScheduleMinutes: [2, 4, 6],
+      maxSupplierPnrReadsPerBooking: 0,
       earlyNonBsNullFinal: false,
       bookReplay: false,
       existingBookingBackfill: false,

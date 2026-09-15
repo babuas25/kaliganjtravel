@@ -1,5 +1,28 @@
 # Booking System
 
+## Supplier certification flow
+
+Normal API bookings follow `Search → Reprice → Book → Ticket`, including issue
+hours after a hold. References are saved with Book and reused without an
+automatic PNR fetch. Known ticketing deadlines are enforced; missing deadlines
+remain unknown and the supplier decides availability when Ticket is submitted.
+Airline confirmation, wallet ownership, duplicate-operation guards and
+uncertain-response reconciliation still apply. See the NewTicket section in
+[Supplier Integration](./09-SUPPLIER-INTEGRATION.md) for rollout and validation.
+
+The ticket page has a **Booking time limit** switch under the booking reference,
+initially OFF. Turning it ON reads the supplier once and reveals the time; OFF
+hides it without clearing the saved deadline or changing issuance rules. There
+is no page-load fetch or periodic polling. This replaces the separate Quick
+Actions **Refresh details** button. Owners, agency users and booking staff can
+use it within their normal booking scope. It calls
+`/api/pnr` and saves only the returned ticketing time and its normalized deadline.
+It does not sync booking status, PNRs, passengers, itinerary, fares, tickets,
+payments or local deadline approvals. Missing/invalid time preserves the saved
+value; a concurrent booking update rejects the stale result. This switch is
+independent of automatic booking and issuance. Verify with
+`npm run verify:booking-ticketing-time` and `npm run verify:booking-deadline-notice`.
+
 The booking system manages fare selection through supplier submission. It keeps
 booking attempts, durable supplier/manual operations, reconciliation cases, and
 customer-visible business bookings as separate records so uncertainty is owned

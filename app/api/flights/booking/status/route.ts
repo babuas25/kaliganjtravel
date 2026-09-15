@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE } from '@/lib/db/booking-read-error';
+import { unverifiedBookingMessage } from '@/lib/flights/booking-failure-message';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
     return fail(502, 'BOOKING_FAILED', 'The airline declined the booking. Search and verify the fare again.');
   }
   if (attempt.state === 'unknown') {
-    return fail(503, 'BOOKING_OUTCOME_UNKNOWN', 'Booking status: Unconfirmed. The airline has not confirmed this booking. Do not submit again; contact support.');
+    return fail(503, 'BOOKING_OUTCOME_UNKNOWN', unverifiedBookingMessage(attempt.supplier_message));
   }
 
   return NextResponse.json(

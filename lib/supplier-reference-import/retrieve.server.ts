@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { currencyForBdtContract } from '@/lib/currency';
 import { passportRequiredFor } from '@/lib/airports/country';
 import { BOOKING_CONTACT_DEFAULTS } from '@/lib/flights/booking';
 import type {
@@ -449,19 +450,13 @@ function assertSupportedFinancialState(
 }
 
 function currencyOf(raw: UnknownRecord, ticket: UnknownRecord): 'BDT' {
-  const reported = text(
+  return currencyForBdtContract(
     ticket.currency,
     ticket.currencyCode,
     raw.currency,
     raw.currencyCode,
-  ).toUpperCase();
-  if (reported && reported !== 'BDT') {
-    throw new TriploverError(
-      'protocol',
-      `Supplier booking currency ${reported} is unsupported; Supplier API Import currently requires BDT.`,
-    );
-  }
-  return 'BDT';
+    ...rows(raw.fareBreakdown).flatMap((fare) => [fare.currency, fare.currencyCode]),
+  );
 }
 
 function assertSupplierReference(

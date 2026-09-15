@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
+import { isBookingCurrency, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
 
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
+import { storedTicketReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import { getDashboardSession } from '@/lib/dashboard/session';
 import {
   readActiveBookingOperationState,
@@ -40,6 +42,9 @@ export async function GET(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (!isBookingCurrency(booking.currency)) {
+    return walletFail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
+  }
 
   let operationState;
   let openReconciliationCase;
@@ -69,8 +74,6 @@ export async function GET(request: NextRequest) {
   }
 
   const supplierControls = await getSupplierOperationalControls();
-  const supplierPnr = booking.booking_ref_number || booking.pnr;
-  const refs = booking.supplier_refs;
   const localDeadlineExpired = Boolean(
     localTimeLimit.localGrantActive &&
       localTimeLimit.localDeadlineAt &&
@@ -84,13 +87,7 @@ export async function GET(request: NextRequest) {
     operationState === 'needs_reconciliation' ||
     Boolean(openReconciliationCase);
   const operationActive = operationState !== null;
-  const supplierReferencesReady = Boolean(
-    supplierPnr &&
-      booking.booking_code_ref &&
-      refs?.uniqueTransId &&
-      refs.itemCodeRef &&
-      refs.priceCodeRef
-  );
+  const supplierReferencesReady = storedTicketReferences(booking) !== null;
   const requiredAmount =
     booking.payment_state === 'captured'
       ? 0

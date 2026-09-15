@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { usesStoredBookingReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { canRefreshBookingSupplierDetails } from '@/lib/dashboard/booking-lifecycle';
@@ -56,6 +57,14 @@ export async function POST(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (usesStoredBookingReferences(booking) &&
+      booking.status !== 'confirmed' && booking.status !== 'cancelled') {
+    return walletFail(
+      409,
+      'HELD_BOOKING_REFRESH_UNAVAILABLE',
+      'This held booking uses its saved details. Availability is checked when the ticket is issued.'
+    );
+  }
   if (booking.import_source === 'MANUAL' || booking.supplier !== 'triplover') {
     return walletFail(
       409,

@@ -1,4 +1,5 @@
 import { BOOKING_CONTACT_DEFAULTS } from "@/lib/flights/booking";
+import { currencyForBdtContract } from '@/lib/currency';
 import { passportRequiredForItinerary } from "@/lib/airports/country";
 import type {
   BookedItinerary,
@@ -627,7 +628,10 @@ function normalizeCurrentSupplierBooking(
     orderStatus: rawStatus || "Pending",
     lifecycleStatus,
     storedStatus: statuses.storedStatus,
-    currency: firstText(response.currency, offer.currency, "BDT").toUpperCase(),
+    currency: currencyForBdtContract(
+      response.currency, response.currencyCode, offer.currency, offer.currencyCode,
+      ...list(response.fares || offer.fares).flatMap((fare) => [record(fare).currency, record(fare).currencyCode]),
+    ),
     totalPrice,
     passengerCounts,
     travelDate,
@@ -739,11 +743,11 @@ export function normalizeSupplierBooking(
   const payable = record(price.totalPayable);
   const fareTotal = fares.reduce((sum, fare) => sum + fare.totalPrice, 0);
   const totalPrice = amount(payable.total) || fareTotal;
-  const currency =
-    text(payable.currency) ||
-    text(payable.curreny) ||
-    text(fareDetails[0]?.currency) ||
-    "BDT";
+  const currency = currencyForBdtContract(
+    response.currency, response.currencyCode,
+    payable.currency, payable.currencyCode, payable.curreny,
+    ...fareDetails.flatMap((fare) => [fare.currency, fare.currencyCode]),
+  );
   let airlinePnrs = Array.from(
     new Set(
       orderItems
@@ -799,7 +803,7 @@ export function normalizeSupplierBooking(
     orderStatus,
     lifecycleStatus,
     storedStatus: statuses.storedStatus,
-    currency: currency.toUpperCase(),
+    currency,
     totalPrice,
     passengerCounts,
     travelDate: itinerary.legs[0]!.departure.slice(0, 10),

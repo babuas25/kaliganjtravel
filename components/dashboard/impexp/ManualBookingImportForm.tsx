@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { airlineNameForCode } from '@/lib/airlines/catalog';
+import { BOOKING_CURRENCY } from '@/lib/currency';
 import type { ImpExpAssignableUser } from '@/lib/impexp/types';
 import type { ManualBookingImportInput } from '@/lib/impexp/manual-validation';
 import type { AirportOption } from '@/lib/airports/types';
@@ -157,7 +158,7 @@ export default function ManualBookingImportForm({ onImported }: { onImported: ()
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [bookingUrl, setBookingUrl] = useState<string | null>(null);
   const [form, setForm] = useState({
-    externalReference: '', pnr: '', airlinePnr: '', currency: 'BDT', userPayableAmount: '', supplierGrossAmount: '', supplierPayableAmount: '',
+    externalReference: '', pnr: '', airlinePnr: '', userPayableAmount: '', supplierGrossAmount: '', supplierPayableAmount: '',
     ticketingDeadlineAt: '', travelDate: '', phone: '', phoneCountryCode: '+880', customerEmail: '', email: '',
     countryCode: 'BD', cityName: 'Dhaka', issuedAt: '', supplierMessage: '', refundable: false,
   });
@@ -253,7 +254,7 @@ export default function ManualBookingImportForm({ onImported }: { onImported: ()
     }));
     const payload: ManualBookingImportInput = {
       requestId: crypto.randomUUID(), assignedToUserId, initialStatus, externalReference: form.externalReference,
-      pnr: form.pnr, airlinePnr: form.airlinePnr, currency: form.currency, userPayableAmount: canonicalMoney(form.userPayableAmount),
+      pnr: form.pnr, airlinePnr: form.airlinePnr, currency: BOOKING_CURRENCY, userPayableAmount: canonicalMoney(form.userPayableAmount),
       supplierGrossAmount: canonicalMoney(form.supplierGrossAmount), supplierPayableAmount: canonicalMoney(form.supplierPayableAmount), ticketingDeadlineAt: deadline, travelDate: form.travelDate,
       refundable: form.refundable, supplierMessage: form.supplierMessage,
       passengers: {
@@ -270,7 +271,7 @@ export default function ManualBookingImportForm({ onImported }: { onImported: ()
       const body = await response.json() as { success?: boolean; error?: string; bookingOrderUrl?: string; referenceNo?: string; walletCharged?: boolean; chargedAmount?: number; currency?: string };
       if (!response.ok || !body.success) throw new Error(body.error || 'Manual booking import failed.');
       setBookingUrl(body.bookingOrderUrl ?? null);
-      setMessage({ kind: 'success', text: `Manual booking ${body.referenceNo} was saved as ${initialStatus === 'confirmed' ? 'Confirmed' : 'On Hold'}${body.walletCharged ? ` and ${body.currency ?? form.currency} ${(Number(body.chargedAmount) / 100).toLocaleString()} was charged once.` : '. No wallet charge was made.'}` });
+      setMessage({ kind: 'success', text: `Manual booking ${body.referenceNo} was saved as ${initialStatus === 'confirmed' ? 'Confirmed' : 'On Hold'}${body.walletCharged ? ` and ${body.currency ?? BOOKING_CURRENCY} ${(Number(body.chargedAmount) / 100).toLocaleString()} was charged once.` : '. No wallet charge was made.'}` });
       await onImported();
     } catch (error) {
       setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Manual booking import failed.' });
@@ -349,13 +350,13 @@ export default function ManualBookingImportForm({ onImported }: { onImported: ()
           <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/60 p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-navy-950"><ReceiptText className="h-4 w-4 text-brand-orange" aria-hidden />Commercial details</div>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <Field label="Currency" required><Input value={form.currency} onChange={(event) => updateForm('currency', event.target.value.toUpperCase().slice(0, 3))} placeholder="e.g. BDT" maxLength={3} /></Field>
+              <Field label="Currency"><Input value={BOOKING_CURRENCY} readOnly aria-label="Currency (BDT only)" /></Field>
               <Field label="Gross amount" required><Input inputMode="decimal" value={form.supplierGrossAmount} onChange={(event) => updateMoneyForm('supplierGrossAmount', event.target.value)} placeholder="9,000.00" /></Field>
               <Field label="Supplier payable" required><Input inputMode="decimal" value={form.supplierPayableAmount} onChange={(event) => updateMoneyForm('supplierPayableAmount', event.target.value)} placeholder="8,750.00" /></Field>
               <Field label="User payable amount" required><Input inputMode="decimal" value={form.userPayableAmount} onChange={(event) => updateMoneyForm('userPayableAmount', event.target.value)} placeholder="9,500.00" /></Field>
               <Field label="Refundability" required><Select value={form.refundable ? 'refundable' : 'non-refundable'} onValueChange={(value) => updateForm('refundable', value === 'refundable')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="refundable">Refundable</SelectItem><SelectItem value="non-refundable">Non-refundable</SelectItem></SelectContent></Select></Field>
             </div>
-            <p className="mt-3 text-xs text-neutral-500">Amounts are grouped automatically. Enter <strong>42388.00</strong> or <strong>42,388.00</strong>.</p>
+            <p className="mt-3 text-xs text-neutral-500">All amounts must be in BDT. Amounts are grouped automatically. Enter <strong>42388.00</strong> or <strong>42,388.00</strong>.</p>
           </div>
         </section>
 
@@ -365,7 +366,7 @@ export default function ManualBookingImportForm({ onImported }: { onImported: ()
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-orange text-xs font-bold text-black">3</span>
               <div>
                 <h3 className="text-base font-semibold text-navy-950">Passengers and fare breakdown</h3>
-                <p className="mt-0.5 text-sm text-neutral-500">Add one card per passenger. The fare total is currently {form.currency} {totalPassengerFare.toLocaleString()}.</p>
+                <p className="mt-0.5 text-sm text-neutral-500">Add one card per passenger. The fare total is currently {BOOKING_CURRENCY} {totalPassengerFare.toLocaleString()}.</p>
               </div>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => setPassengers((items) => [...items, emptyPassenger()])} disabled={passengers.length >= 20}><Plus className="mr-1 h-4 w-4" />Add passenger</Button>

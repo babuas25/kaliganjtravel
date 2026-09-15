@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { UnsupportedCurrencyError } from '@/lib/currency';
 import { getDashboardSession } from '@/lib/dashboard/session';
 import {
   type PricingPrincipal,
@@ -117,6 +118,9 @@ export async function POST(request: NextRequest) {
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
+    if (error instanceof UnsupportedCurrencyError) {
+      return fail(502, error.code, error.message);
+    }
     if (error instanceof FlightRepriceError) {
       return fail(error.status, error.code, error.message);
     }

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { DashboardSession } from '@/lib/dashboard/session';
+import { usesStoredBookingReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import {
   LOCAL_TIME_LIMIT_EXPIRED_REQUEST_WINDOW_MINUTES,
   LOCAL_TIME_LIMIT_THRESHOLD_MINUTES,
@@ -13,6 +14,9 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 type BookingDeadlineRow = {
   id: string;
   supplier: string;
+  supplier_account: string | null;
+  import_source: string | null;
+  legacy_operational: boolean;
   status: string;
   operation_kind: string | null;
   direct_ticketing: boolean;
@@ -22,6 +26,7 @@ type BookingDeadlineRow = {
   supplier_ticketing_deadline_at: string | null;
   local_ticketing_deadline_at: string | null;
   active_local_time_limit_request_id: string | null;
+  active_superadmin_deadline_override_id: string | null;
   ticketing_deadline_at: string | null;
 };
 
@@ -92,7 +97,7 @@ export async function readBookingLocalTimeLimitContext(
     supabase
       .from('flight_bookings')
       .select(
-        'id,supplier,status,operation_kind,direct_ticketing,issued_at,airlines_pnr,supplier_ticketing_time_limit,supplier_ticketing_deadline_at,local_ticketing_deadline_at,active_local_time_limit_request_id,ticketing_deadline_at'
+        'id,supplier,supplier_account,import_source,legacy_operational,status,operation_kind,direct_ticketing,issued_at,airlines_pnr,supplier_ticketing_time_limit,supplier_ticketing_deadline_at,local_ticketing_deadline_at,active_local_time_limit_request_id,active_superadmin_deadline_override_id,ticketing_deadline_at'
       )
       .eq('id', bookingId)
       .maybeSingle(),
@@ -124,7 +129,10 @@ export async function readBookingLocalTimeLimitContext(
   const localDeadline = booking.local_ticketing_deadline_at
     ? Date.parse(booking.local_ticketing_deadline_at)
     : Number.NaN;
-  const localGrantActive = Boolean(booking.active_local_time_limit_request_id);
+  const localGrantActive = Boolean(
+    booking.active_local_time_limit_request_id ||
+    booking.active_superadmin_deadline_override_id
+  );
   const localDeadlineActive =
     localGrantActive && Number.isFinite(localDeadline) && localDeadline > now;
   const supplierNeedsLocalApproval =
@@ -140,8 +148,13 @@ export async function readBookingLocalTimeLimitContext(
     !booking.direct_ticketing &&
     !booking.issued_at &&
     nonEmptyArray(booking.airlines_pnr);
+  // Saved-reference ticketing needs no approval for a missing or still-live
+  // supplier deadline. Retain the existing recovery request for known expiry.
+  const savedReferencesCanIssue = usesStoredBookingReferences(booking) &&
+    (!Number.isFinite(supplierDeadline) || supplierDeadline > now);
   const requestRequired =
-    structurallyEligible && !localGrantActive && supplierNeedsLocalApproval;
+    structurallyEligible && !localGrantActive && supplierNeedsLocalApproval &&
+    !savedReferencesCanIssue;
   return {
     featureAvailable: true,
     requestRequired,

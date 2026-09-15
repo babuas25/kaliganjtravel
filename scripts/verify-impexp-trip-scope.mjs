@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import ts from "typescript";
+import { currencyModule } from './helpers/currency.mjs';
 
 const read = (...parts) =>
   fs.readFileSync(path.join(process.cwd(), ...parts), "utf8");
@@ -17,7 +18,7 @@ function loadTypeScript(source, requireModule) {
   }).outputText;
   const loaded = { exports: {} };
   Function("require", "module", "exports", output)(
-    requireModule,
+    (id) => id === '@/lib/currency' ? currencyModule : requireModule(id),
     loaded,
     loaded.exports,
   );
@@ -126,8 +127,7 @@ assert.equal(
   "DAC to DXB must be international",
 );
 
-const ndcDomestic = normalizer.normalizeSupplierBooking(
-  {
+const ndcPayload = {
     response: {
       bookingRefNumber: "NDC123",
       contactDetail: {},
@@ -170,15 +170,40 @@ const ndcDomestic = normalizer.normalizeSupplierBooking(
         },
       ],
     },
-  },
-  "US_BANGLA",
-  "NDC123",
-);
+  };
+const ndcDomestic = normalizer.normalizeSupplierBooking(ndcPayload, "US_BANGLA", "NDC123");
 assert.equal(
   ndcDomestic.passportRequired,
   false,
   "NDC imports must also classify DAC to CXB as domestic",
 );
+
+for (const reported of [
+  { currency: 'USD' },
+  { currency: 'BDT', currencyCode: 'EUR' },
+  { currency: 'BDT', offer: { currency: 'USD' } },
+  { currency: 'BDT', fares: [{ currency: 'USD', totalPrice: 5000 }] },
+]) {
+  const payload = currentSupplierPayload('CXB');
+  Object.assign(payload.response, reported);
+  assert.throws(() => normalizer.normalizeSupplierBooking(payload, 'US_BANGLA', 'ABC123'), currencyModule.UnsupportedCurrencyError);
+}
+for (const reported of [
+  { currency: 'USD' },
+  { currency: 'BDT', curreny: 'USD' },
+  { currency: 'BDT', currencyCode: 'EUR' },
+]) {
+  const payload = structuredClone(ndcPayload);
+  Object.assign(payload.response.orderItem[0].price.totalPayable, reported);
+  assert.throws(() => normalizer.normalizeSupplierBooking(payload, 'US_BANGLA', 'NDC123'), currencyModule.UnsupportedCurrencyError);
+}
+{
+  const payload = structuredClone(ndcPayload);
+  payload.response.orderItem[0].fareDetailList = [{ currency: 'USD', subTotal: 5000 }];
+  assert.throws(() => normalizer.normalizeSupplierBooking(payload, 'US_BANGLA', 'NDC123'), currencyModule.UnsupportedCurrencyError);
+}
+assert.equal(domestic.currency, 'BDT');
+assert.equal(ndcDomestic.currency, 'BDT');
 
 function manualPayload(to, passportRequired) {
   return {

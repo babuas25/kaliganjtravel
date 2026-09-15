@@ -1,4 +1,5 @@
 import 'server-only';
+import { isBookingCurrency, UnsupportedCurrencyError, BOOKING_CURRENCY } from '@/lib/currency';
 
 import type { DashboardSession } from '@/lib/dashboard/session';
 import type { OperationRequestIdentity } from '@/lib/booking-lifecycle/operation-request';
@@ -158,12 +159,13 @@ async function ensureAccount(
   owner: WalletOwner,
   currency = 'BDT'
 ): Promise<AccountRow | null> {
+  if (!isBookingCurrency(currency)) throw new UnsupportedCurrencyError();
   const supabase = supabaseAdmin();
   if (!supabase) throw new WalletStorageError();
   const { data, error } = await supabase.rpc('wallet_ensure_account', {
     p_owner_type: owner.ownerType,
     p_owner_key: owner.ownerKey,
-    p_currency: currency,
+    p_currency: BOOKING_CURRENCY,
   });
   if (error) {
     console.error('[wallet] ensure account failed:', error.message);

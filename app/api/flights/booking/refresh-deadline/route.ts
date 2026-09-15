@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usesStoredBookingReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
@@ -24,7 +25,8 @@ export async function POST(request: Request) {
 
   const booking = await readBookingByPublicRef(parsed.data.bookingReference, bookingScopeFor(session));
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
-  if (booking.ticketing_deadline_at) {
+  // Also terminates requests from browser tabs opened before the rollout.
+  if (usesStoredBookingReferences(booking) || booking.ticketing_deadline_at) {
     return walletOk({ ticketingDeadlineAt: booking.ticketing_deadline_at, complete: true });
   }
   if (booking.supplier !== 'triplover' || booking.import_source === 'MANUAL' ||

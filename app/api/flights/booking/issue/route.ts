@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { isBookingCurrency, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
 
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
 import { createOperationRequestIdentity } from '@/lib/booking-lifecycle/operation-request';
+import { storedTicketReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import { classifySupplierWriteFailure } from '@/lib/booking-lifecycle/supplier-uncertainty';
 import { bookingOperationSupplierWriteHooks } from '@/lib/booking-lifecycle/supplier-write-hooks';
 import { reconcilePostTicketingRace } from '@/lib/booking-lifecycle/post-ticketing-reconciliation.server';
@@ -72,6 +74,9 @@ export async function GET(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (!isBookingCurrency(booking.currency)) {
+    return walletFail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
+  }
   if (booking.import_source === 'MANUAL' || booking.supplier !== 'triplover') {
     return walletFail(
       409,
@@ -170,6 +175,9 @@ export async function POST(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (!isBookingCurrency(booking.currency)) {
+    return walletFail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
+  }
   if (booking.import_source === 'MANUAL' || booking.supplier !== 'triplover') {
     return walletFail(
       409,
@@ -205,15 +213,8 @@ export async function POST(request: NextRequest) {
   if (!canIssueBooking(session, booking)) {
     return walletFail(403, 'ISSUE_FORBIDDEN', 'You cannot issue this booking.');
   }
-  const refs = booking.supplier_refs;
-  const supplierPnr = booking.booking_ref_number || booking.pnr;
-  if (
-    !supplierPnr ||
-    !booking.booking_code_ref ||
-    !refs?.uniqueTransId ||
-    !refs.itemCodeRef ||
-    !refs.priceCodeRef
-  ) {
+  const refs = storedTicketReferences(booking);
+  if (!refs) {
     return walletFail(
       409,
       'SUPPLIER_REFERENCES_MISSING',
@@ -225,9 +226,9 @@ export async function POST(request: NextRequest) {
   const supplierInput = {
     ...refs,
     supplier: supplierAccount,
-    pnr: supplierPnr,
-    bookingRefNumber: supplierPnr,
-    bookingCodeRef: booking.booking_code_ref,
+    expectedPassengerCount: booking.passenger_counts
+      ? Object.values(booking.passenger_counts).reduce((sum, count) => sum + count, 0)
+      : undefined,
   };
   const operationRequest = createOperationRequestIdentity({
     clientRequestNonce: parsed.data.requestId,

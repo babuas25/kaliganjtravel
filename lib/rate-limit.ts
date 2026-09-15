@@ -108,6 +108,8 @@ const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
 
 export const LIMITS = {
+  /** Explicit PNR deadline reads, shared by everyone viewing one booking. */
+  refreshTicketingTime: { limit: 5, windowMs: MINUTE },
   /** Sends an email to an arbitrary address: the one outbound side effect. */
   inviteUser: { limit: 20, windowMs: HOUR },
   /** Mints an account outright. Same allowance as an invitation. */

@@ -887,12 +887,73 @@ const call = await triploverCall('Book', '/api/Book', {
 - Extracts PNR (from `pnr` or `bookingRefNumber`)
 - Detects direct-ticket response (when `ticketInfoes` is present)
 - Reads ticket numbers if direct-ticketed
-- Authoritative TTL from PNR read (Book's TTL is provisional)
+- Persists the Book deadline when supplied; absent or unparseable deadlines remain unknown
 - Returns booking references for subsequent operations
+- Preserves Book's returned item/price tokens, with submitted tokens as the fallback for omitted echoes; conflicting transaction IDs require reconciliation
+- Keeps PNR and Booking Reference separate and requires complete ticket entries for every known passenger before accepting a ticketed result
 
 **Safety**: Never retried (see retry policy)
 
+Book can answer HTTP 200 while its envelope reports a business failure, such
+as `Unable to Satisfy, Need Confirmed Flight Status.` This is not a successful
+hold. Keep the attempt uncertain with its reconciliation case and prevent
+resubmission. The checkout and status recovery endpoint show the same safe
+flight-confirmation message; they do not claim a verified booking lifecycle
+or expose arbitrary supplier error text. A fresh Reprice alone does not prove
+Book succeeded. `npm run verify:booking-read-recovery` covers this failure.
+
 ### NewTicket
+
+**Certification flow (2026-09-15)**: Normal API-created FirstTrip, TakeOff and
+Triplover bookings use `Search → Reprice → Book → NewTicket`. Issue can happen
+immediately or later using the references already stored with the booking;
+there is no automatic PNR request on page open, before issue, or in the post-Book worker.
+Opening an old browser tab cannot restart those supplier reads.
+
+**Manual deadline refresh:** turning ON the ticket page's **Booking time limit**
+switch reveals the deadline and calls
+`POST /api/flights/booking/refresh-ticketing-time`, which reads supplier `/api/pnr`
+using the saved six references. Only PNR's `lastTicketTime` is persisted into the
+supplier deadline fields; the existing deadline-authority trigger maintains the
+effective time while preserving local approvals/overrides. All other booking
+business fields, wallets, lifecycle events and reconciliation cases stay unchanged.
+The technical `updated_at` changes on a successful save. Empty or invalid times do
+not erase existing deadlines. The endpoint checks response identity, booking scope,
+per-booking rate limits and a compare-and-set timestamp. It does not invoke general
+PNR sync, ticket report enrichment, notifications or any supplier write. Normal
+Search → Reprice → Book → Ticket remains independent of this optional switch.
+It starts OFF; page loads and periodic timers do not trigger this read. Turning
+it OFF hides the time without clearing it or bypassing deadline enforcement.
+
+A known deadline still blocks late issuance. A missing deadline does not
+require a PNR lookup or local deadline approval, and no synthetic hold duration
+is assigned. NewTicket determines supplier availability at issue time. Existing
+airline-confirmation, ownership, wallet, operation-identity and reconciliation
+guards remain in force. Explicit approved local deadlines remain enforced.
+Super Admin deadline overrides use the same effective deadline authority.
+An unparseable Book deadline is retained as raw evidence without losing the
+successful booking. Direct-ticket Book responses remain already fulfilled.
+
+Imported/legacy verification, explicit staff reconciliation and cancellation
+retain their separate PNR capabilities. Ticket reports may still be read after
+issuance; an incomplete or ambiguous write response never triggers another
+automatic NewTicket call or a premature wallet release.
+
+Deploy the forward database migration with the application:
+`0163_booking_without_pnr_ticketing.sql` for the source migration history, or
+`20260915000000_booking_without_pnr_ticketing.sql` for the installed Kaliganj
+baseline. Use the path belonging to that database, not both. The installed
+baseline is immutable. The migration retires pending/running PNR refresh jobs
+without changing booking statuses or wallet balances. The application worker
+also skips old jobs while the database rollout is pending.
+
+Validation: `npm run verify:booking-without-pnr` exercises the real adapters and
+Issue route with mocked supplier responses, then rehearses the full installed
+schema and forward migrations in disposable PostgreSQL (PGlite), including
+Book reference persistence, wallet reservation, ticket capture and idempotent
+replays. Partial passenger tickets stay in reconciliation without capture or
+release. It makes no
+supplier calls, sends no notifications, and does not certify a live ticket.
 
 **Location**: `lib/triplover/ticket.ts`
 
@@ -946,7 +1007,8 @@ const call = await triploverCall('Cancel', '/api/Cancel', {
 
 **Location**: `lib/triplover/pnr.ts`
 
-**Purpose**: Read PNR details for deadline verification
+**Purpose**: Read PNR details for explicit staff/import/reconciliation workflows;
+not part of the normal Book-to-NewTicket certification flow
 
 **Request**:
 ```typescript

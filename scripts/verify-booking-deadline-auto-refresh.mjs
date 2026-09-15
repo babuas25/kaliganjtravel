@@ -32,8 +32,8 @@ assert.match(
 );
 assert.match(
   bookingPage,
-  /autoRefreshDeadline=\{row\.supplier === 'triplover' && row\.import_source !== 'MANUAL'\}/,
-  'All eligible booking detail pages should recover missing deadlines, including reopened bookings.'
+  /autoRefreshDeadline=\{false\}/,
+  'Opening the ticket page must not fetch a deadline; the user must turn on the time-limit switch.'
 );
 assert.match(
   details,
@@ -73,5 +73,5 @@ assert.doesNotMatch(autoEffect, /!allowSupplierRefresh|query\.created/,
 assert.match(actions, /automatic\s*\? '\/api\/flights\/booking\/refresh-deadline'/);
 
 console.log(
-  'Booking deadline auto-refresh verified: new bookings retry through the fast and slow PNR windows without page reloads cancelling the sequence.'
+  'Ticket pages require a user-triggered deadline read; the unused compatibility controller retains its bounded retry contract.'
 );

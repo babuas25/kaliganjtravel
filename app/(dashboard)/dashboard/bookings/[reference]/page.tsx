@@ -27,6 +27,7 @@ import {
   canExecuteApprovedBookingReconciliation,
   canProposeBookingFinancialOutcome,
   canRefreshBookingSupplierDetails,
+  canRefreshBookingTicketingTime,
   type StaffBookingLifecycle,
 } from '@/lib/dashboard/booking-lifecycle';
 import {
@@ -50,6 +51,7 @@ import {
 } from '@/lib/db/flight-bookings';
 import { readStaffBookingLifecycleTimeline } from '@/lib/db/booking-lifecycle-timeline';
 import { readBookingLocalTimeLimitContext } from '@/lib/db/booking-local-time-limit';
+import { storedTicketReferences, usesStoredBookingReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import { readBookingUserVisibilityContext } from '@/lib/db/booking-visibility';
 import { listStaffBookingLifecycle } from '@/lib/db/booking-lifecycle';
 import {
@@ -306,9 +308,15 @@ export default async function BookingDetailsPage({
         allowCancellation={row.supplier === 'triplover' && canCancelBooking(session, row)}
         allowSupplierRefresh={
           row.supplier === 'triplover' &&
+          (!usesStoredBookingReferences(row) || row.status === 'confirmed' || row.status === 'cancelled') &&
           canRefreshBookingSupplierDetails(session.role)
         }
-        autoRefreshDeadline={row.supplier === 'triplover' && row.import_source !== 'MANUAL'}
+        autoRefreshDeadline={false}
+        allowTicketingTimeRefresh={
+          row.supplier === 'triplover' && row.import_source !== 'MANUAL' &&
+          Boolean(row.supplier_account && storedTicketReferences(row)) &&
+          canRefreshBookingTicketingTime(session.role)
+        }
         allowTicketing={
           row.supplier === 'triplover' && canIssueBooking(session, row)
         }

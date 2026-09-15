@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { currencyForBdtContract } from '@/lib/currency';
 import {
   bookingSnapshotDigestFor,
   canonicalBookingSnapshot,
@@ -123,6 +124,8 @@ type RawDirection = {
 };
 
 type RawPassengerFare = {
+  currency?: unknown;
+  currencyCode?: unknown;
   basePrice?: number;
   taxes?: number;
   ait?: number;
@@ -132,6 +135,8 @@ type RawPassengerFare = {
 };
 
 type RawOffer = {
+  currency?: unknown;
+  currencyCode?: unknown;
   uniqueTransID?: string;
   uniqueTransId?: string;
   UniqueTransID?: string;
@@ -152,6 +157,8 @@ type RawOffer = {
 };
 
 type RawSearchPayload = {
+  currency?: unknown;
+  currencyCode?: unknown;
   airSearchResponses?: RawOffer[];
   airlineFilters?: {
     airlineCode?: string;
@@ -561,9 +568,6 @@ function assertPublicReferenceContract(
 
 /* ── Entry point ─────────────────────────────────────────────────────── */
 
-/** Currency is fixed BDT — the supplier returns `currency: null` on Search. */
-const CURRENCY = 'BDT';
-
 export type FlightSearchExecutionTiming = TriploverCallTiming & {
   /** The pricing-rule read that begins alongside the supplier call. */
   markupRulesMs: number;
@@ -727,6 +731,17 @@ export async function searchFlights(
 
   const payload = (call.data ?? {}) as RawSearchPayload;
   const offers = Array.isArray(payload.airSearchResponses) ? payload.airSearchResponses : [];
+  const currency = currencyForBdtContract(
+    payload.currency,
+    payload.currencyCode,
+  );
+  for (const offer of offers) {
+    currencyForBdtContract(
+      offer.currency,
+      offer.currencyCode,
+      ...Object.values(offer.passengerFares ?? {}).flatMap((fare) => [fare?.currency, fare?.currencyCode]),
+    );
+  }
 
   const supplierItineraries: SupplierItinerary[] = [];
   const supplierRefsByItineraryId = new Map<string, SupplierRefs>();
@@ -941,7 +956,7 @@ export async function searchFlights(
   return {
     result: {
       searchId: storedSearch.searchId,
-      currency: CURRENCY,
+      currency,
       itineraries,
       airlines,
       minPrice: prices.length ? Math.min(...prices) : null,

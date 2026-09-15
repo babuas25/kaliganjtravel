@@ -173,6 +173,8 @@ for (const required of [
   'Enter airport code first',
   'formatMoneyInput',
   'Amounts are grouped automatically',
+  'All amounts must be in BDT.',
+  'readOnly aria-label="Currency (BDT only)"',
   'Supplier payable',
   'Flight duration',
   'Cabin baggage',

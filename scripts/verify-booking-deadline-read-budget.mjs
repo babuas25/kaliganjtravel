@@ -41,10 +41,11 @@ const resumed = await claim(crash); assert.equal(resumed.claimed, true);
 assert.equal(await finish(crash, old.claimToken), false, 'An expired worker cannot release a new worker claim');
 assert.equal((await db.query('select attempt_count from booking_deadline_read_budgets where booking_id=$1', [crash])).rows[0].attempt_count, 2, 'Crashed requests still consume their attempt');
 await finish(crash, resumed.claimToken);
-for (const file of ['app/api/flights/booking/refresh-deadline/route.ts','lib/db/booking-pnr-refresh.ts']) {
+for (const file of ['app/api/flights/booking/refresh-deadline/route.ts']) {
  const source = fs.readFileSync(file,'utf8');
  assert.ok(source.indexOf('await claimBookingDeadlineRead(') < source.indexOf('await readPnr('));
  assert.match(source, /finally\s*\{\s*if \(claimToken\) await finishBookingDeadlineRead/);
 }
+assert.doesNotMatch(fs.readFileSync('lib/db/booking-pnr-refresh.ts', 'utf8'), /readPnr|claimBookingDeadlineRead/);
 await db.close();
 console.log('Persistent three-attempt budget, shared browser/worker gate, cached deadlines, reloads, concurrent tabs and expired claims passed.');

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { performance } from 'node:perf_hooks';
+import { currencyModule } from './helpers/currency.mjs';
 
 const require = createRequire(import.meta.url);
 const typescript = require('typescript');
@@ -371,7 +372,7 @@ function compileModule(source, fileName, localRequire) {
     {
       module,
       exports: module.exports,
-      require: localRequire,
+      require: (id) => id === '@/lib/currency' ? currencyModule : localRequire(id),
       Buffer,
       console,
       performance,
@@ -412,7 +413,7 @@ function verifiedPrepareReprice() {
  * replaced. That lets this verifier prove a rejected browser snapshot never
  * reaches the durable booking_attempts handoff.
  */
-function loadPrepareRoute({ search, createdAttempts }) {
+function loadPrepareRoute({ search, createdAttempts, preparedReprice = verifiedPrepareReprice() }) {
   const nextServer = {
     NextResponse: {
       json(body, init = {}) {
@@ -424,7 +425,6 @@ function loadPrepareRoute({ search, createdAttempts }) {
       },
     },
   };
-  const preparedReprice = verifiedPrepareReprice();
   const localRequire = (id) => {
     if (id === 'next/server') return nextServer;
     if (id === 'zod') return require('zod');
@@ -512,7 +512,9 @@ function loadRepriceModule({ search, response, calls }) {
     if (id === '@/lib/flights/types') return { fareClassLabel: () => '' };
     if (id === '@/lib/markup') {
       return {
-        priceOffer: (input) => ({
+        priceOffer: (input) => {
+          calls.pricing = (calls.pricing ?? 0) + 1;
+          return {
           totalPrice: input.supplierTotalPrice,
           basePrice: input.basePrice,
           taxes: input.taxes,
@@ -529,7 +531,8 @@ function loadRepriceModule({ search, response, calls }) {
             ruleId: null,
             basis: 'test',
           },
-        }),
+          };
+        },
         selectMarkupRules: () => [],
       };
     }
@@ -915,6 +918,19 @@ assert.equal(prepareMalformed.status, 409);
 assert.equal(prepareMalformed.body.error.errorCode, 'BOOKING_SNAPSHOT_INVALID');
 assert.equal(createdAttempts.length, 2, 'malformed public data cannot reach booking_attempts');
 
+for (const currency of ['USD', 'EUR', '', null, undefined]) {
+  const attempts = [];
+  const route = loadPrepareRoute({
+    search: prepareSearch,
+    createdAttempts: attempts,
+    preparedReprice: { ...verifiedPrepareReprice(), currency },
+  });
+  const result = await route.POST({ json: async () => preparePayload('itn-0-0', issuedPrimaryItinerary) });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error.errorCode, 'UNSUPPORTED_CURRENCY');
+  assert.equal(attempts.length, 0, 'a cached unsupported currency cannot create a booking attempt');
+}
+
 // RePrice must prove a supplied multi-direction itinerary is the selected
 // option before it writes fresh priceCodeRef state. A mismatch gets one and
 // only one supplier attempt, and must not persist a selection for another fare.
@@ -961,6 +977,33 @@ assert.equal(matchingCalls.supplier, 1);
 assert.equal(matchingCalls.persist.length, 1);
 assert.equal(matchingCalls.persist[0][1], 'itn-0-0');
 assert.equal(matchingCalls.persist[0][2].priceCodeRef, 'repriced-roundtrip');
+assert.equal(repricedRoundTrip.currency, 'BDT', 'omitted supplier currency retains the BDT contract');
+
+for (const reported of [
+  { currency: 'USD' },
+  { currency: 'BDT', currencyCode: 'EUR' },
+  { currency: 840 },
+  { currency: 'BDT', passengerFares: { ADT: { currency: 'USD' } } },
+]) {
+  const calls = { supplier: 0, persist: [] };
+  const reprice = loadRepriceModule({ search: roundTripSearch, response: { ...matchingRepriceResponse, ...reported }, calls });
+  await assert.rejects(() => reprice.repriceFlight({
+    searchId: '00000000-0000-4000-8000-000000000001', itineraryId: 'itn-0-0', principal: principal('roundtrip-owner'),
+  }), currencyModule.UnsupportedCurrencyError);
+  assert.equal(calls.supplier, 1);
+  assert.equal(calls.pricing ?? 0, 0, 'foreign fares must not receive BDT markups');
+  assert.equal(calls.persist.length, 0, 'foreign fares must not replace a verified quote');
+}
+{
+  const calls = { supplier: 0, persist: [] };
+  const reprice = loadRepriceModule({ search: roundTripSearch, response: { ...matchingRepriceResponse, currency: ' bdt ' }, calls });
+  const result = await reprice.repriceFlight({
+    searchId: '00000000-0000-4000-8000-000000000001', itineraryId: 'itn-0-0', principal: principal('roundtrip-owner'),
+  });
+  assert.equal(result.currency, 'BDT');
+  assert.equal(calls.persist[0][2].currency, 'BDT');
+  assert.equal(result.totalPrice, repricedRoundTrip.totalPrice, 'normalizing BDT does not change prices');
+}
 
 const mismatchedRepriceResponse = structuredClone(matchingRepriceResponse);
 mismatchedRepriceResponse.directions[1][0].segments[0].flightNumber = 'QR-999';
@@ -1083,6 +1126,21 @@ const mappedRoundTrip = await mapper.searchFlights(
 );
 assert.equal(mappedRoundTrip.result.itineraries.length, 1);
 assert.equal(mappedRoundTrip.result.droppedOfferCount, 1);
+assert.equal(mappedRoundTrip.result.currency, 'BDT');
+for (const reported of [
+  { currency: 'USD' },
+  { currency: 'BDT', currencyCode: 'EUR' },
+  { currency: 'BDT', airSearchResponses: [{ currency: 'USD' }] },
+  { airSearchResponses: [{ currency: 'BDT', passengerFares: { ADT: { currencyCode: 'USD' } } }] },
+]) {
+  const storedRefs = new Map();
+  const search = loadSearchModule({ response: reported, storedRefs });
+  await assert.rejects(() => search.searchFlights({
+    tripType: 'oneway', routes: [{ origin: 'DAC', destination: 'JFK', departureDate: '2026-09-10' }],
+    adults: 1, children: 0, infants: 0, childrenAges: [], cabinClass: 1, preferredCarriers: [],
+  }, 'takeoff'), currencyModule.UnsupportedCurrencyError);
+  assert.equal(storedRefs.size, 0, 'foreign search prices must not be published or cached');
+}
 const storedRoundTripRefs = mapperStoredRefs.get('refs');
 assert.equal(storedRoundTripRefs.size, 1);
 const safeRoundTripRefs = storedRoundTripRefs.get('itn-0-0');

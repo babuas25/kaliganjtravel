@@ -7,12 +7,14 @@ import {
   type SupplierWriteLifecycleHooks,
 } from '@/lib/triplover/client';
 import type { TriploverSupplier } from '@/lib/triplover/config';
+import { completeTicketNumbers } from '@/lib/triplover/ticket-payload';
 
 export type TicketIssueInput = PrivateBookingRefs & {
   supplier: TriploverSupplier;
   pnr: string;
   bookingRefNumber: string;
   bookingCodeRef: string;
+  expectedPassengerCount?: number;
 };
 
 export type TicketIssueOutcome = {
@@ -49,17 +51,8 @@ export async function issueTicket(
   };
   const pnr = raw.pnr?.trim() || input.pnr;
   const ticketCodeRef = raw.ticketCodeRef?.trim() ?? '';
-  const ticketNumbers = Array.isArray(raw.ticketInfoes)
-    ? raw.ticketInfoes.flatMap((ticket) =>
-        Array.isArray(ticket.ticketNumbers)
-          ? ticket.ticketNumbers.filter(
-              (value): value is string =>
-                typeof value === 'string' && value.trim().length > 0
-            )
-          : []
-      )
-    : [];
-  if (!ticketCodeRef || ticketNumbers.length === 0) {
+  const ticketNumbers = completeTicketNumbers(raw.ticketInfoes, input.expectedPassengerCount);
+  if (!ticketCodeRef || !ticketNumbers) {
     throw new TriploverError(
       'protocol',
       'Triplover NewTicket returned an incomplete ticket response.'

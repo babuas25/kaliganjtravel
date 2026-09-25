@@ -7,17 +7,18 @@ import {
   saveSupplierControlAction,
 } from '@/app/(dashboard)/dashboard/supplier-control/actions';
 import type { SupplierOperationalControls } from '@/lib/db/supplier-controls';
-import type { TriploverSupplier } from '@/lib/triplover/config';
+import type { FlightReadSupplier } from '@/lib/flights/supplier';
 
 type Props = {
   controls: SupplierOperationalControls;
-  supplierConfigured: Record<TriploverSupplier, boolean>;
+  supplierConfigured: Record<FlightReadSupplier, boolean>;
 };
 
-const LABEL: Record<TriploverSupplier, string> = {
+const LABEL: Record<FlightReadSupplier, string> = {
   firsttrip: 'FirstTrip',
   takeoff: 'TakeOff',
   triplover: 'Triplover',
+  shapontravels: 'Shapontravels',
 };
 
 export default function SupplierControlPanel({
@@ -25,7 +26,7 @@ export default function SupplierControlPanel({
   supplierConfigured,
 }: Props) {
   const [controls, setControls] = useState(initialControls);
-  const [activeSupplier, setActiveSupplier] = useState<TriploverSupplier>(
+  const [activeSupplier, setActiveSupplier] = useState<FlightReadSupplier>(
     initialControls.activeSupplier
   );
   const [bookingEnabled, setBookingEnabled] = useState(initialControls.bookingEnabled);
@@ -36,7 +37,7 @@ export default function SupplierControlPanel({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const availableSuppliers = (Object.keys(LABEL) as TriploverSupplier[])
+  const availableSuppliers = (Object.keys(LABEL) as FlightReadSupplier[])
     .filter((supplier) => supplierConfigured[supplier]);
   const selectedSupplierAvailable = supplierConfigured[activeSupplier];
 
@@ -45,8 +46,8 @@ export default function SupplierControlPanel({
     startTransition(async () => {
       const result = await saveSupplierControlAction({
         activeSupplier,
-        bookingEnabled,
-        ticketingEnabled,
+        bookingEnabled: activeSupplier === 'shapontravels' ? false : bookingEnabled,
+        ticketingEnabled: activeSupplier === 'shapontravels' ? false : ticketingEnabled,
         expectedVersion: controls.version,
       });
       setMessage({
@@ -102,7 +103,7 @@ export default function SupplierControlPanel({
           <legend className="text-sm font-semibold text-navy-950">
             Active supplier for new searches
           </legend>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="mt-3 grid gap-3 sm:grid-cols-4">
             {availableSuppliers.map((supplier) => (
               <label
                 key={supplier}
@@ -118,7 +119,13 @@ export default function SupplierControlPanel({
                   name="supplier"
                   value={supplier}
                   checked={activeSupplier === supplier}
-                  onChange={() => setActiveSupplier(supplier)}
+                  onChange={() => {
+                    setActiveSupplier(supplier);
+                    if (supplier === 'shapontravels') {
+                      setBookingEnabled(false);
+                      setTicketingEnabled(false);
+                    }
+                  }}
                   disabled={isPending}
                 />
                 <span className="flex items-center justify-between gap-2">
@@ -139,6 +146,12 @@ export default function SupplierControlPanel({
           ) : null}
         </fieldset>
 
+        {activeSupplier === 'shapontravels' && (
+          <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            Shapontravels is available for Search, FareRules, and Reprice. Booking and ticketing are disabled.
+          </p>
+        )}
+
         <div className="mt-6 space-y-3 rounded-xl bg-navy-50 p-4">
           <label className="flex cursor-pointer items-center justify-between gap-4">
             <span>
@@ -154,7 +167,7 @@ export default function SupplierControlPanel({
                 setBookingEnabled(enabled);
                 if (!enabled) setTicketingEnabled(false);
               }}
-              disabled={isPending || !selectedSupplierAvailable}
+              disabled={isPending || !selectedSupplierAvailable || activeSupplier === 'shapontravels'}
             />
           </label>
           <label className="flex cursor-pointer items-center justify-between gap-4">
@@ -167,7 +180,7 @@ export default function SupplierControlPanel({
               className="h-4 w-4 accent-brand-orange"
               checked={ticketingEnabled}
               onChange={(event) => setTicketingEnabled(event.target.checked)}
-              disabled={isPending || !selectedSupplierAvailable || !bookingEnabled}
+              disabled={isPending || !selectedSupplierAvailable || !bookingEnabled || activeSupplier === 'shapontravels'}
             />
           </label>
         </div>

@@ -3,10 +3,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 
 import type { FlightSearchInput } from '@/lib/flights/types';
-import {
-  isTriploverSupplier,
-  type TriploverSupplier,
-} from '@/lib/triplover/config';
+import { isFlightReadSupplier, type FlightReadSupplier } from '@/lib/flights/supplier';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
 export type FlightSearchUsageOutcome =
@@ -70,7 +67,7 @@ export type FlightSearchRouteUsage = {
 };
 
 export type FlightSearchSupplierUsage = {
-  supplier: TriploverSupplier;
+  supplier: FlightReadSupplier;
   requestCount: number;
   supplierApiHitCount: number;
   successCount: number;
@@ -149,7 +146,7 @@ export async function beginFlightSearchUsage(input: {
   actorKey: string;
   actorRole: string;
   agencyCode: string | null;
-  supplier: TriploverSupplier;
+  supplier: FlightReadSupplier;
   requestMode: 'stream' | 'json';
   search: FlightSearchInput;
 }): Promise<string | null> {
@@ -199,7 +196,7 @@ export async function beginFlightSearchUsage(input: {
 /** Reserves both the supplier and signed-in user's Dhaka-calendar-day budget. */
 export async function claimFlightSearchSupplierHit(input: {
   eventId: string | null;
-  supplier: TriploverSupplier;
+  supplier: FlightReadSupplier;
   userId: string | null;
 }): Promise<FlightSearchUsageClaim> {
   if (!input.eventId) {
@@ -367,7 +364,7 @@ export async function readFlightSearchUsageReport(input: {
   const suppliers = ((suppliersResult.data ?? []) as Record<string, unknown>[])
     .flatMap((row): FlightSearchSupplierUsage[] => {
       const supplier = text(row.supplier);
-      if (!isTriploverSupplier(supplier)) return [];
+      if (!isFlightReadSupplier(supplier)) return [];
       return [{
         supplier,
         requestCount: integer(row.request_count),
@@ -385,7 +382,7 @@ export async function readFlightSearchUsageReport(input: {
 }
 
 export async function saveFlightSearchSupplierLimit(input: {
-  supplier: TriploverSupplier;
+  supplier: FlightReadSupplier;
   dailyLimit: number | null;
   expectedVersion: number;
   actorUserId: string;

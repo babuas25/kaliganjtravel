@@ -21,6 +21,7 @@ import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import { TriploverError } from '@/lib/triplover/client';
 import { UnsupportedCurrencyError } from '@/lib/currency';
 import { isTriploverConfigured } from '@/lib/triplover/config';
+import { isShapontravelsConfigured, ShapontravelsReadError } from '@/lib/shapontravels/client';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { recordFlightSearch } from '@/lib/db/flight-search-history';
 import {
@@ -33,6 +34,10 @@ import {
   searchFlights,
   type FlightSearchExecutionTiming,
 } from '@/lib/triplover/search';
+
+function supplierConfigured(supplier: 'firsttrip' | 'takeoff' | 'triplover' | 'shapontravels'): boolean {
+  return supplier === 'shapontravels' ? isShapontravelsConfigured() : isTriploverConfigured(supplier);
+}
 
 /**
  * Flight search.
@@ -671,10 +676,10 @@ function streamedSearch(request: NextRequest): Response {
             name: 'supplier_control_complete',
             details: {
               supplier: supplierControls.activeSupplier,
-              configured: isTriploverConfigured(supplierControls.activeSupplier),
+              configured: supplierConfigured(supplierControls.activeSupplier),
             },
           });
-          if (!isTriploverConfigured(supplierControls.activeSupplier)) {
+          if (!supplierConfigured(supplierControls.activeSupplier)) {
             await streamFailure(
               503,
               'SEARCH_UNCONFIGURED',
@@ -833,6 +838,11 @@ function streamedSearch(request: NextRequest): Response {
             trace
           );
         } catch (error) {
+          if (error instanceof ShapontravelsReadError) {
+            console.error('[shapontravels] Search failed:', error.code, error.status, error.requestId);
+            await streamFailure(error.code === 'READ_NETWORK' ? 504 : 502, 'SEARCH_FAILED', 'The supplier could not complete this search. Please try again.');
+            return;
+          }
           if (error instanceof UnsupportedCurrencyError) {
             await streamFailure(502, error.code, error.message);
             return;
@@ -902,10 +912,10 @@ export async function POST(request: NextRequest) {
     name: 'supplier_control_complete',
     details: {
       supplier: supplierControls.activeSupplier,
-      configured: isTriploverConfigured(supplierControls.activeSupplier),
+      configured: supplierConfigured(supplierControls.activeSupplier),
     },
   });
-  if (!isTriploverConfigured(supplierControls.activeSupplier)) {
+  if (!supplierConfigured(supplierControls.activeSupplier)) {
     return fail(
       503,
       'SEARCH_UNCONFIGURED',
@@ -1095,6 +1105,12 @@ export async function POST(request: NextRequest) {
       trace
     );
   } catch (error) {
+    if (error instanceof ShapontravelsReadError) {
+      console.error('[shapontravels] Search failed:', error.code, error.status, error.requestId);
+      const status = error.code === 'READ_NETWORK' ? 504 : 502;
+      await finishFlightSearchUsage({ eventId: usageEventId, outcome: 'failed', httpStatus: status, errorCode: 'SEARCH_FAILED', totalMs: performance.now() - routeStartedAt, supplierMs: timing.apiRequestMs });
+      return fail(status, 'SEARCH_FAILED', 'The supplier could not complete this search. Please try again.', routeStartedAt, timing, traceHeaders, trace);
+    }
     if (error instanceof SearchReferenceStoreError) {
       const failure = publicSearchReferenceFailure(error);
       logSearchReferenceFailure(error);

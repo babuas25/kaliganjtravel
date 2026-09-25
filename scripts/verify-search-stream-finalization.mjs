@@ -27,6 +27,7 @@ function harness({fail=false}={}) {
   '@/lib/rate-limit':{checkActionLimit:async()=>({ok:true}),rateLimitMessage:()=> 'Wait'},
   '@/lib/triplover/client':{TriploverError},
   '@/lib/triplover/config':{isTriploverConfigured:()=>true},
+  '@/lib/shapontravels/client':{isShapontravelsConfigured:()=>true,ShapontravelsReadError:class extends Error{}},
   '@/lib/db/supplier-controls':{getSupplierOperationalControls:async()=>({activeSupplier:'triplover'})},
   '@/lib/db/flight-search-history':{recordFlightSearch:async()=>{}},
   '@/lib/db/flight-search-usage':{

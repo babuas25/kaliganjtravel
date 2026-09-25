@@ -20,10 +20,7 @@ import type {
   SearchRoute,
 } from '@/lib/flights/types';
 import type { PricingSnapshot } from '@/lib/markup';
-import {
-  isTriploverSupplier,
-  type TriploverSupplier,
-} from '@/lib/triplover/config';
+import { isFlightReadSupplier, type FlightReadSupplier } from '@/lib/flights/supplier';
 
 /**
  * Shared Redis authority for the short-lived supplier reference graph.
@@ -136,7 +133,7 @@ export type StoredSearch = {
   /** Redis accepted this quote graph before it was exposed. */
   durableConfirmed: true;
   /** Credential account fixed when the supplier Search request was sent. */
-  supplierAccount: TriploverSupplier;
+  supplierAccount: FlightReadSupplier;
   uniqueTransId: string;
   refsByItineraryId: Map<string, ItineraryRefs>;
   expiresAt: number;
@@ -148,7 +145,7 @@ type SerializedRefs = Record<string, ItineraryRefs>;
 
 type SearchCandidate = {
   searchId: string;
-  supplierAccount: TriploverSupplier;
+  supplierAccount: FlightReadSupplier;
   uniqueTransId: string;
   itineraryRefs: SerializedRefs;
   expiresAt: number;
@@ -212,7 +209,7 @@ type RedisQuotePayload = {
   /** searchId */
   i: string;
   /** supplierAccount */
-  a: TriploverSupplier;
+  a: FlightReadSupplier;
   /** uniqueTransId */
   u: string;
   /** immutable absolute expiry, checked by the application */
@@ -289,7 +286,7 @@ export type RedisFlightQuoteStore = {
   storeSearch(
     uniqueTransId: string,
     refsByItineraryId: Map<string, ItineraryRefs>,
-    supplierAccount: TriploverSupplier,
+    supplierAccount: FlightReadSupplier,
     options?: { trace?: FlightSearchTraceObserver; searchId?: string }
   ): Promise<StoredSearchWrite>;
   readSearch(searchId: string, options?: SearchReadOptions): Promise<StoredSearch | null>;
@@ -1145,7 +1142,7 @@ function validateSearchCandidate(candidate: SearchCandidate, currentTime: number
       'Search returned no supplier transaction reference.'
     );
   }
-  if (!isTriploverSupplier(candidate.supplierAccount)) {
+  if (!isFlightReadSupplier(candidate.supplierAccount)) {
     throw new SearchReferenceStoreError(
       'integrity',
       'Search returned an invalid supplier account.'
@@ -1188,7 +1185,7 @@ function hydrateQuote(payload: unknown, now: number): StoredSearch | null {
     schemaVersion !== QUOTE_SCHEMA_VERSION ||
     !positiveInteger(quoteVersion) ||
     !nonEmptyText(searchId) ||
-    !isTriploverSupplier(supplierAccount) ||
+    !isFlightReadSupplier(supplierAccount) ||
     !nonEmptyText(uniqueTransId) ||
     typeof expiresAt !== 'number' ||
     !Number.isFinite(expiresAt) ||
@@ -1199,7 +1196,7 @@ function hydrateQuote(payload: unknown, now: number): StoredSearch | null {
   }
   return {
     durableConfirmed: true,
-    supplierAccount: supplierAccount.trim().toLowerCase() as TriploverSupplier,
+    supplierAccount: supplierAccount.trim().toLowerCase() as FlightReadSupplier,
     uniqueTransId,
     refsByItineraryId,
     expiresAt,
@@ -1751,7 +1748,7 @@ function runtimeStore(): RedisFlightQuoteStore {
 export async function storeSearch(
   uniqueTransId: string,
   refsByItineraryId: Map<string, ItineraryRefs>,
-  supplierAccount: TriploverSupplier,
+  supplierAccount: FlightReadSupplier,
   options: { trace?: FlightSearchTraceObserver } = {}
 ): Promise<StoredSearchWrite> {
   return runtimeStore().storeSearch(

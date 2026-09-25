@@ -4,12 +4,15 @@ import { z } from 'zod';
 import { UnsupportedCurrencyError } from '@/lib/currency';
 import { getDashboardSession } from '@/lib/dashboard/session';
 import {
+  pricingPrincipalForSession,
   type PricingPrincipal,
 } from '@/lib/flights/pricing-principal';
+import { readSearch } from '@/lib/flights/search-cache';
 import { resolveBookingActorContext } from '@/lib/flights/staff-booking.server';
 import { requestActorKey } from '@/lib/http/actor-key';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import { TriploverError } from '@/lib/triplover/client';
+import { ShapontravelsReadError } from '@/lib/shapontravels/client';
 import {
   FlightRepriceError,
   repriceFlight,
@@ -70,6 +73,17 @@ export async function POST(request: NextRequest) {
   }
 
   const resolved = await pricingPrincipal(parsed.data.assignedUserId);
+  if (!resolved.valid && !parsed.data.assignedUserId) {
+    try {
+      const search = await readSearch(parsed.data.searchId, { consistency: 'durable' });
+      if (search?.supplierAccount === 'shapontravels') {
+        resolved.principal = pricingPrincipalForSession(await getDashboardSession());
+        resolved.valid = true;
+      }
+    } catch {
+      // The normal Reprice read below reports an unavailable reference.
+    }
+  }
   if (!resolved.valid) {
     return fail(
       403,
@@ -118,6 +132,10 @@ export async function POST(request: NextRequest) {
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
+    if (error instanceof ShapontravelsReadError) {
+      console.error('[shapontravels] Reprice failed:', error.code, error.status, error.requestId);
+      return fail(error.code === 'READ_NETWORK' ? 504 : 502, 'REPRICE_FAILED', 'The airline could not verify this fare. Please search again.');
+    }
     if (error instanceof UnsupportedCurrencyError) {
       return fail(502, error.code, error.message);
     }

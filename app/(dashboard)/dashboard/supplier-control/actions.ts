@@ -11,8 +11,9 @@ import { recordSecurityAuditEvent } from '@/lib/db/security';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import {
   isTriploverConfigured,
-  isTriploverSupplier,
 } from '@/lib/triplover/config';
+import { isFlightReadSupplier } from '@/lib/flights/supplier';
+import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
 
 export type SupplierControlActionResult = {
   ok: boolean;
@@ -30,8 +31,8 @@ export async function saveSupplierControlAction(input: {
   if (session?.role !== 'superadmin') {
     return { ok: false, message: 'Only a Super Admin can change supplier controls.' };
   }
-  if (!isTriploverSupplier(input.activeSupplier)) {
-    return { ok: false, message: 'Choose FirstTrip, TakeOff, or Triplover.' };
+  if (!isFlightReadSupplier(input.activeSupplier)) {
+    return { ok: false, message: 'Choose a supported supplier.' };
   }
   if (
     typeof input.bookingEnabled !== 'boolean' ||
@@ -47,11 +48,15 @@ export async function saveSupplierControlAction(input: {
       message: 'Ticketing cannot be enabled while booking is disabled.',
     };
   }
-  if (!isTriploverConfigured(input.activeSupplier)) {
+  if (input.activeSupplier === 'shapontravels' && (input.bookingEnabled || input.ticketingEnabled)) {
+    return { ok: false, message: 'Shapontravels booking and ticketing are not available yet.' };
+  }
+  if (input.activeSupplier === 'shapontravels' ? !isShapontravelsConfigured() : !isTriploverConfigured(input.activeSupplier)) {
     const supplierLabel = {
       firsttrip: 'FirstTrip',
       takeoff: 'TakeOff',
       triplover: 'Triplover',
+      shapontravels: 'Shapontravels',
     }[input.activeSupplier];
     return {
       ok: false,

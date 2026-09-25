@@ -13,6 +13,8 @@
     "verify:hosted-database": "node scripts/verify-hosted-database.mjs",
     "verify:migration-order": "node scripts/verify-migration-order.mjs",
     "verify:triplover-login-resilience": "node scripts/verify-triplover-login-resilience.mjs",
+    "verify:shapontravels-read-client": "node scripts/verify-shapontravels-read-client.mjs",
+    "verify:shapontravels-pricing": "node scripts/verify-shapontravels-pricing.mjs",
     "verify:flight-search-reference-safety": "node scripts/verify-flight-search-reference-safety.mjs",
     "verify:search-stream-finalization": "node scripts/verify-search-stream-finalization.mjs",
     "verify:booking-step3": "node scripts/verify-booking-step3.mjs",

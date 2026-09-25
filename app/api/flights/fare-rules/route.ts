@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import { requestActorKey } from '@/lib/http/actor-key';
 import { TriploverError } from '@/lib/triplover/client';
+import { ShapontravelsReadError } from '@/lib/shapontravels/client';
 import {
   FlightFareRulesError,
   getFlightFareRules,
@@ -72,6 +73,10 @@ export async function POST(request: NextRequest) {
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
+    if (error instanceof ShapontravelsReadError) {
+      console.error('[shapontravels] FareRules failed:', error.code, error.status, error.requestId);
+      return fail(error.code === 'READ_NETWORK' ? 504 : 502, 'FARE_RULES_FAILED', 'The airline policies are temporarily unavailable. Please try again.');
+    }
     if (error instanceof FlightFareRulesError) {
       return fail(error.status, error.code, error.message);
     }

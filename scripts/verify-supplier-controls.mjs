@@ -108,7 +108,7 @@ assert.match(
 
 assert.match(
   searchRoute,
-  /getSupplierOperationalControls\(\)[\s\S]*isTriploverConfigured\(supplierControls\.activeSupplier\)[\s\S]*searchFlights\([\s\S]*supplierControls\.activeSupplier/,
+  /getSupplierOperationalControls\(\)[\s\S]*supplierConfigured\(supplierControls\.activeSupplier\)[\s\S]*searchFlights\([\s\S]*supplierControls\.activeSupplier/,
   'only a new Search may read the active database supplier'
 );
 assert.match(
@@ -133,7 +133,7 @@ assert.match(
 );
 assert.match(
   cache,
-  /supplierAccount: supplierAccount\.trim\(\)\.toLowerCase\(\) as TriploverSupplier/,
+  /supplierAccount: supplierAccount\.trim\(\)\.toLowerCase\(\) as FlightReadSupplier/,
   'the authoritative Redis read must hydrate its supplier account'
 );
 assert.doesNotMatch(
@@ -155,7 +155,7 @@ assert.match(
 );
 assert.match(
   fareRules,
-  /triploverCall\('FareRules',[\s\S]*?\{ supplier: search\.supplierAccount \}/,
+  /triploverCall\('FareRules',[\s\S]*?supplier: search\.supplierAccount/,
   'post-search FareRules must use the supplier account stored in its search reference'
 );
 assert.match(

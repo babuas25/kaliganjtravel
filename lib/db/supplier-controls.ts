@@ -4,13 +4,14 @@ import {
   isTriploverSupplier,
   type TriploverSupplier,
 } from '@/lib/triplover/config';
+import { isFlightReadSupplier, type FlightReadSupplier } from '@/lib/flights/supplier';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
 const TABLE = 'supplier_operational_settings';
 const SETTINGS_ID = 'triplover';
 
 export type SupplierOperationalControls = {
-  activeSupplier: TriploverSupplier;
+  activeSupplier: FlightReadSupplier;
   bookingEnabled: boolean;
   ticketingEnabled: boolean;
   /** Zero means the pre-migration environment fallback is still in use. */
@@ -83,7 +84,7 @@ function validRow(value: unknown): value is SupplierOperationalControlsRow {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const row = value as UnknownSupplierOperationalControlsRow;
   return (
-    isTriploverSupplier(row.active_supplier) &&
+    isFlightReadSupplier(row.active_supplier) &&
     typeof row.booking_enabled === 'boolean' &&
     typeof row.ticketing_enabled === 'boolean' &&
     typeof row.version === 'number' &&
@@ -94,9 +95,9 @@ function validRow(value: unknown): value is SupplierOperationalControlsRow {
 
 function controlsFromRow(row: SupplierOperationalControlsRow): SupplierOperationalControls {
   return {
-    activeSupplier: row.active_supplier.trim().toLowerCase() as TriploverSupplier,
-    bookingEnabled: row.booking_enabled,
-    ticketingEnabled: row.ticketing_enabled,
+    activeSupplier: row.active_supplier.trim().toLowerCase() as FlightReadSupplier,
+    bookingEnabled: row.active_supplier === 'shapontravels' ? false : row.booking_enabled,
+    ticketingEnabled: row.active_supplier === 'shapontravels' ? false : row.ticketing_enabled,
     version: row.version,
     source: 'database',
   };
@@ -150,7 +151,7 @@ function supplierControlsSaveError(error: { code?: string | null }): string {
  * person's choice with a stale form.
  */
 export async function saveSupplierOperationalControls(input: {
-  activeSupplier: TriploverSupplier;
+  activeSupplier: FlightReadSupplier;
   bookingEnabled: boolean;
   ticketingEnabled: boolean;
   expectedVersion: number;
@@ -164,6 +165,9 @@ export async function saveSupplierOperationalControls(input: {
       ok: false,
       message: 'Ticketing cannot be enabled while booking is disabled.',
     };
+  }
+  if (input.activeSupplier === 'shapontravels' && (input.bookingEnabled || input.ticketingEnabled)) {
+    return { ok: false, message: 'Shapontravels currently supports Search, FareRules, and Reprice only.' };
   }
 
   const now = new Date().toISOString();

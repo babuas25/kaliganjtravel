@@ -194,6 +194,8 @@ export type FlightSearchResult = {
   partial: boolean;
   /** Offers we refused to render because their shape was unmappable. */
   droppedOfferCount: number;
+  /** False while this supplier has no booking adapter. */
+  bookingAvailable?: boolean;
 };
 
 /** Public, repriced selling fare. Supplier references remain server-side. */
@@ -219,6 +221,7 @@ export type FlightRepriceResult = {
   sellingPriceChanged: boolean;
   requiresConfirmation: boolean;
   repricedAt: string;
+  bookingAvailable?: boolean;
 };
 
 /** One supplier-authored section from Triplover FareRules. */

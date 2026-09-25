@@ -10,7 +10,7 @@ import {
 } from '@/lib/db/flight-search-usage';
 import { recordSecurityAuditEvent } from '@/lib/db/security';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
-import { isTriploverSupplier } from '@/lib/triplover/config';
+import { isFlightReadSupplier } from '@/lib/flights/supplier';
 
 export type SearchControlActionResult = { ok: boolean; message: string };
 
@@ -47,7 +47,7 @@ export async function saveSupplierSearchLimitAction(input: {
     return { ok: false, message: access.denied ?? 'Too many control changes. Try again later.' };
   }
   const parsedLimit = limit(input.dailyLimit, 0);
-  if (!isTriploverSupplier(input.supplier) || parsedLimit === undefined ||
+  if (!isFlightReadSupplier(input.supplier) || parsedLimit === undefined ||
       !Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
     return { ok: false, message: 'Check the supplier daily limit.' };
   }

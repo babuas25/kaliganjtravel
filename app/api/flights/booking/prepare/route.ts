@@ -167,6 +167,9 @@ export async function POST(request: NextRequest) {
     }
     throw error;
   }
+  if (search?.supplierAccount === 'shapontravels') {
+    return fail(409, 'SUPPLIER_BOOKING_UNAVAILABLE', 'Booking is not yet available for this supplier.');
+  }
   const refs = search?.refsByItineraryId.get(parsed.data.itineraryId);
   const principal = actorContext.principal;
   let reprice: Awaited<ReturnType<typeof readRepricedSelection>> = null;

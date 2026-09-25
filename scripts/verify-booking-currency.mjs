@@ -62,6 +62,7 @@ const common = {
 
 const repriceRoute = load('app/api/flights/reprice/route.ts', {
   ...common,
+  '@/lib/shapontravels/client': { ShapontravelsReadError: class extends Error {} },
   '@/lib/flights/staff-booking.server': { resolveBookingActorContext: async () => ({ principal: { userId: session.clerkId, audience: 'b2c', agencyCode: null } }) },
   '@/lib/triplover/reprice': { repriceFlight: async () => { throw new UnsupportedCurrencyError(); } },
 });

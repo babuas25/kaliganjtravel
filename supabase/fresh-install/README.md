@@ -4,6 +4,16 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Shapontravels read-only supplier, 2026-09-26:** applied
+`20260926000000_shapontravels_read_supplier.sql` to the linked Kaliganj
+database after a dry run showed it as the sole pending migration. Post-apply
+`migration list` matches local and remote history, and a second dry run is
+up to date. A service-role read confirmed the new supplier limit row with no
+daily cap; the active supplier remained `triplover`, with booking and ticketing
+settings unchanged. The migration enables Search selection and usage accounting
+only; it does not enable Shapontravels booking or ticketing. Application rollout
+and Super Admin selection are separate steps.
+
 **Saved-reference ticketing, 2026-09-15:** applied
 `20260915000000_booking_without_pnr_ticketing.sql` to the linked Kaliganj
 database. The application had already adopted the new flow while the database

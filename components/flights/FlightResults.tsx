@@ -1032,6 +1032,7 @@ export default function FlightResults({
                   itinerary={itinerary}
                   currency={result.currency}
                   searchId={result.searchId}
+                  bookingAvailable={result.bookingAvailable !== false}
                   showSendItinerary={canSendItinerary}
                   airportCities={airportCities}
                   showAuditFares={showAuditFares}

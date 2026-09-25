@@ -13,18 +13,20 @@ const cachePath = 'lib/flights/search-cache.ts';
 const searchPath = 'lib/triplover/search.ts';
 const upsellsPath = 'lib/flights/upsells.ts';
 const repricePath = 'lib/triplover/reprice.ts';
+const shaponPricingPath = 'lib/shapontravels/pricing.ts';
 const preparePath = 'app/api/flights/booking/prepare/route.ts';
 const bookPath = 'app/api/flights/booking/route.ts';
 const firstTripPath = 'lib/triplover/client.ts';
 const envPath = '.env.example';
 
-const [cacheSource, searchSource, upsellsSource, repriceSource, prepareSource, bookSource, clientSource, envSource] =
+const [cacheSource, searchSource, upsellsSource, repriceSource, shaponPricingSource, prepareSource, bookSource, clientSource, envSource] =
   await Promise.all(
     [
       cachePath,
       searchPath,
       upsellsPath,
       repricePath,
+      shaponPricingPath,
       preparePath,
       bookPath,
       firstTripPath,
@@ -53,10 +55,10 @@ function loadQuoteStore() {
         },
       };
     }
-    if (id === '@/lib/triplover/config') {
+    if (id === '@/lib/flights/supplier') {
       return {
-        isTriploverSupplier(value) {
-          return value === 'takeoff' || value === 'firsttrip';
+        isFlightReadSupplier(value) {
+          return value === 'takeoff' || value === 'firsttrip' || value === 'triplover' || value === 'shapontravels';
         },
       };
     }
@@ -106,6 +108,9 @@ function loadUpsellModule() {
 }
 
 const { groupUpsellOptions } = loadUpsellModule();
+const { shapontravelsPricedOffer } = compileModule(shaponPricingSource, shaponPricingPath, (id) => {
+  throw new Error(`Unexpected Shapon pricing import in verifier: ${id}`);
+});
 
 class FakeRedis {
   constructor(clock) {
@@ -545,6 +550,14 @@ function loadRepriceModule({ search, response, calls }) {
         },
       };
     }
+    if (id === '@/lib/shapontravels/client') return {
+      ShapontravelsReadError: class extends Error {},
+      shapontravelsRead: async () => {
+        calls.shapon = (calls.shapon ?? 0) + 1;
+        return { item1: response };
+      },
+    };
+    if (id === '@/lib/shapontravels/pricing') return { shapontravelsPricedOffer };
     throw new Error(`Unexpected RePrice import in verifier: ${id}`);
   };
   return compileModule(repriceSource, repricePath, localRequire);
@@ -616,6 +629,8 @@ function loadSearchModule({
         }),
       };
     }
+    if (id === '@/lib/shapontravels/client') return { shapontravelsRead: async () => { throw new Error('Unexpected Shapontravels call'); } };
+    if (id === '@/lib/shapontravels/pricing') return { shapontravelsPricedOffer: () => null };
     throw new Error(`Unexpected Search import in verifier: ${id}`);
   };
   return compileModule(searchSource, searchPath, localRequire);
@@ -1025,6 +1040,52 @@ await assert.rejects(
 assert.equal(mismatchCalls.supplier, 1, 'a mismatch does not replay supplier RePrice');
 assert.equal(mismatchCalls.persist.length, 0, 'a mismatch cannot overwrite Redis selection state');
 
+// The read-only provider must use its own Reprice transport and payable price,
+// without creating a booking-capable Redis selection.
+const shaponSearch = {
+  ...roundTripSearch,
+  supplierAccount: 'shapontravels',
+  refsByItineraryId: new Map([['itn-0-0', {
+    ...roundTripRefs,
+    pricing: { sellingPrice: 5084.36, supplierTotalPrice: 5084.36 },
+  }]]),
+};
+const shaponResponse = {
+  ...matchingRepriceResponse,
+  currency: 'BDT',
+  totalPrice: 5349,
+  fareBreakdown: {
+    currency: 'BDT', gross: '5349.00', payable: '5084.36',
+    taxes: '1021.00', ait: '15.00',
+    passengers: { adt: { count: 1, payable: '5084.36', taxes: '1021.00', ait: '15.00' } },
+  },
+};
+const shaponCalls = { supplier: 0, persist: [] };
+const shaponReprice = loadRepriceModule({ search: shaponSearch, response: shaponResponse, calls: shaponCalls });
+const shaponResult = await shaponReprice.repriceFlight({
+  searchId: '00000000-0000-4000-8000-000000000001',
+  itineraryId: 'itn-0-0',
+  principal: principal('shapon-reader'),
+});
+assert.equal(shaponResult.totalPrice, 5084.36);
+assert.equal(shaponResult.bookingAvailable, false);
+assert.equal(shaponCalls.shapon, 1);
+assert.equal(shaponCalls.supplier, 0);
+assert.equal(shaponCalls.persist.length, 0);
+const shaponMismatch = structuredClone(shaponResponse);
+shaponMismatch.directions[1][0].segments[0].flightNumber = 'QR-999';
+const shaponMismatchCalls = { supplier: 0, persist: [] };
+await assert.rejects(
+  () => loadRepriceModule({ search: shaponSearch, response: shaponMismatch, calls: shaponMismatchCalls })
+    .repriceFlight({
+      searchId: '00000000-0000-4000-8000-000000000001',
+      itineraryId: 'itn-0-0',
+      principal: principal('shapon-reader'),
+    }),
+  (error) => error?.code === 'SELECTION_MISMATCH'
+);
+assert.equal(shaponMismatchCalls.persist.length, 0);
+
 // An invalid alternative in a round trip is independent of the valid selected
 // combination. The mapper must emit and persist the safe one, drop the bad
 // one, and preserve its ordered outbound/inbound reference vector.
@@ -1338,6 +1399,25 @@ for (const option of groupedOptions) {
   assert.equal(prepared.status, 200, `Prepare accepts grouped option ${option.id}`);
 }
 assert.equal(groupedPrepareAttempts.length, 3);
+const shaponPrepareAttempts = [];
+const shaponPrepareRoute = loadPrepareRoute({
+  search: {
+    supplierAccount: 'shapontravels',
+    expiresAt: Date.now() + 60_000,
+    refsByItineraryId: groupedRefsById,
+  },
+  createdAttempts: shaponPrepareAttempts,
+});
+const shaponPrepare = await shaponPrepareRoute.POST({
+  json: async () => preparePayload(groupedOptions[0].id, {
+    carrierCode: groupedOptions[0].carrierCode,
+    carrierName: groupedOptions[0].carrierName,
+    refundable: groupedOptions[0].refundable,
+    legs: groupedOptions[0].legs,
+  }),
+});
+assert.equal(shaponPrepare.status, 409, 'Shapontravels must never create a booking attempt');
+assert.equal(shaponPrepareAttempts.length, 0);
 assert.deepEqual(
   groupedPrepareAttempts.map(
     (attempt) => attempt.offerSnapshot.itinerary.legs[0].segments[0].bookingClass

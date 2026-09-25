@@ -24,6 +24,8 @@ import {
   type SupplierFarePricing,
 } from '@/lib/markup';
 import { TriploverError, triploverCall } from '@/lib/triplover/client';
+import { shapontravelsRead, ShapontravelsReadError } from '@/lib/shapontravels/client';
+import { shapontravelsPricedOffer, type ShapontravelsFareBreakdown } from '@/lib/shapontravels/pricing';
 
 type RawPassengerFare = {
   currency?: unknown;
@@ -51,6 +53,7 @@ type RawDirection = {
 };
 
 type RawReprice = {
+  fareBreakdown?: ShapontravelsFareBreakdown;
   isPriceChanged?: boolean;
   /** Same shape as Search. Populated inconsistently, so read defensively. */
   directions?: unknown;
@@ -328,6 +331,51 @@ export async function repriceFlight({
       409,
       'This supplier fare cannot be revalidated safely. Choose another option or search again.'
     );
+  }
+
+  if (search.supplierAccount === 'shapontravels') {
+    const responseEnvelope = await shapontravelsRead('Reprice', {
+      uniqueTransID: search.uniqueTransId,
+      itemCodeRef: refs.itemCodeRef,
+      segmentCodeRefs: refs.segmentCodeRefs,
+      taxRedemptions: [],
+      commissionOnTaxes: [],
+      brandedFareRefs: '',
+    }) as { item1?: RawReprice };
+    const response = responseEnvelope?.item1;
+    if (!response || response.currency !== 'BDT' || !response.priceCodeRef) {
+      throw new ShapontravelsReadError('INVALID_REPRICE_RESPONSE');
+    }
+    const priced = shapontravelsPricedOffer(response.fareBreakdown, audience);
+    if (!priced) throw new ShapontravelsReadError('INVALID_REPRICE_PRICE');
+    if (!Array.isArray(response.directions) || !repriceMatchesSelectedItinerary(response, refs.selection)) {
+      throw new FlightRepriceError(
+        'SELECTION_MISMATCH', 409,
+        'The airline could not confirm the selected flight. Choose another option or search again.'
+      );
+    }
+    const previousTotalPrice = refs.pricing.sellingPrice;
+    const priceDifferenceMinor = Math.round((priced.totalPrice - previousTotalPrice) * 100);
+    const supplierPriceChanged = response.isPriceChanged === true || priceDifferenceMinor !== 0;
+    return {
+      itineraryId,
+      currency: 'BDT',
+      previousTotalPrice,
+      totalPrice: priced.totalPrice,
+      priceDifference: priceDifferenceMinor / 100,
+      basePrice: priced.basePrice,
+      taxes: priced.taxes,
+      ait: priced.ait,
+      serviceMargin: 0,
+      fares: priced.fares,
+      bookable: response.bookable !== false,
+      fareClass: liveFareClass(response),
+      supplierPriceChanged,
+      sellingPriceChanged: priceDifferenceMinor !== 0,
+      requiresConfirmation: false,
+      repricedAt: new Date().toISOString(),
+      bookingAvailable: false,
+    };
   }
 
   // Capture the Redis CAS revision before the one supplier RePrice call. A

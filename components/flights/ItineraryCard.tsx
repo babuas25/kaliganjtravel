@@ -475,6 +475,7 @@ export default function ItineraryCard({
   itinerary,
   currency,
   searchId,
+  bookingAvailable,
   showSendItinerary,
   airportCities,
   showAuditFares,
@@ -485,6 +486,7 @@ export default function ItineraryCard({
   itinerary: FlightItinerary;
   currency: string;
   searchId: string;
+  bookingAvailable: boolean;
   showSendItinerary: boolean;
   airportCities: Record<string, string>;
   showAuditFares: boolean;
@@ -610,7 +612,7 @@ export default function ItineraryCard({
   const selectedOption =
     options.find((option) => option.id === repriceResult?.itineraryId) ??
     itinerary;
-  /** RePrice returned something different; the customer has to see it first. */
+  /** RePrice returned something different; checkout requires confirmation. */
   const awaitingConfirmation =
     repriceResult !== null &&
     repriceResult.requiresConfirmation &&
@@ -618,6 +620,8 @@ export default function ItineraryCard({
   const busy = repricingId !== null || preparingBooking;
   const primaryLabel = hasUpsells
     ? 'Select'
+    : !bookingAvailable
+      ? (repricingId === itinerary.id ? 'Checking fare' : 'Check fare')
     : repricingId === itinerary.id
       ? 'Checking fare'
       : preparingBooking
@@ -638,7 +642,7 @@ export default function ItineraryCard({
   // action into view when RePrice finishes instead of leaving it below the
   // list where the button merely appears to stop loading.
   useEffect(() => {
-    if (!repriceError && !awaitingConfirmation) return;
+    if (!repriceError && !awaitingConfirmation && !(!bookingAvailable && repriceResult)) return;
     const frame = window.requestAnimationFrame(() => {
       repriceFeedbackRef.current?.scrollIntoView({
         behavior: 'smooth',
@@ -646,7 +650,7 @@ export default function ItineraryCard({
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [awaitingConfirmation, repriceError]);
+  }, [awaitingConfirmation, bookingAvailable, repriceError, repriceResult]);
 
   const loadFareRules = async (itineraryId: string, force = false) => {
     const current = fareRulesByItineraryId[itineraryId];
@@ -792,7 +796,7 @@ export default function ItineraryCard({
   };
 
   /**
-   * Book Now, start to finish.
+   * Select and verify a fare. Read-only suppliers stop after the live price.
    *
    * RePrice is mandatory — Booking needs the `priceCodeRef` only RePrice issues
    * — but it is not a step the customer should have to click through. So it
@@ -802,16 +806,16 @@ export default function ItineraryCard({
    * requires explicit re-confirmation, and `prepare` enforces it server-side,
    * so that case stops on the confirmation panel below.
    */
-  const bookNow = async (option: FlightFareOption) => {
+  const selectFare = async (option: FlightFareOption) => {
     if (option.ambiguousSelection || repricingId || preparingBooking) return;
-    if (requiresBookingAssignee && !bookingAssigneeId) {
+    if (bookingAvailable && requiresBookingAssignee && !bookingAssigneeId) {
       setRepriceError('Select the B2B or B2C user this booking belongs to first.');
       return;
     }
 
     // Keep the exact server-side search and option through sign-in. RePrice
     // runs after authentication so role-based pricing uses the signed-in user.
-    if (authLoaded && !isSignedIn) {
+    if (bookingAvailable && authLoaded && !isSignedIn) {
       signInToResumeBooking(option);
       return;
     }
@@ -869,7 +873,7 @@ export default function ItineraryCard({
       setRepricingId(null);
     }
 
-    if (verified && !verified.requiresConfirmation) {
+    if (bookingAvailable && verified && !verified.requiresConfirmation) {
       await continueToTravellers(verified, option);
     }
   };
@@ -887,7 +891,7 @@ export default function ItineraryCard({
       setUpsellsOpen((current) => !current);
       setActivePanel(null);
     } else {
-      void bookNow(itinerary);
+      void selectFare(itinerary);
     }
   };
 
@@ -906,7 +910,7 @@ export default function ItineraryCard({
     return (
       <button
         type="button"
-        onClick={() => void bookNow(option)}
+        onClick={() => void selectFare(option)}
         disabled={option.ambiguousSelection || busy}
         aria-pressed={chosen}
         title={
@@ -931,6 +935,8 @@ export default function ItineraryCard({
             : 'Opening'
           : awaiting
             ? 'Fare changed'
+          : !bookingAvailable
+            ? 'Check fare'
             : option.bookable
               ? 'Book Now'
               : 'Instant Purchase'}
@@ -1194,7 +1200,7 @@ export default function ItineraryCard({
                 {formatPrice(itinerary.totalPrice, currency)}
               </p>
             )}
-            {!itinerary.bookable && (
+            {bookingAvailable && !itinerary.bookable && (
               <p className="mt-1 text-center text-[10px] font-semibold text-blue-700">
                 <span className="block">Instant purchase only</span>
                 <span className="block">Hold unavailable</span>
@@ -1210,6 +1216,12 @@ export default function ItineraryCard({
           className="border-t border-neutral-200 pt-2 md:hidden"
         />
       </div>
+
+      {!bookingAvailable && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-5">
+          Booking is currently unavailable for this supplier. You can check the live fare and airline policies.
+        </div>
+      )}
 
       <div className="border-t border-neutral-200 bg-navy-50/60">
         {/* Mobile: keep every footer tab behind one compact View Details control. */}
@@ -1418,7 +1430,7 @@ export default function ItineraryCard({
                         { label: 'Hand baggage', icon: BriefcaseBusiness, value: values[0] },
                         { label: 'Checked baggage', icon: Luggage, value: values[1] },
                         { label: 'Refundability', icon: ShieldCheck, value: values[2] },
-                        { label: 'Booking option', icon: BookOpenCheck, value: values[5] },
+                        { label: 'Booking option', icon: BookOpenCheck, value: bookingAvailable ? values[5] : 'Unavailable' },
                       ].map(({ label, icon: Icon, value }) => (
                         <div key={label} className="min-w-0">
                           <dt className="flex items-center gap-1.5 text-[10px] text-neutral-500"><Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />{label}</dt>
@@ -1431,12 +1443,12 @@ export default function ItineraryCard({
                 );
               })}
             </div>
-            <p className="mt-3 text-[11px] text-neutral-500">Fares are revalidated before booking. Allowances may vary by flight segment; check Baggage for details.</p>
+            <p className="mt-3 text-[11px] text-neutral-500">{bookingAvailable ? 'Fares are revalidated before booking.' : 'Use Check fare to verify the latest price.'} Allowances may vary by flight segment; check Baggage for details.</p>
           </div>
         </div>
       )}
 
-      {(repriceError || awaitingConfirmation) && (
+      {(repriceError || awaitingConfirmation || (!bookingAvailable && repriceResult)) && (
         <div
           ref={repriceFeedbackRef}
           className="scroll-mt-24 space-y-3 border-t border-neutral-200 px-4 py-4 sm:px-5"
@@ -1458,6 +1470,12 @@ export default function ItineraryCard({
               )}
               <span>{repriceError}</span>
             </div>
+          )}
+
+          {!bookingAvailable && repriceResult && (
+            <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950" role="status">
+              Verified fare: {formatPrice(repriceResult.totalPrice, repriceResult.currency)}. Booking is currently unavailable.
+            </p>
           )}
 
           {repriceResult && awaitingConfirmation && (

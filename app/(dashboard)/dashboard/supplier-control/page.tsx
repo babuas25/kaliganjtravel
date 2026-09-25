@@ -5,6 +5,7 @@ import SupplierControlPanel from '@/components/dashboard/SupplierControlPanel';
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { isTriploverConfigured } from '@/lib/triplover/config';
+import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
 
 export const metadata: Metadata = {
   title: 'Supplier Control — Kaliganj Travels',
@@ -23,6 +24,7 @@ export default async function SupplierControlPage() {
         firsttrip: isTriploverConfigured('firsttrip'),
         takeoff: isTriploverConfigured('takeoff'),
         triplover: isTriploverConfigured('triplover'),
+        shapontravels: isShapontravelsConfigured(),
       }}
     />
   );

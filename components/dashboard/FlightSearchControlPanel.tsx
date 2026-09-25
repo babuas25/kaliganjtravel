@@ -30,6 +30,7 @@ const SUPPLIER_LABEL = {
   firsttrip: 'FirstTrip',
   takeoff: 'TakeOff',
   triplover: 'Triplover',
+  shapontravels: 'Shapontravels',
 } as const;
 const USERS_PER_PAGE = 12;
 

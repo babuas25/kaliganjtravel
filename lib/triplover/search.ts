@@ -34,7 +34,9 @@ import {
   type SupplierFarePricing,
 } from '@/lib/markup';
 import { triploverCall, type TriploverCallTiming } from '@/lib/triplover/client';
-import type { TriploverSupplier } from '@/lib/triplover/config';
+import type { FlightReadSupplier } from '@/lib/flights/supplier';
+import { shapontravelsRead } from '@/lib/shapontravels/client';
+import { shapontravelsPricedOffer, type ShapontravelsFareBreakdown } from '@/lib/shapontravels/pricing';
 
 /**
  * Search: request building and the mapping back to our own itinerary model.
@@ -135,6 +137,7 @@ type RawPassengerFare = {
 };
 
 type RawOffer = {
+  fareBreakdown?: ShapontravelsFareBreakdown;
   currency?: unknown;
   currencyCode?: unknown;
   uniqueTransID?: string;
@@ -682,10 +685,11 @@ function searchPayloadTraceDetails(request: TriploverSearchRequest) {
 
 export async function searchFlights(
   input: FlightSearchInput,
-  supplier: TriploverSupplier,
+  supplier: FlightReadSupplier,
   audience: PricingAudience = B2C_PRICING_AUDIENCE,
   options: FlightSearchOptions = {}
 ): Promise<FlightSearchExecution> {
+  const isShapontravels = supplier === 'shapontravels';
   // FirstTrip retains its current request behavior and telemetry surface. This
   // trace is intentionally limited to the TakeOff investigation.
   const trace = supplier === 'takeoff' ? options.trace : undefined;
@@ -699,7 +703,7 @@ export async function searchFlights(
   const markupRulesStartedAt = performance.now();
   emitSearchTrace(trace, { name: 'markup_rules_start' });
   let markupRulesCompletedAt = markupRulesStartedAt;
-  const rulesPromise = activeMarkupRulesFor(audience).then(
+  const rulesPromise = supplier === 'shapontravels' ? null : activeMarkupRulesFor(audience).then(
     (result) => {
       markupRulesCompletedAt = performance.now();
       emitSearchTrace(trace, { name: 'markup_rules_complete' });
@@ -711,16 +715,43 @@ export async function searchFlights(
       throw error;
     }
   );
-  const call = await triploverCall(
-    'Search',
-    '/api/Search',
-    searchRequest,
-    { supplier, searchTrace: trace }
-  );
+  const call = supplier === 'shapontravels'
+    ? await (async () => {
+        const startedAt = performance.now();
+        const envelope = await shapontravelsRead('Search', searchRequest) as {
+          item1?: RawSearchPayload;
+          item2?: unknown;
+        };
+        if (!envelope?.item1 || !Array.isArray(envelope.item1.airSearchResponses)) {
+          throw new SearchReferenceStoreError('integrity', 'Shapontravels Search returned an invalid offer envelope.');
+        }
+        const supplierStatuses = Array.isArray(envelope.item2)
+          ? envelope.item2
+          : [envelope.item2];
+        return {
+          data: envelope.item1,
+          uniqueTransId: null,
+          partial: supplierStatuses.some((status) =>
+            !!status && typeof status === 'object' &&
+            (status as { isSuccess?: unknown }).isSuccess === false
+          ),
+          timing: {
+            tokenMs: 0,
+            tokenSource: 'shapontravels',
+            tokenLoginAttempts: 0,
+            apiRequestMs: performance.now() - startedAt,
+            apiTtfbMs: 0,
+            responseReadMs: 0,
+            responseParseMs: 0,
+            attempts: 1,
+          },
+        };
+      })()
+    : await triploverCall('Search', '/api/Search', searchRequest, { supplier, searchTrace: trace });
   const supplierCallCompletedAt = performance.now();
   emitSearchTrace(trace, { name: 'supplier_search_response_complete' });
   options.onProgress?.('processing');
-  const rulesResult = await rulesPromise;
+  const rulesResult = rulesPromise ? await rulesPromise : null;
   const mappingStartedAt = performance.now();
   const markupRulesMs = markupRulesCompletedAt - markupRulesStartedAt;
   const postSupplierMarkupWaitMs = Math.max(
@@ -731,6 +762,15 @@ export async function searchFlights(
 
   const payload = (call.data ?? {}) as RawSearchPayload;
   const offers = Array.isArray(payload.airSearchResponses) ? payload.airSearchResponses : [];
+  if (isShapontravels && offers.length > 0) {
+    const transactions = new Set(offers.map(uniqueTransactionReference));
+    if (transactions.size !== 1 || transactions.has(null)) {
+      throw new SearchReferenceStoreError(
+        'integrity',
+        'Shapontravels Search returned inconsistent transaction references.'
+      );
+    }
+  }
   const currency = currencyForBdtContract(
     payload.currency,
     payload.currencyCode,
@@ -741,10 +781,14 @@ export async function searchFlights(
       offer.currencyCode,
       ...Object.values(offer.passengerFares ?? {}).flatMap((fare) => [fare?.currency, fare?.currencyCode]),
     );
+    if (supplier === 'shapontravels' && offer.fareBreakdown?.currency !== 'BDT') {
+      throw new SearchReferenceStoreError('integrity', 'Shapontravels Search returned an unsupported currency.');
+    }
   }
 
   const supplierItineraries: SupplierItinerary[] = [];
   const supplierRefsByItineraryId = new Map<string, SupplierRefs>();
+  const shapontravelsPricingByItineraryId = new Map<string, NonNullable<ReturnType<typeof shapontravelsPricedOffer>>>();
   let droppedOfferCount = 0;
 
   offers.forEach((offer, index) => {
@@ -755,6 +799,14 @@ export async function searchFlights(
     }
     mapped.itineraries.forEach((itinerary, i) => {
       const refs = mapped.refs[i];
+      if (supplier === 'shapontravels') {
+        const priced = shapontravelsPricedOffer(offer.fareBreakdown, audience);
+        if (!priced) {
+          droppedOfferCount += 1;
+          return;
+        }
+        shapontravelsPricingByItineraryId.set(itinerary.id, priced);
+      }
       // A public flight card is only useful when its exact supplier reference
       // chain can be made durable.  Drop unsafe provider alternatives before
       // pricing/grouping so no primary or upsell card can look selectable
@@ -792,16 +844,18 @@ export async function searchFlights(
         droppedOfferCount += 1;
         continue;
       }
-      const selectedRules = selectMarkupRules(
-        rulesResult.rules,
+      const selectedRules = isShapontravels ? null : selectMarkupRules(
+        rulesResult!.rules,
         audience,
         supplier.carrierCode,
         input.routes
       );
-      const priced = priceOffer({
+      const priced = isShapontravels
+        ? shapontravelsPricingByItineraryId.get(supplier.id)!
+        : priceOffer({
         audience,
-        rulesAvailable: rulesResult.ok,
-        rules: selectedRules,
+        rulesAvailable: rulesResult!.ok,
+        rules: selectedRules!,
         supplierTotalPrice: supplier.supplierTotalPrice,
         basePrice: supplier.basePrice,
         taxes: supplier.taxes,
@@ -844,18 +898,18 @@ export async function searchFlights(
         auditPricing:
           audience.kind === 'superadmin'
             ? {
-                grossPrice:
-                  Math.round((supplier.basePrice + supplier.taxes) * 100) /
-                  100,
+                grossPrice: isShapontravels
+                  ? priced.snapshot.grossPrice
+                  : Math.round((supplier.basePrice + supplier.taxes) * 100) / 100,
                 netFare: priced.snapshot.supplierTotalPrice,
               }
             : null,
         agencyPricing:
           audience.kind === 'agency'
             ? {
-                grossPrice:
-                  Math.round((supplier.basePrice + supplier.taxes) * 100) /
-                  100,
+                grossPrice: isShapontravels
+                  ? priced.snapshot.grossPrice
+                  : Math.round((supplier.basePrice + supplier.taxes) * 100) / 100,
                 agentFare: priced.totalPrice,
               }
             : null,
@@ -963,6 +1017,7 @@ export async function searchFlights(
       maxPrice: prices.length ? Math.max(...prices) : null,
       partial: call.partial,
       droppedOfferCount,
+      bookingAvailable: supplier !== 'shapontravels',
     },
     timing: {
       ...call.timing,

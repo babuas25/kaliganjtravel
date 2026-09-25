@@ -9,6 +9,7 @@ import type {
   FlightFareRulesResult,
 } from '@/lib/flights/types';
 import { triploverCall } from '@/lib/triplover/client';
+import { shapontravelsRead } from '@/lib/shapontravels/client';
 
 type RawFareRuleDetail = {
   type?: unknown;
@@ -123,15 +124,20 @@ export async function getFlightFareRules({
     );
   }
 
-  const call = await triploverCall('FareRules', '/api/FareRules', {
+  const request = {
     itemCodeRef: refs.itemCodeRef,
     uniqueTransID: search.uniqueTransId,
     segmentCodeRefs: refs.segmentCodeRefs,
     brandedFareRefs: '',
-  }, { supplier: search.supplierAccount });
+  };
+  const data = search.supplierAccount === 'shapontravels'
+    ? (await shapontravelsRead('FareRules', request) as { item1?: unknown })?.item1
+    : (await triploverCall('FareRules', '/api/FareRules', request, {
+        supplier: search.supplierAccount,
+      })).data;
 
   return {
     itineraryId,
-    rules: mapFareRules(call.data),
+    rules: mapFareRules(data),
   };
 }

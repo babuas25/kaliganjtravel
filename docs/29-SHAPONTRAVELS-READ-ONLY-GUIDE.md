@@ -6,6 +6,16 @@ This guide describes the local KaligonjTours integration verified on 2026-09-26.
 
 Set `SHAPONTRAVELS_SEARCH_BASE_URL` to the issued HTTPS API root in the KaligonjTours server environment. Set either `SHAPONTRAVELS_CLIENT_ID` and `SHAPONTRAVELS_CLIENT_SECRET`, or the already issued `CLIENT_ID` and `CLIENT_SECRET`. Keep values in a private environment file or secret manager. These credentials belong to KaligonjTours as an API client of Shapontravels. The transport never sends them to the browser.
 
+For the KaligonjTours Vercel `development` deployment, add the following to the project's **Preview** environment, scoped to the `development` Git branch. Use the same nonempty values as the locally verified client; the URL is the Shapontravels HTTPS API root, not the KaligonjTours site URL. These are in addition to the application's existing Clerk, Supabase, Redis, and other required environment variables.
+
+```dotenv
+SHAPONTRAVELS_SEARCH_BASE_URL=<issued Shapontravels HTTPS API root>
+CLIENT_ID=<issued API Management client ID>
+CLIENT_SECRET=<issued API Management client secret>
+```
+
+The supplier-specific `SHAPONTRAVELS_CLIENT_ID` and `SHAPONTRAVELS_CLIENT_SECRET` names can replace the last two variables. If both pairs exist, the supplier-specific values take precedence. Keep the secret server-only: do not use a `NEXT_PUBLIC_` prefix. After setting or changing Vercel variables, create a new Preview deployment. A push to `development` triggers that deployment only when the Vercel project is connected to the `babuas25/kaliganjtravel` Git repository and Git deployments are enabled for the branch.
+
 `supabase/fresh-install/supabase/migrations/20260926000000_shapontravels_read_supplier.sql` was applied to the linked Kaliganj database on 2026-09-26. It enables the new Search supplier in operational controls, daily usage limits, and usage events. Booking table supplier constraints remain limited to the existing protocol. Its application did not change the active supplier or booking/ticketing settings.
 
 Then a Super Admin selects **Shapontravels** in Supplier Control. Only one supplier serves each new Search. Existing Search quotes retain their original supplier in Redis even if the selection changes. Shapontravels booking and ticketing switches are disabled.

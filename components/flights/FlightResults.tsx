@@ -935,6 +935,11 @@ export default function FlightResults({
 
   return (
     <div className="space-y-4">
+      {result.limitedByQuoteSize && (
+        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          This large search shows the lowest-priced available flight choices. Some additional fares were hidden; narrow your search to see more.
+        </p>
+      )}
       {isLoaded && isSignedIn && isStaffBookingRole && (
         <StaffBookingAssigneePicker
           selected={bookingAssignee}

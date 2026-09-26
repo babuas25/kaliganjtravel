@@ -194,6 +194,8 @@ export type FlightSearchResult = {
   partial: boolean;
   /** Offers we refused to render because their shape was unmappable. */
   droppedOfferCount: number;
+  /** A large result was narrowed before caching; every displayed fare remains selectable. */
+  limitedByQuoteSize?: boolean;
   /** False while this supplier has no booking adapter. */
   bookingAvailable?: boolean;
 };

@@ -251,6 +251,14 @@ export class SearchReferenceStoreError extends Error {
   }
 }
 
+/** The quote is valid, but its complete reference graph cannot fit in one Redis value. */
+export class SearchQuoteTooLargeError extends SearchReferenceStoreError {
+  constructor() {
+    super('integrity', 'Search reference graph exceeds the configured Redis quote limit.');
+    this.name = 'SearchQuoteTooLargeError';
+  }
+}
+
 export type SearchReadOptions = {
   /**
    * Retained for callers during the migration. Redis is authoritative for both
@@ -1403,11 +1411,8 @@ export function createRedisFlightQuoteStore(
           sectionBytes: canonicalJson(sectionBytes),
         },
       });
-      if (storedBytes > config.maxBytes) {
-        throw new SearchReferenceStoreError(
-          'integrity',
-          'Search reference graph exceeds the configured Redis quote limit.'
-        );
+      if (storedBytes > config.maxBytes || serializedBytes > MAX_QUOTE_INFLATED_BYTES) {
+        throw new SearchQuoteTooLargeError();
       }
 
       emitSearchTrace(trace, { name: 'redis_persistence_start' });

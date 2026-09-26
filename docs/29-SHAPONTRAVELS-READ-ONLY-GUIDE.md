@@ -28,6 +28,8 @@ Then a Super Admin selects **Shapontravels** in Supplier Control. Only one suppl
 4. Airline policies call `POST /api/FareRules` with the stored supplier references. **Check fare** calls `POST /api/Reprice` and verifies that the returned journey matches the selected one. Reprice displays the updated payable but does not save a bookable price reference.
 5. The UI marks booking unavailable. The booking Prepare API independently rejects every Shapontravels quote before creating a booking attempt.
 
+Large round-trip searches can exceed the default 256 KB Redis reference-graph limit even when the supplier returns valid offers. The Search mapper first keeps each distinct lowest-priced flight and removes additional fare choices; if the graph is still too large, it keeps the cheapest complete flights until the private references fit. The results page marks this reduction. Every displayed fare still has its own stored, verifiable reference; a Redis or reference-validation failure remains an error.
+
 ## Verify locally
 
 Run `npm run typecheck`, `npm run verify:shapontravels-read-client`, `npm run verify:shapontravels-pricing`, `node scripts/verify-flight-search-reference-safety.mjs`, `node scripts/verify-supplier-controls.mjs`, and `node scripts/verify-search-stream-finalization.mjs`. The first two Shapontravels scripts use mocks and do not call the live API. A production-style live read probe requires explicit issued client access and should print only sanitized counts, status, and non-sensitive price comparisons.

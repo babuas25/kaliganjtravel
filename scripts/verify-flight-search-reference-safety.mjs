@@ -92,6 +92,7 @@ function loadQuoteStore() {
 const quote = loadQuoteStore();
 const {
   SearchReferenceStoreError,
+  SearchQuoteTooLargeError,
   bookingSnapshotDigestFor,
   canonicalBookingSnapshot,
   createRedisFlightQuoteStore,
@@ -568,16 +569,21 @@ function loadSearchModule({
   response,
   storedRefs,
   canonicalizer = canonicalBookingSnapshot,
+  maxStoredOptions = Infinity,
 }) {
   const localRequire = (id) => {
     if (id === 'server-only') return {};
     if (id === '@/lib/flights/search-cache') {
       return {
         SearchReferenceStoreError,
+        SearchQuoteTooLargeError,
         bookingSnapshotDigestFor,
         canonicalBookingSnapshot: canonicalizer,
         selectionSignatureForItinerary,
         storeSearch: async (_transaction, refsByItineraryId, supplier) => {
+          if (refsByItineraryId.size > maxStoredOptions) {
+            throw new SearchQuoteTooLargeError();
+          }
           storedRefs.set('refs', refsByItineraryId);
           storedRefs.set('supplier', supplier);
           return {
@@ -1313,6 +1319,42 @@ const groupedSearch = await groupedMapper.searchFlights(
 assert.equal(groupedSearch.result.itineraries.length, 1);
 const groupedCard = groupedSearch.result.itineraries[0];
 assert.equal(groupedCard.upsellOptions.length, 2);
+const distinctRoundTrip = groupedOffer(3, 'M', 1300);
+distinctRoundTrip.directions[0][0].segments[0].flightNumber = 'QR-999';
+const limitedStoredRefs = new Map();
+const limitedMapper = loadSearchModule({
+  response: {
+    airSearchResponses: [
+      groupedOffer(0, 'U', 1000),
+      groupedOffer(1, 'K', 1100),
+      distinctRoundTrip,
+    ],
+  },
+  storedRefs: limitedStoredRefs,
+  maxStoredOptions: 1,
+});
+const limitedRoundTrip = await limitedMapper.searchFlights({
+  tripType: 'round',
+  routes: [
+    { origin: 'DAC', destination: 'JFK', departureDate: '2026-09-10' },
+    { origin: 'JFK', destination: 'DAC', departureDate: '2026-09-30' },
+  ],
+  adults: 1,
+  children: 0,
+  infants: 0,
+  childrenAges: [],
+  cabinClass: 1,
+  preferredCarriers: [],
+}, 'takeoff');
+assert.equal(limitedRoundTrip.result.limitedByQuoteSize, true);
+assert.equal(limitedRoundTrip.result.itineraries.length, 1);
+assert.equal(limitedRoundTrip.result.itineraries[0].totalPrice, 1000);
+assert.equal(limitedRoundTrip.result.itineraries[0].upsellOptions.length, 0);
+assert.deepEqual(
+  Array.from(limitedStoredRefs.get('refs').keys()),
+  [limitedRoundTrip.result.itineraries[0].id],
+  'only displayed fares retain private supplier references'
+);
 const codeshareOffer = groupedOffer(10, 'O', 1000);
 codeshareOffer.isCodeShared = true;
 const codeshareStoredRefs = new Map();
@@ -1671,6 +1713,10 @@ const oversizedStore = storeFor(oversizedRedis, ttlClock, searchId, { maxBytes: 
 await expectStoreError(
   () => oversizedStore.storeSearch('supplier-trans', refs(), 'takeoff'),
   'integrity'
+);
+await assert.rejects(
+  () => oversizedStore.storeSearch('supplier-trans', refs(), 'takeoff'),
+  SearchQuoteTooLargeError
 );
 assert.equal(oversizedRedis.calls.set, 0);
 const corruptRedis = new FakeRedis(ttlClock);

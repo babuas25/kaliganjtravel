@@ -4,6 +4,7 @@ import { currencyForBdtContract } from '@/lib/currency';
 import {
   bookingSnapshotDigestFor,
   canonicalBookingSnapshot,
+  SearchQuoteTooLargeError,
   SearchReferenceStoreError,
   selectionSignatureForItinerary,
   storeSearch,
@@ -569,6 +570,17 @@ function assertPublicReferenceContract(
   }
 }
 
+function referencesForDisplayedFares(
+  itineraries: FlightItinerary[],
+  source: Map<string, ItineraryRefs>
+): Map<string, ItineraryRefs> {
+  const displayedIds = new Set(itineraries.flatMap((itinerary) => [
+    itinerary.id,
+    ...itinerary.upsellOptions.map((option) => option.id),
+  ]));
+  return new Map(Array.from(source.entries()).filter(([id]) => displayedIds.has(id)));
+}
+
 /* ── Entry point ─────────────────────────────────────────────────────── */
 
 export type FlightSearchExecutionTiming = TriploverCallTiming & {
@@ -970,11 +982,53 @@ export async function searchFlights(
     details: { itineraryReferenceCount: refsByItineraryId.size },
   });
 
-  // Supplier filter minima are net costs. Rebuild every public summary from
-  // priced itineraries so filters, sorting and cards all use the same selling
-  // amount.
+  const mappingMs = performance.now() - mappingStartedAt;
+  emitSearchTrace(trace, {
+    name: 'mapping_complete',
+    details: { itineraryCount: itineraries.length, droppedOfferCount },
+  });
+  options.onProgress?.('finalizing');
+  const cacheWriteStartedAt = performance.now();
+  let displayedItineraries = itineraries;
+  let displayedRefs = refsByItineraryId;
+  let limitedByQuoteSize = false;
+  let storedSearch: Awaited<ReturnType<typeof storeSearch>>;
+  while (true) {
+    try {
+      assertPublicReferenceContract(displayedItineraries, displayedRefs);
+      storedSearch = await storeSearch(uniqueTransId, displayedRefs, supplier, { trace });
+      break;
+    } catch (error) {
+      // An oversized quote is rejected before Redis writes. Keep every distinct
+      // flight first, shedding additional fare choices; if that is still too
+      // large, retain the cheapest complete flights until the quote fits.
+      if (!(error instanceof SearchQuoteTooLargeError)) throw error;
+      if (displayedItineraries.some((itinerary) => itinerary.upsellOptions.length > 0)) {
+        displayedItineraries = displayedItineraries.map((itinerary) => ({
+          ...itinerary,
+          upsellOptions: [],
+        }));
+      } else if (displayedItineraries.length > 1) {
+        displayedItineraries = displayedItineraries.slice(
+          0,
+          Math.ceil(displayedItineraries.length / 2)
+        );
+      } else {
+        throw error;
+      }
+      displayedRefs = referencesForDisplayedFares(displayedItineraries, refsByItineraryId);
+      limitedByQuoteSize = true;
+    }
+  }
+  const redisPersistenceConfirmedAt = performance.now();
+  const cacheWriteMs = performance.now() - cacheWriteStartedAt;
+  const supplierCompleteToRedisConfirmedMs =
+    redisPersistenceConfirmedAt - supplierCallCompletedAt;
+
+  // Summaries and filters must describe only the fares that were saved and
+  // returned to the browser, including after a large-result reduction.
   const airlineMap = new Map<string, AirlineFilter>();
-  itineraries.forEach((itinerary) => {
+  displayedItineraries.forEach((itinerary) => {
     if (!itinerary.carrierCode) return;
     const current = airlineMap.get(itinerary.carrierCode);
     if (!current) {
@@ -990,33 +1044,19 @@ export async function searchFlights(
     current.minPrice = Math.min(current.minPrice, itinerary.totalPrice);
   });
   const airlines = Array.from(airlineMap.values());
-  const prices = itineraries.map((itinerary) => itinerary.totalPrice);
-
-  const mappingMs = performance.now() - mappingStartedAt;
-  emitSearchTrace(trace, {
-    name: 'mapping_complete',
-    details: { itineraryCount: itineraries.length, droppedOfferCount },
-  });
-  options.onProgress?.('finalizing');
-  const cacheWriteStartedAt = performance.now();
-  const storedSearch = await storeSearch(uniqueTransId, refsByItineraryId, supplier, {
-    trace,
-  });
-  const redisPersistenceConfirmedAt = performance.now();
-  const cacheWriteMs = performance.now() - cacheWriteStartedAt;
-  const supplierCompleteToRedisConfirmedMs =
-    redisPersistenceConfirmedAt - supplierCallCompletedAt;
+  const prices = displayedItineraries.map((itinerary) => itinerary.totalPrice);
 
   return {
     result: {
       searchId: storedSearch.searchId,
       currency,
-      itineraries,
+      itineraries: displayedItineraries,
       airlines,
       minPrice: prices.length ? Math.min(...prices) : null,
       maxPrice: prices.length ? Math.max(...prices) : null,
       partial: call.partial,
       droppedOfferCount,
+      limitedByQuoteSize,
       bookingAvailable: supplier !== 'shapontravels',
     },
     timing: {

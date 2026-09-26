@@ -1057,7 +1057,8 @@ export async function searchFlights(
       partial: call.partial,
       droppedOfferCount,
       limitedByQuoteSize,
-      bookingAvailable: supplier !== 'shapontravels',
+      bookingAvailable: true,
+      holdOnly: supplier === 'shapontravels',
     },
     timing: {
       ...call.timing,

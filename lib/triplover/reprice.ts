@@ -333,6 +333,17 @@ export async function repriceFlight({
     );
   }
 
+  // Capture the mutable selection revision before either supplier request.
+  // The Redis CAS prevents an older Reprice response from replacing a newer one.
+  let currentSelection: Awaited<ReturnType<typeof readRepricedSelection>>;
+  try {
+    currentSelection = await readRepricedSelection(searchId, itineraryId, principal);
+  } catch (error) {
+    if (error instanceof SearchReferenceStoreError) throw referenceFailure(error, 'read');
+    throw error;
+  }
+  const expectedSelectionVersion = currentSelection?.quoteStoreVersion ?? 0;
+
   if (search.supplierAccount === 'shapontravels') {
     const responseEnvelope = await shapontravelsRead('Reprice', {
       uniqueTransID: search.uniqueTransId,
@@ -341,9 +352,12 @@ export async function repriceFlight({
       taxRedemptions: [],
       commissionOnTaxes: [],
       brandedFareRefs: '',
-    }) as { item1?: RawReprice };
+    }) as { item1?: RawReprice; item2?: { isSuccess?: boolean } };
     const response = responseEnvelope?.item1;
-    if (!response || response.currency !== 'BDT' || !response.priceCodeRef) {
+    if (responseEnvelope?.item2?.isSuccess !== true || !response ||
+        response.currency !== 'BDT' || !response.priceCodeRef ||
+        response.uniqueTransID !== search.uniqueTransId ||
+        response.itemCodeRef !== refs.itemCodeRef) {
       throw new ShapontravelsReadError('INVALID_REPRICE_RESPONSE');
     }
     const priced = shapontravelsPricedOffer(response.fareBreakdown, audience);
@@ -357,6 +371,29 @@ export async function repriceFlight({
     const previousTotalPrice = refs.pricing.sellingPrice;
     const priceDifferenceMinor = Math.round((priced.totalPrice - previousTotalPrice) * 100);
     const supplierPriceChanged = response.isPriceChanged === true || priceDifferenceMinor !== 0;
+    const requiresConfirmation = supplierPriceChanged;
+    const repricedAt = new Date().toISOString();
+    let saved: boolean;
+    try {
+      saved = await storeRepricedSelection(searchId, itineraryId, {
+        uniqueTransId: search.uniqueTransId,
+        itemCodeRef: refs.itemCodeRef,
+        priceCodeRef: response.priceCodeRef,
+        pricing: priced.snapshot,
+        fares: priced.fares,
+        currency: 'BDT',
+        bookable: response.bookable === true,
+        requiresConfirmation,
+        repricedAt,
+      }, principal, expectedSelectionVersion);
+    } catch (error) {
+      if (error instanceof SearchReferenceStoreError) throw referenceFailure(error, 'persist');
+      throw error;
+    }
+    if (!saved) {
+      throw new FlightRepriceError('REPRICE_REFERENCE_CONFLICT', 409,
+        'A newer fare verification is available. Check the fare again.');
+    }
     return {
       itineraryId,
       currency: 'BDT',
@@ -368,13 +405,13 @@ export async function repriceFlight({
       ait: priced.ait,
       serviceMargin: 0,
       fares: priced.fares,
-      bookable: response.bookable !== false,
+      bookable: response.bookable === true,
       fareClass: liveFareClass(response),
       supplierPriceChanged,
       sellingPriceChanged: priceDifferenceMinor !== 0,
-      requiresConfirmation: false,
-      repricedAt: new Date().toISOString(),
-      bookingAvailable: false,
+      requiresConfirmation,
+      repricedAt,
+      bookingAvailable: response.bookable === true,
     };
   }
 
@@ -382,26 +419,6 @@ export async function repriceFlight({
   // stale response may never replace a newer same-principal selection. The
   // mutable selection is intentionally separate from the compressed immutable
   // Search graph, so a large Search is never rewritten after RePrice.
-  let currentSelection: Awaited<ReturnType<typeof readRepricedSelection>>;
-  try {
-    currentSelection = await readRepricedSelection(
-      searchId,
-      itineraryId,
-      principal
-    );
-  } catch (error) {
-    if (error instanceof SearchReferenceStoreError) {
-      throw referenceFailure(error, 'read');
-    }
-    throw error;
-  }
-  const expectedSelectionVersion =
-    currentSelection?.quoteStoreVersion &&
-    Number.isInteger(currentSelection.quoteStoreVersion) &&
-    currentSelection.quoteStoreVersion > 0
-      ? currentSelection.quoteStoreVersion
-      : 0;
-
   const rulesPromise = activeMarkupRulesFor(audience);
   const call = await triploverCall('RePrice', '/api/Reprice', {
     uniqueTransID: search.uniqueTransId,

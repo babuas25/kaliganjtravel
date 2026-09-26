@@ -46,7 +46,7 @@ export default function SupplierControlPanel({
     startTransition(async () => {
       const result = await saveSupplierControlAction({
         activeSupplier,
-        bookingEnabled: activeSupplier === 'shapontravels' ? false : bookingEnabled,
+        bookingEnabled,
         ticketingEnabled: activeSupplier === 'shapontravels' ? false : ticketingEnabled,
         expectedVersion: controls.version,
       });
@@ -148,7 +148,7 @@ export default function SupplierControlPanel({
 
         {activeSupplier === 'shapontravels' && (
           <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-            Shapontravels is available for Search, FareRules, and Reprice. Booking and ticketing are disabled.
+            Shapontravels supports held bookings. Ticketing is not available yet.
           </p>
         )}
 
@@ -156,7 +156,7 @@ export default function SupplierControlPanel({
           <label className="flex cursor-pointer items-center justify-between gap-4">
             <span>
               <span className="block text-sm font-semibold text-navy-950">Enable booking</span>
-              <span className="block text-xs text-navy-700">Allows new held and direct-ticket booking submissions.</span>
+              <span className="block text-xs text-navy-700">Allows new bookings. Shapontravels permits holds only.</span>
             </span>
             <input
               type="checkbox"
@@ -167,7 +167,7 @@ export default function SupplierControlPanel({
                 setBookingEnabled(enabled);
                 if (!enabled) setTicketingEnabled(false);
               }}
-              disabled={isPending || !selectedSupplierAvailable || activeSupplier === 'shapontravels'}
+              disabled={isPending || !selectedSupplierAvailable}
             />
           </label>
           <label className="flex cursor-pointer items-center justify-between gap-4">

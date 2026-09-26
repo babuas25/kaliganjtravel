@@ -376,7 +376,8 @@ export function canonicalExpectedBookingV2(
 ): CanonicalExpectedBookingV2 {
   return {
     supplierFamily: 'triplover',
-    supplierAccount: booking.supplier_account,
+    supplierAccount: isTriploverSupplier(booking.supplier_account)
+      ? booking.supplier_account : null,
     bookingIdentity: {
       transactionId: evidenceText(booking.supplier_refs?.uniqueTransId) || null,
       supplierBookingId: null,

@@ -1,5 +1,7 @@
 # Shapontravels read-only supplier integration
 
+This records the 2026-09-26 read-only milestone. The later hold-booking implementation is described in [the hold guide](30-SHAPONTRAVELS-HOLD-GUIDE.md).
+
 This guide describes the local KaligonjTours integration verified on 2026-09-26. It uses the [public Shapontravels OpenAPI](https://api.shapontravels.com/openapi.json) and an issued API Management client. The API docs' Try it out uses the configured environment; treat calls as live.
 
 ## Configure

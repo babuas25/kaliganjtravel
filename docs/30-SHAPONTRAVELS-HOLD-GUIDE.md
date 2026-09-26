@@ -1,0 +1,29 @@
+# Shapontravels hold booking integration
+
+Implemented locally on 2026-09-27 against the public [Shapontravels OpenAPI](https://api.shapontravels.com/openapi.json). This extends the earlier [read-only integration](29-SHAPONTRAVELS-READ-ONLY-GUIDE.md). The configured local API client returned a `booking` permission from `GET /auth/me`; no live Book or fare acceptance call was made during implementation.
+
+## Flow
+
+1. Search retains the Shapontravels transaction and option references in Redis. A holdable option can open checkout; a nonholdable option can only check its fare.
+2. Reprice verifies the selected flights and BDT payable, then saves the current `priceCodeRef` in the principal-bound Redis selection. A changed price requires the customer's confirmation.
+3. Prepare checks the signed-in owner, public itinerary digest, fresh selection, and holdability. It calls `POST /api/Reprice/accept` for the exact private price reference and creates a durable Shapontravels booking attempt only after acceptance succeeds.
+4. Submit validates travellers and claims the attempt once. `POST /api/Book` carries `directIssueIntent: false` and the attempt's stable `Idempotency-Key`. The server records the supplier-call and response boundaries. A verified held receipt and its `X-Booking-Reference` STR header are finalized in one database transaction. The receipt's UUID `bookingRefNumber`, UUID `bookingCodeRef`, and private `uniqueTransID` remain distinct from the STR reference.
+5. HTTP 202, timeouts, 5xx, mismatched references or payable, and incomplete receipts remain unresolved. The attempt is not automatically resubmitted. The saved request key, transaction reference, attempt record, and any validated pending booking ID/reference support operator reconciliation.
+
+The implementation permits **hold only**. Shapontravels issue and cancel remain unavailable in KaligonjTours. The booking page does not show Triplover's Issue or Cancel actions for these rows. A Super Admin can enable booking for the selected Shapontravels supplier while ticketing stays disabled.
+
+Authorized booking staff can use **Verify Supplier Status** on a Shapontravels booking. This performs an authenticated `GET /api/bookings/{id}` and checks the returned transaction, item, price, booking, PNR, and STR references against the saved booking. It reports the supplier's status and deadline without changing the local booking, wallet, or ticketing state. The uncertain-attempt reconciliation panel has a similar read-only lookup when a validated booking ID or STR reference was captured from the pending response. A timeout before any supplier reference was returned still requires manual portal investigation; the Book request must not be replayed automatically. A missing supplier booking is inconclusive and does not authorize a retry.
+
+The hold receipt exposes one `pnr` and no separate airline-PNR array. KaligonjTours stores that verified locator in its airline-PNR list so the existing lifecycle projection shows the booking as **On Hold**. A missing or two-character locator is treated as an unverified response for reconciliation.
+
+## Migration and activation
+
+`supabase/fresh-install/supabase/migrations/20260927000000_shapontravels_hold_booking.sql` was applied to the linked Kaliganj database on 2026-09-27 after the local hold database test passed and a dry run showed it as the sole pending migration. A follow-up migration list and dry run matched local and remote history. A read-only hosted schema query confirmed that both `booking_attempts` and `flight_bookings` now accept the `shapontravels` supplier account and require it for Shapontravels rows. The migration extends supplier-account constraints, enforces the Shapontravels binding, and parses offset-bearing ticketing deadlines. It does not change supplier selection or booking/ticketing switches. At verification time, Supplier Control selected Shapontravels with booking enabled and ticketing disabled.
+
+`20260927010000_shapontravels_supplier_reference.sql` was applied later the same day. It saves the stable STR reference separately and makes the staff booking list show/search it for Shapontravels. The existing booking `KTT0AEKGH0AEKGH` was matched by a read-only supplier lookup against its stored booking UUID, body booking reference UUID, PNR, and transaction ID before its `supplier_public_ref` was set to `STR0AEKGH0AEKGH`. The hosted dashboard view now returns that STR reference; the body UUIDs remain unchanged. No second supplier Book call was made for this correction.
+
+The public OpenAPI currently lists production at `api.shapontravels.com` and UAT at `sendbox.shapontravels.com`; they require separate credentials. The locally configured client points at production. The original implementation was validated with mocks and a read-only permission check; a later authorized B2B hold created `KTT0AEKGH0AEKGH` / `STR0AEKGH0AEKGH`. A supplier GET for that booking returned `Created`, matching its saved references and PNR. The staff booking detail's read-only check returned the same result. Actual B2B dashboard access was not tested in this session; the database shows the booking belongs to the B2B agency and is visible to its owner.
+
+## Verification
+
+Run `npm run typecheck`, `npm run verify:shapontravels-read-client`, `npm run verify:shapontravels-status`, `npm run verify:shapontravels-hold-db`, `npm run verify:flight-search-reference-safety`, and `npm run verify:supplier-write-uncertainty`. The hold database test loads the complete fresh-install migration chain in disposable PGlite, finalizes one synthetic held receipt, checks replay identity and supplier binding, and confirms that the Triplover ticketing path excludes it. The status checks cover verified, pending, missing, mismatched, and incomplete supplier reads.

@@ -249,10 +249,12 @@ export default function BookingActions({
   allowPostTicketOwnerActions = false,
   allowedPostTicketActions = [],
   allowSupplierRefresh = false,
+  allowShaponStatusCheck = false,
   refreshingTicketingTime = false,
   onSupplierActionBusyChange,
   autoRefreshDeadline = false,
   allowTicketing = true,
+  holdOnlySupplier = false,
   issuingForAssignedOwner = false,
   allowImportedConfirmation = false,
   allowImportedSync = false,
@@ -282,10 +284,12 @@ export default function BookingActions({
   allowPostTicketOwnerActions?: boolean;
   allowedPostTicketActions?: readonly TicketManagementAction[];
   allowSupplierRefresh?: boolean;
+  allowShaponStatusCheck?: boolean;
   refreshingTicketingTime?: boolean;
   onSupplierActionBusyChange?: (busy: boolean) => void;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
+  holdOnlySupplier?: boolean;
   issuingForAssignedOwner?: boolean;
   allowImportedConfirmation?: boolean;
   allowImportedSync?: boolean;
@@ -687,6 +691,8 @@ export default function BookingActions({
       const response = await fetch(
         automatic
           ? '/api/flights/booking/refresh-deadline'
+          : allowShaponStatusCheck
+          ? '/api/flights/booking/shapon-status'
           : allowImportedSync
           ? '/api/impexp/sync-booking'
           : '/api/flights/booking/refresh-details',
@@ -701,7 +707,13 @@ export default function BookingActions({
       );
       const body = (await response.json()) as {
         success?: boolean;
-        data?: { ticketingDeadlineAt?: string | null; complete?: boolean };
+        data?: {
+          ticketingDeadlineAt?: string | null;
+          complete?: boolean;
+          result?: 'verified' | 'pending' | 'not_found';
+          supplierStatus?: string | null;
+          supplierPublicRef?: string | null;
+        };
         error?: string | { errorMessage?: string };
         verification?: ImportedTicketVerification | null;
       };
@@ -721,7 +733,13 @@ export default function BookingActions({
       }
       if (!automatic) {
         setMessage(
-          allowImportedSync
+          allowShaponStatusCheck
+            ? body.data?.result === 'verified'
+              ? `Supplier reports ${body.data.supplierStatus ?? 'a booking'} (${body.data.supplierPublicRef}). This read did not change the local booking status.`
+              : body.data?.result === 'pending'
+                ? 'The supplier is still processing this booking. This read did not change the local booking status.'
+                : 'The supplier lookup found no booking. This is inconclusive; staff must investigate before changing the local status.'
+          : allowImportedSync
             ? importedOutcomeMessage(body.verification)
             : 'Ticket details refreshed from AirTicketingDetails.'
         );
@@ -731,7 +749,7 @@ export default function BookingActions({
       // silently cancelling the remaining attempts. The effect refreshes the
       // page once after it finds a deadline or exhausts the complete window.
       if (
-        !automatic &&
+        !automatic && !allowShaponStatusCheck &&
         body.verification?.validation.authoritativeFor !== 'ticketed'
       ) {
         router.refresh();
@@ -752,7 +770,7 @@ export default function BookingActions({
       supplierRefreshInFlight.current = false;
       setRefreshing(false);
     }
-  }, [allowImportedSync, bookingReference, router, syncRequestId]);
+  }, [allowImportedSync, allowShaponStatusCheck, bookingReference, router, syncRequestId]);
 
   useEffect(() => {
     if (
@@ -1395,7 +1413,7 @@ export default function BookingActions({
           />
         )}
 
-        {(allowSupplierRefresh || allowImportedSync) && (
+        {(allowSupplierRefresh || allowImportedSync || allowShaponStatusCheck) && (
           <div className="space-y-2 px-4 pb-2">
             <button
               type="button"
@@ -1408,8 +1426,8 @@ export default function BookingActions({
                 aria-hidden
               />
               {refreshing
-                ? allowImportedSync ? 'Syncing…' : 'Refreshing…'
-                : allowImportedSync ? 'Sync Imported Booking' : 'Refresh Ticket Details'}
+                ? allowImportedSync ? 'Syncing…' : allowShaponStatusCheck ? 'Checking…' : 'Refreshing…'
+                : allowImportedSync ? 'Sync Imported Booking' : allowShaponStatusCheck ? 'Verify Supplier Status' : 'Refresh Ticket Details'}
             </button>
             {paymentState === 'captured' &&
               importedVerification?.validation.authoritativeFor === 'ticketed' && (
@@ -1483,8 +1501,10 @@ export default function BookingActions({
                   : status === 'in-progress'
                     ? statusMessage ??
                       'We are verifying the latest booking details with the airline.'
-                    : status === 'unconfirmed'
+                  : status === 'unconfirmed'
                       ? 'The airline PNR must be verified before ticketing or cancellation.'
+                      : holdOnlySupplier && (status === 'on-hold' || status === 'pending')
+                        ? 'This booking is on hold. Ticket issue is not available for this supplier yet.'
                       : 'The ticketing deadline has passed.'}
             </p>
           </div>

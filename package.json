@@ -14,6 +14,8 @@
     "verify:migration-order": "node scripts/verify-migration-order.mjs",
     "verify:triplover-login-resilience": "node scripts/verify-triplover-login-resilience.mjs",
     "verify:shapontravels-read-client": "node scripts/verify-shapontravels-read-client.mjs",
+    "verify:shapontravels-hold-db": "node scripts/verify-shapontravels-hold-db.mjs",
+    "verify:shapontravels-status": "node scripts/verify-shapontravels-status.mjs",
     "verify:shapontravels-pricing": "node scripts/verify-shapontravels-pricing.mjs",
     "verify:flight-search-reference-safety": "node scripts/verify-flight-search-reference-safety.mjs",
     "verify:search-stream-finalization": "node scripts/verify-search-stream-finalization.mjs",
@@ -149,7 +151,7 @@
     "verify:staff-on-behalf-booking:live": "node scripts/verify-staff-on-behalf-booking-live.mjs",
     "verify:kaliganj-branding": "node scripts/verify-kaliganj-branding.mjs",
     "verify:kaliganj-markup": "node scripts/verify-kaliganj-markup.mjs",
-    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && node scripts/verify-kt-passenger-references.mjs && npm run verify:flight-search-reference-safety && npm run verify:booking-currency && npm run verify:impexp-trip-scope && npm run verify:search-stream-finalization && npm run verify:booking-without-pnr && npm run verify:booking-read-recovery && npm run verify:booking-ticketing-time && npm run verify:booking-deadline-notice"
+    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && node scripts/verify-kt-passenger-references.mjs && npm run verify:flight-search-reference-safety && npm run verify:shapontravels-read-client && npm run verify:shapontravels-hold-db && npm run verify:shapontravels-status && npm run verify:supplier-write-uncertainty && npm run verify:booking-currency && npm run verify:impexp-trip-scope && npm run verify:search-stream-finalization && npm run verify:booking-without-pnr && npm run verify:booking-read-recovery && npm run verify:booking-ticketing-time && npm run verify:booking-deadline-notice"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.1",

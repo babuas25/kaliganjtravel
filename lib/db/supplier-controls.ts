@@ -96,7 +96,7 @@ function validRow(value: unknown): value is SupplierOperationalControlsRow {
 function controlsFromRow(row: SupplierOperationalControlsRow): SupplierOperationalControls {
   return {
     activeSupplier: row.active_supplier.trim().toLowerCase() as FlightReadSupplier,
-    bookingEnabled: row.active_supplier === 'shapontravels' ? false : row.booking_enabled,
+    bookingEnabled: row.booking_enabled,
     ticketingEnabled: row.active_supplier === 'shapontravels' ? false : row.ticketing_enabled,
     version: row.version,
     source: 'database',
@@ -166,8 +166,8 @@ export async function saveSupplierOperationalControls(input: {
       message: 'Ticketing cannot be enabled while booking is disabled.',
     };
   }
-  if (input.activeSupplier === 'shapontravels' && (input.bookingEnabled || input.ticketingEnabled)) {
-    return { ok: false, message: 'Shapontravels currently supports Search, FareRules, and Reprice only.' };
+  if (input.activeSupplier === 'shapontravels' && input.ticketingEnabled) {
+    return { ok: false, message: 'Shapontravels ticketing is not available yet.' };
   }
 
   const now = new Date().toISOString();

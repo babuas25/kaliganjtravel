@@ -476,6 +476,15 @@ function loadPrepareRoute({ search, createdAttempts, preparedReprice = verifiedP
       return { checkActionLimit: async () => ({ ok: true }), rateLimitMessage: () => '' };
     }
     if (id === '@/lib/wallet/permissions') return { canCreateOwnBooking: () => true };
+    if (id === '@/lib/db/supplier-controls') return {
+      getSupplierOperationalControls: async () => ({ bookingEnabled: true }),
+    };
+    if (id === '@/lib/shapontravels/client') return {
+      ShapontravelsReadError: class extends Error {},
+      shapontravelsRead: async (_operation, payload) => ({
+        accepted: true, priceCodeRef: payload.priceCodeRef, pricingVersion: 1,
+      }),
+    };
     throw new Error(`Unexpected Prepare import in verifier: ${id}`);
   };
   return compileModule(prepareSource, preparePath, localRequire);
@@ -555,7 +564,7 @@ function loadRepriceModule({ search, response, calls }) {
       ShapontravelsReadError: class extends Error {},
       shapontravelsRead: async () => {
         calls.shapon = (calls.shapon ?? 0) + 1;
-        return { item1: response };
+        return { item1: response, item2: { isSuccess: true } };
       },
     };
     if (id === '@/lib/shapontravels/pricing') return { shapontravelsPricedOffer };
@@ -1058,6 +1067,9 @@ const shaponSearch = {
 };
 const shaponResponse = {
   ...matchingRepriceResponse,
+  uniqueTransID: 'supplier-trans',
+  itemCodeRef: roundTripRefs.itemCodeRef,
+  bookable: true,
   currency: 'BDT',
   totalPrice: 5349,
   fareBreakdown: {
@@ -1074,10 +1086,11 @@ const shaponResult = await shaponReprice.repriceFlight({
   principal: principal('shapon-reader'),
 });
 assert.equal(shaponResult.totalPrice, 5084.36);
-assert.equal(shaponResult.bookingAvailable, false);
+assert.equal(shaponResult.bookingAvailable, true);
 assert.equal(shaponCalls.shapon, 1);
 assert.equal(shaponCalls.supplier, 0);
-assert.equal(shaponCalls.persist.length, 0);
+assert.equal(shaponCalls.persist.length, 1);
+assert.equal(shaponCalls.persist[0][2].priceCodeRef, 'repriced-roundtrip');
 const shaponMismatch = structuredClone(shaponResponse);
 shaponMismatch.directions[1][0].segments[0].flightNumber = 'QR-999';
 const shaponMismatchCalls = { supplier: 0, persist: [] };
@@ -1458,8 +1471,9 @@ const shaponPrepare = await shaponPrepareRoute.POST({
     legs: groupedOptions[0].legs,
   }),
 });
-assert.equal(shaponPrepare.status, 409, 'Shapontravels must never create a booking attempt');
-assert.equal(shaponPrepareAttempts.length, 0);
+assert.equal(shaponPrepare.status, 200, 'Shapontravels accepted fare can create a booking attempt');
+assert.equal(shaponPrepareAttempts.length, 1);
+assert.equal(shaponPrepareAttempts[0].supplierAccount, 'shapontravels');
 assert.deepEqual(
   groupedPrepareAttempts.map(
     (attempt) => attempt.offerSnapshot.itinerary.legs[0].segments[0].bookingClass

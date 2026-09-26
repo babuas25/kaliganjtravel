@@ -48,8 +48,8 @@ export async function saveSupplierControlAction(input: {
       message: 'Ticketing cannot be enabled while booking is disabled.',
     };
   }
-  if (input.activeSupplier === 'shapontravels' && (input.bookingEnabled || input.ticketingEnabled)) {
-    return { ok: false, message: 'Shapontravels booking and ticketing are not available yet.' };
+  if (input.activeSupplier === 'shapontravels' && input.ticketingEnabled) {
+    return { ok: false, message: 'Shapontravels ticketing is not available yet.' };
   }
   if (input.activeSupplier === 'shapontravels' ? !isShapontravelsConfigured() : !isTriploverConfigured(input.activeSupplier)) {
     const supplierLabel = {

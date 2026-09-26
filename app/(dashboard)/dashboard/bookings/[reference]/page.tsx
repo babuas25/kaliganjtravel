@@ -311,6 +311,11 @@ export default async function BookingDetailsPage({
           (!usesStoredBookingReferences(row) || row.status === 'confirmed' || row.status === 'cancelled') &&
           canRefreshBookingSupplierDetails(session.role)
         }
+        allowShaponStatusCheck={
+          row.supplier === 'shapontravels' &&
+          row.supplier_account === 'shapontravels' &&
+          canRefreshBookingSupplierDetails(session.role)
+        }
         autoRefreshDeadline={false}
         allowTicketingTimeRefresh={
           row.supplier === 'triplover' && row.import_source !== 'MANUAL' &&
@@ -320,6 +325,7 @@ export default async function BookingDetailsPage({
         allowTicketing={
           row.supplier === 'triplover' && canIssueBooking(session, row)
         }
+        holdOnlySupplier={row.supplier === 'shapontravels'}
         showPostTicketActions={
           ticketManagementRolloutEnabled() &&
           canViewTicketManagementRequest(session.role)

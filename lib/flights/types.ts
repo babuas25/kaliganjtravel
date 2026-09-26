@@ -198,6 +198,8 @@ export type FlightSearchResult = {
   limitedByQuoteSize?: boolean;
   /** False while this supplier has no booking adapter. */
   bookingAvailable?: boolean;
+  /** Supplier supports held bookings but never instant purchase. */
+  holdOnly?: boolean;
 };
 
 /** Public, repriced selling fare. Supplier references remain server-side. */

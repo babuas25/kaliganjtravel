@@ -5,6 +5,7 @@ import {
   type SupplierWriteBoundarySnapshot,
 } from '@/lib/booking-lifecycle/supplier-write-hooks';
 import { TriploverError } from '@/lib/triplover/client';
+import { ShapontravelsWriteError } from '@/lib/shapontravels/client';
 
 export type SupplierWriteFailureClass =
   | 'not-sent'
@@ -53,7 +54,8 @@ function result(
     supplierResponseRecorded: boundary.supplierResponseRecorded,
     httpStatus:
       boundary.httpStatus ??
-      (error instanceof TriploverError ? error.status : null),
+      (error instanceof TriploverError || error instanceof ShapontravelsWriteError
+        ? error.status : null),
     fundsMustRemainProtected: failureClass === 'uncertain',
     automaticReplayAllowed: false,
   };
@@ -68,10 +70,10 @@ function isDuplicateBookingRejection(error: TriploverError): boolean {
 }
 
 /**
- * One conservative decision table for Book, NewTicket, and Cancel.
+ * One conservative decision table for supplier Book, NewTicket, and Cancel.
  *
  * The recorded boundary, not only the thrown error type, decides whether the
- * destructive request could have reached Triplover. A complete supplier
+ * destructive request could have reached the supplier. A complete supplier
  * rejection is definitive except for 5xx and HTTP-200 business errors, whose
  * real-world side effect may disagree with the envelope. Protocol/incomplete
  * responses after a write are always uncertain.
@@ -87,6 +89,12 @@ export function classifySupplierWriteFailure(
   }
 
   if (!boundary.supplierCallStarted) {
+    if (error instanceof ShapontravelsWriteError) {
+      return result(boundary, 'not-sent',
+        error.kind === 'auth' ? 'prewrite_authentication_failure'
+          : error.kind === 'unconfigured' ? 'prewrite_configuration_failure'
+            : 'prewrite_local_failure', error);
+    }
     if (error instanceof TriploverError) {
       if (error.kind === 'unconfigured') {
         return result(
@@ -114,6 +122,20 @@ export function classifySupplierWriteFailure(
       }
     }
     return result(boundary, 'not-sent', 'prewrite_local_failure', error);
+  }
+
+  if (error instanceof ShapontravelsWriteError) {
+    if (error.kind === 'network') {
+      return result(boundary, 'uncertain', 'network_after_write', error);
+    }
+    if (error.kind === 'protocol' || error.kind === 'pending') {
+      return result(boundary, 'uncertain', 'incomplete_response', error);
+    }
+    if (error.status === 409 || error.status === null || error.status >= 500) {
+      return result(boundary, 'uncertain', 'supplier_upstream_failure', error);
+    }
+    return result(boundary, 'definitive-failure',
+      error.kind === 'auth' ? 'supplier_auth_rejected' : 'supplier_rejected', error);
   }
 
   if (error instanceof TriploverError) {

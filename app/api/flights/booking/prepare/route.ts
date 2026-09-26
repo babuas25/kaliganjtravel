@@ -20,6 +20,8 @@ import {
 import { requestActorKey } from '@/lib/http/actor-key';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import { canCreateOwnBooking } from '@/lib/wallet/permissions';
+import { shapontravelsRead, ShapontravelsReadError } from '@/lib/shapontravels/client';
+import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -167,9 +169,6 @@ export async function POST(request: NextRequest) {
     }
     throw error;
   }
-  if (search?.supplierAccount === 'shapontravels') {
-    return fail(409, 'SUPPLIER_BOOKING_UNAVAILABLE', 'Booking is not yet available for this supplier.');
-  }
   const refs = search?.refsByItineraryId.get(parsed.data.itineraryId);
   const principal = actorContext.principal;
   let reprice: Awaited<ReturnType<typeof readRepricedSelection>> = null;
@@ -227,6 +226,15 @@ export async function POST(request: NextRequest) {
       'PRICE_NOT_ACCEPTED',
       'Accept the updated fare before continuing.'
     );
+  }
+  if (search.supplierAccount === 'shapontravels') {
+    const controls = await getSupplierOperationalControls();
+    if (!controls.bookingEnabled) {
+      return fail(503, 'BOOKING_DISABLED', 'Booking submission is awaiting operational activation.');
+    }
+    if (!reprice.bookable) {
+      return fail(409, 'HOLD_FARE_REQUIRED', 'This fare cannot be held. Choose a holdable fare.');
+    }
   }
 
   const submittedItinerary = parsed.data.itinerary;
@@ -327,6 +335,25 @@ export async function POST(request: NextRequest) {
     itemCodeRef: reprice.itemCodeRef,
     priceCodeRef: reprice.priceCodeRef,
   };
+
+  if (search.supplierAccount === 'shapontravels') {
+    try {
+      const accepted = await shapontravelsRead('Accept', {
+        priceCodeRef: reprice.priceCodeRef,
+      }) as { accepted?: boolean; priceCodeRef?: string; pricingVersion?: number };
+      if (accepted?.accepted !== true ||
+          accepted.priceCodeRef !== reprice.priceCodeRef ||
+          !Number.isInteger(accepted.pricingVersion) ||
+          Number(accepted.pricingVersion) < 1) {
+        return fail(502, 'FARE_ACCEPTANCE_UNVERIFIED', 'The airline could not accept this fare. Check it again.');
+      }
+    } catch (error) {
+      if (error instanceof ShapontravelsReadError) {
+        console.error('[shapontravels] fare acceptance failed:', error.code, error.status, error.requestId);
+      }
+      return fail(502, 'FARE_ACCEPTANCE_FAILED', 'The airline could not accept this fare. Check it again.');
+    }
+  }
 
   // One insert into the operational table. No booking exists yet and none
   // will until the supplier says so — see BOOKING_ARCHITECTURE.md §3.

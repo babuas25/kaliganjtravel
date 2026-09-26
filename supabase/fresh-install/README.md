@@ -4,6 +4,23 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Shapontravels supplier reference, 2026-09-27:** applied
+`20260927010000_shapontravels_supplier_reference.sql` as the sole pending
+migration after the local hold database and client tests passed. The follow-up
+dry run reported no pending migrations. The one existing Shapontravels booking
+was matched to a read-only supplier lookup before backfilling its verified STR
+reference. The hosted dashboard view now shows that STR reference while keeping
+the supplier receipt UUID and booking code UUID unchanged.
+
+**Shapontravels hold booking, 2026-09-27:** applied
+`20260927000000_shapontravels_hold_booking.sql` as the sole pending migration.
+The local hold database test passed before apply. After apply, migration history
+matched and a second dry run was up to date. A read-only hosted query confirmed
+the supplier-account and Shapontravels binding constraints on booking attempts
+and flight bookings. Supplier Control selected Shapontravels with booking enabled
+and ticketing disabled; the migration did not change those settings. No live
+supplier Book call was made as part of migration verification.
+
 **Shapontravels read-only supplier, 2026-09-26:** applied
 `20260926000000_shapontravels_read_supplier.sql` to the linked Kaliganj
 database after a dry run showed it as the sole pending migration. Post-apply

@@ -99,6 +99,7 @@ class SupplierWriteBoundaryError extends Error {}
 const classifier = load('lib/booking-lifecycle/supplier-uncertainty.ts', {
   '@/lib/booking-lifecycle/supplier-write-hooks': { SupplierWriteBoundaryError },
   '@/lib/triplover/client': client,
+  '@/lib/shapontravels/client': { ShapontravelsWriteError: class extends Error {} },
 });
 const http = {
   walletOk: (data) => Response.json({ success: true, data }),

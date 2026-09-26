@@ -16,10 +16,10 @@ function files(directory) {
 const forbidden = /shapon|shopon|0016548|9638[- ]?032941|1921[- ]?232941|1989[- ]?715039|dhankhola|meherpur|shomobai/i;
 const runtimeFiles = ['app', 'components', 'lib', 'public'].flatMap(files)
   .filter((file) => /\.(?:tsx?|jsx?|mjs|css|json|svg|html)$/.test(file));
-// Shapontravels is now an external flight supplier identifier, not the site
-// identity. Allow that exact identifier while retaining the legacy-brand guard.
+// Supplier identifiers and their status-check code paths are not site identity.
+// Keep guarding standalone legacy company-name mentions in the runtime.
 for (const file of runtimeFiles) {
-  assert.doesNotMatch(read(file).replace(/shapontravels/gi, ''), forbidden, file);
+  assert.doesNotMatch(read(file).replace(/shapon(?:travels|[-_]?status)/gi, ''), forbidden, file);
 }
 function load(file) {
   const compiled = ts.transpileModule(read(file), {

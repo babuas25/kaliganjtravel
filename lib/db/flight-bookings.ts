@@ -21,6 +21,7 @@ import {
   type StoredBookingStatus,
 } from '@/lib/flights/booking-status';
 import type { FareBreakdown } from '@/lib/flights/types';
+import type { FlightReadSupplier } from '@/lib/flights/supplier';
 import type { AirTicketingDetails } from '@/lib/triplover/air-ticketing-details';
 import { mergeSupplierTerminals } from '@/lib/flights/itinerary-terminals';
 import type { PnrLookupOutcome } from '@/lib/triplover/pnr';
@@ -59,7 +60,7 @@ export type BookingRow = {
   legacy_operational: boolean;
   supplier: string;
   /** Credential account fixed when this booking was first searched. */
-  supplier_account: import('@/lib/triplover/config').TriploverSupplier | null;
+  supplier_account: import('@/lib/flights/supplier').FlightReadSupplier | null;
   user_id: string | null;
   audience: 'b2c' | 'agency' | 'superadmin';
   agency_code: string | null;
@@ -869,6 +870,7 @@ export type SupplierBookingResult = {
   pnr: string;
   airlinesPnr: string[];
   bookingRefNumber: string | null;
+  supplierPublicRef?: string;
   bookingStatus: string | null;
   ticketingTimeLimit: string | null;
   bookingCodeRef: string;
@@ -891,19 +893,23 @@ export type SupplierBookingResult = {
 export async function createBookingFromAttempt(
   attemptId: string,
   outcome: SupplierBookingResult,
-  operationRequest: OperationRequestIdentity
+  operationRequest: OperationRequestIdentity,
+  supplierAccount: FlightReadSupplier
 ): Promise<BookingRow | null> {
   const supabase = supabaseAdmin();
   if (!supabase) return null;
 
-  const { data, error } = await supabase.rpc('create_booking_from_attempt_v2', {
+  const finalizer = supplierAccount === 'shapontravels'
+    ? 'create_shapontravels_booking_from_attempt_v1'
+    : 'create_booking_from_attempt_v2';
+  const { data, error } = await supabase.rpc(finalizer, {
     p_attempt_id: attemptId,
     p_request_key: operationRequest.requestKey,
     p_request_payload_hash: operationRequest.requestPayloadHash,
     p_outcome: outcome,
   });
   if (error) {
-    console.error('[db] create_booking_from_attempt_v2 failed:', error.message);
+    console.error(`[db] ${finalizer} failed:`, error.message);
     // The transaction may have committed even when its HTTP response was
     // lost. Recover the idempotent result by the attempt's unique booking.
     const { data: recovered, error: recoveryError } = await supabase
@@ -913,7 +919,7 @@ export async function createBookingFromAttempt(
       .maybeSingle();
     if (recoveryError) {
       console.error(
-        '[db] create_booking_from_attempt_v2 recovery failed:',
+        `[db] ${finalizer} recovery failed:`,
         recoveryError.message
       );
     }

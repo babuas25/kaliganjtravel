@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { AlertTriangle, SearchCheck, ShieldAlert } from 'lucide-react';
 
 import type { StaffAttemptReconciliation } from '@/lib/dashboard/booking-attempt-reconciliation';
@@ -13,6 +16,50 @@ function stamp(value: string | null): string {
   if (!value) return 'Not recorded';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : timestamp.format(parsed);
+}
+
+function SupplierAttemptStatusCheck({ attemptId }: { attemptId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function check() {
+    if (busy) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `/api/admin/booking-lifecycle/attempts/${encodeURIComponent(attemptId)}/shapon-status`,
+        { cache: 'no-store' }
+      );
+      const body = await response.json() as {
+        success?: boolean;
+        data?: { result?: string; supplierStatus?: string | null; supplierPublicRef?: string | null };
+        error?: { errorMessage?: string };
+      };
+      if (!response.ok || !body.success || !body.data) {
+        throw new Error(body.error?.errorMessage || 'Supplier status could not be checked.');
+      }
+      setMessage(body.data.result === 'verified'
+        ? `Supplier reports ${body.data.supplierStatus ?? 'a booking'} (${body.data.supplierPublicRef}). Keep this case open until staff resolve it.`
+        : body.data.result === 'pending'
+          ? 'Supplier processing is still pending. Keep this case open.'
+          : 'Supplier lookup found no booking. This is inconclusive; check the supplier portal.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Supplier status could not be checked.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-1">
+      <button type="button" onClick={() => void check()} disabled={busy}
+        className="rounded border border-amber-400 bg-white px-2 py-1 text-[10px] font-semibold text-amber-950 disabled:opacity-60">
+        {busy ? 'Checking…' : 'Check supplier status'}
+      </button>
+      {message && <p role="status" className="text-[10px] text-amber-950">{message}</p>}
+    </div>
+  );
 }
 
 const STRATEGY_LABELS: Record<
@@ -94,9 +141,13 @@ export default function BookingAttemptReconciliationPanel({
                   </p>
                 )}
                 <p className="mt-1 text-[10px] text-neutral-500">
-                  An empty ticketing report is inconclusive; check the supplier
-                  portal.
+                  {attempt.supplier === 'shapontravels'
+                    ? 'A missing supplier lookup is inconclusive; check the supplier portal.'
+                    : 'An empty ticketing report is inconclusive; check the supplier portal.'}
                 </p>
+                {attempt.supplier === 'shapontravels' && identity && (
+                  <SupplierAttemptStatusCheck attemptId={attempt.attemptId} />
+                )}
               </div>
 
               <div>

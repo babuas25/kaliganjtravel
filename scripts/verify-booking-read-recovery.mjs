@@ -64,6 +64,7 @@ class TriploverError extends Error {
 class SupplierWriteBoundaryError extends Error {}
 const classifier = load('lib/booking-lifecycle/supplier-uncertainty.ts', {
   '@/lib/triplover/client': { TriploverError },
+  '@/lib/shapontravels/client': { ShapontravelsWriteError: class extends Error {} },
   '@/lib/booking-lifecycle/supplier-write-hooks': { SupplierWriteBoundaryError },
 });
 const fixture = () => ({id:'00000000-0000-4000-8000-000000000001',user_id:'owner',state:mode,

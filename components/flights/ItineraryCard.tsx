@@ -476,6 +476,7 @@ export default function ItineraryCard({
   currency,
   searchId,
   bookingAvailable,
+  holdOnly,
   showSendItinerary,
   airportCities,
   showAuditFares,
@@ -487,6 +488,7 @@ export default function ItineraryCard({
   currency: string;
   searchId: string;
   bookingAvailable: boolean;
+  holdOnly: boolean;
   showSendItinerary: boolean;
   airportCities: Record<string, string>;
   showAuditFares: boolean;
@@ -615,12 +617,12 @@ export default function ItineraryCard({
   /** RePrice returned something different; checkout requires confirmation. */
   const awaitingConfirmation =
     repriceResult !== null &&
-    repriceResult.requiresConfirmation &&
+    repriceResult.requiresConfirmation && !(holdOnly && !repriceResult.bookable) &&
     !acceptedUpdatedFare;
   const busy = repricingId !== null || preparingBooking;
   const primaryLabel = hasUpsells
     ? 'Select'
-    : !bookingAvailable
+    : (!bookingAvailable || (holdOnly && !itinerary.bookable))
       ? (repricingId === itinerary.id ? 'Checking fare' : 'Check fare')
     : repricingId === itinerary.id
       ? 'Checking fare'
@@ -873,6 +875,10 @@ export default function ItineraryCard({
       setRepricingId(null);
     }
 
+    if (holdOnly && verified && !verified.bookable) {
+      setRepriceError('This fare cannot be held. Choose another fare.');
+      return;
+    }
     if (bookingAvailable && verified && !verified.requiresConfirmation) {
       await continueToTravellers(verified, option);
     }
@@ -935,7 +941,7 @@ export default function ItineraryCard({
             : 'Opening'
           : awaiting
             ? 'Fare changed'
-          : !bookingAvailable
+          : (!bookingAvailable || (holdOnly && !option.bookable))
             ? 'Check fare'
             : option.bookable
               ? 'Book Now'
@@ -1202,7 +1208,7 @@ export default function ItineraryCard({
             )}
             {bookingAvailable && !itinerary.bookable && (
               <p className="mt-1 text-center text-[10px] font-semibold text-blue-700">
-                <span className="block">Instant purchase only</span>
+                <span className="block">{holdOnly ? 'Booking unavailable' : 'Instant purchase only'}</span>
                 <span className="block">Hold unavailable</span>
               </p>
             )}

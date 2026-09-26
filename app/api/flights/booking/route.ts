@@ -32,6 +32,7 @@ import { bookFlight } from '@/lib/triplover/book';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { readAirTicketingDetails } from '@/lib/triplover/air-ticketing-details';
 import { isTriploverSupplier } from '@/lib/triplover/config';
+import { bookShapontravelsHold } from '@/lib/shapontravels/book';
 import {
   beginDirectTicket,
   captureBookingReservation,
@@ -265,7 +266,8 @@ export async function POST(request: NextRequest) {
   if (Date.parse(current.expires_at) <= Date.now()) {
     return fail(410, 'DRAFT_EXPIRED', 'This fare expired. Search and verify it again.');
   }
-  if (!isTriploverSupplier(current.supplier_account)) {
+  if (current.supplier_account !== 'shapontravels' &&
+      !isTriploverSupplier(current.supplier_account)) {
     return fail(
       409,
       'SUPPLIER_ACCOUNT_UNAVAILABLE',
@@ -281,6 +283,15 @@ export async function POST(request: NextRequest) {
   }
   const supplierAccount = current.supplier_account;
   const offer = current.offer_snapshot;
+  if (supplierAccount === 'shapontravels' && offer.directTicketing) {
+    return fail(409, 'HOLD_FARE_REQUIRED', 'This supplier supports held bookings only.');
+  }
+  if (supplierAccount === 'shapontravels' &&
+      (typeof offer.pricing.supplierTotalPrice !== 'number' ||
+       !Number.isFinite(offer.pricing.supplierTotalPrice) ||
+       offer.pricing.supplierTotalPrice <= 0)) {
+    return fail(409, 'BOOKING_PRICE_UNAVAILABLE', 'This fare price is unavailable. Check the fare again.');
+  }
   if (!isBookingCurrency(offer.currency)) {
     return fail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
   }
@@ -408,24 +419,35 @@ export async function POST(request: NextRequest) {
   );
 
   try {
-    const booked = await bookFlight(
-      {
-        uniqueTransId: claimed.unique_trans_id,
-        itemCodeRef: claimed.item_code_ref,
-        priceCodeRef: claimed.price_code_ref,
-      },
-      parsed.data.travellers,
-      parsed.data.contact,
-      supplierAccount,
-      supplierLifecycle
-    );
+    const supplierRefs = {
+      uniqueTransId: claimed.unique_trans_id,
+      itemCodeRef: claimed.item_code_ref,
+      priceCodeRef: claimed.price_code_ref,
+    };
+    const booked = supplierAccount === 'shapontravels'
+      ? await bookShapontravelsHold(
+          supplierRefs,
+          parsed.data.travellers,
+          parsed.data.contact,
+          Number(offer.pricing.supplierTotalPrice),
+          bookingOperationRequest.requestKey,
+          supplierLifecycle
+        )
+      : await bookFlight(
+          supplierRefs,
+          parsed.data.travellers,
+          parsed.data.contact,
+          supplierAccount,
+          supplierLifecycle
+        );
     // One transaction allocates the public reference, creates the business
     // record and resolves the attempt. A storage failure leaves the attempt in
     // `submitting` for reconciliation; it must never be resolved separately.
     const booking = await createBookingFromAttempt(
       claimed.id,
       booked.outcome,
-      bookingOperationRequest
+      bookingOperationRequest,
+      supplierAccount
     );
     if (!booking) {
       if (offer.directTicketing) {
@@ -507,6 +529,9 @@ export async function POST(request: NextRequest) {
         // Direct-ticket bookings also receive terminal details only through the
         // ticket report. A delayed report must not turn a successful ticket into
         // a failed checkout, so this remains a best-effort enrichment.
+        if (!isTriploverSupplier(supplierAccount)) {
+          throw new Error('Direct ticketing is unavailable for this supplier.');
+        }
         const ticketDetails = await readAirTicketingDetails(
           claimed.unique_trans_id,
           'Confirmed',

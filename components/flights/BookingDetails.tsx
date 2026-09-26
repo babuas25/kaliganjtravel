@@ -843,9 +843,11 @@ export default function BookingDetails({
   passengerPrivacyNotice,
   allowCancellation = true,
   allowSupplierRefresh = false,
+  allowShaponStatusCheck = false,
   allowTicketingTimeRefresh = false,
   autoRefreshDeadline = false,
   allowTicketing = true,
+  holdOnlySupplier = false,
   showPostTicketActions = false,
   allowPostTicketOwnerActions = false,
   allowedPostTicketActions = [],
@@ -866,9 +868,11 @@ export default function BookingDetails({
   passengerPrivacyNotice?: string;
   allowCancellation?: boolean;
   allowSupplierRefresh?: boolean;
+  allowShaponStatusCheck?: boolean;
   allowTicketingTimeRefresh?: boolean;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
+  holdOnlySupplier?: boolean;
   showPostTicketActions?: boolean;
   allowPostTicketOwnerActions?: boolean;
   allowedPostTicketActions?: readonly TicketManagementAction[];
@@ -1188,10 +1192,12 @@ export default function BookingDetails({
           directTicketing={booking.directTicketing}
           allowCancellation={allowCancellation}
           allowSupplierRefresh={allowSupplierRefresh}
+          allowShaponStatusCheck={allowShaponStatusCheck}
           refreshingTicketingTime={refreshingTicketingTime}
           onSupplierActionBusyChange={setSupplierActionBusy}
           autoRefreshDeadline={autoRefreshDeadline}
           allowTicketing={allowTicketing}
+          holdOnlySupplier={holdOnlySupplier}
           showPostTicketActions={showPostTicketActions}
           allowPostTicketOwnerActions={allowPostTicketOwnerActions}
           allowedPostTicketActions={allowedPostTicketActions}

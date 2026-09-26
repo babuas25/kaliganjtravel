@@ -21,6 +21,8 @@ export type SupplierBookingOutcome = {
   pnr: string;
   airlinesPnr: string[];
   bookingRefNumber: string | null;
+  /** Shapontravels' stable STR reference from X-Booking-Reference. */
+  supplierPublicRef?: string;
   bookingStatus: string | null;
   ticketingTimeLimit: string | null;
   bookingCodeRef: string;

@@ -22,6 +22,11 @@ class TriploverError extends Error {
     this.status = status;
   }
 }
+class ShapontravelsWriteError extends Error {
+  constructor(kind, code, status = null) {
+    super(code); this.kind = kind; this.status = status;
+  }
+}
 
 const sourcePath = path.join(
   process.cwd(),
@@ -54,6 +59,7 @@ new vm.Script(transpiled.outputText, { filename: sourcePath }).runInNewContext({
       return { SupplierWriteBoundaryError };
     }
     if (specifier.endsWith('/triplover/client')) return { TriploverError };
+    if (specifier.endsWith('/shapontravels/client')) return { ShapontravelsWriteError };
     return require(specifier);
   },
 });
@@ -88,6 +94,12 @@ const cases = [
   [new TriploverError('supplier', 'Duplicate booking for Passenger: Mr TEST USER', 200), response200, 'definitive-failure', 'supplier_duplicate_booking'],
   [new TriploverError('supplier', 'declined', 400), { ...response200, httpStatus: 400 }, 'definitive-failure', 'supplier_rejected'],
   [new TriploverError('supplier', 'isCancel false'), response200, 'definitive-failure', 'supplier_rejected'],
+  [new ShapontravelsWriteError('pending', 'BOOKING_OUTCOME_UNKNOWN', 202),
+    { ...response200, httpStatus: 202 }, 'uncertain', 'incomplete_response'],
+  [new ShapontravelsWriteError('network', 'BOOK_NETWORK'), started,
+    'uncertain', 'network_after_write'],
+  [new ShapontravelsWriteError('supplier', 'INVALID_FARE', 422),
+    { ...response200, httpStatus: 422 }, 'definitive-failure', 'supplier_rejected'],
   [new TriploverError('auth', 'expired token', 401), { ...response200, httpStatus: 401 }, 'definitive-failure', 'supplier_auth_rejected'],
   [new Error('unexpected mapper failure'), response200, 'uncertain', 'unexpected_after_write'],
 ];

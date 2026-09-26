@@ -11,7 +11,7 @@ import type {
 import type { OperationRequestIdentity } from '@/lib/booking-lifecycle/operation-request';
 import type { FareBreakdown } from '@/lib/flights/types';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
-import type { TriploverSupplier } from '@/lib/triplover/config';
+import type { FlightReadSupplier } from '@/lib/flights/supplier';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { BookingReadUnavailableError } from '@/lib/db/booking-read-error';
 
@@ -46,9 +46,6 @@ async function enforceRetention(
   }
 }
 
-/** One supplier today. The column exists so adding a second is not a redesign. */
-const SUPPLIER = 'triplover';
-
 export type AttemptState =
   | 'draft'
   | 'submitting'
@@ -72,7 +69,7 @@ export type BookingAttemptRow = {
   agency_code: string | null;
   supplier: string;
   /** Credential account fixed by the source search; null only on old rows. */
-  supplier_account: TriploverSupplier | null;
+  supplier_account: FlightReadSupplier | null;
   state: AttemptState;
   search_id: string;
   itinerary_id: string;
@@ -118,7 +115,7 @@ export type NewBookingAttempt = {
   staffOnBehalf: boolean;
   audience: 'b2c' | 'agency' | 'superadmin';
   agencyCode: string | null;
-  supplierAccount: TriploverSupplier;
+  supplierAccount: FlightReadSupplier;
   searchId: string;
   itineraryId: string;
   supplierRefs: {
@@ -169,7 +166,7 @@ function logAttemptWriteFailure(
       stage,
       attempt_id: context.attemptId,
       user_id: context.userId,
-      supplier: SUPPLIER,
+      supplier: 'booking',
       booking_code_ref: context.bookingCodeRef ?? null,
       error:
         error instanceof Error
@@ -236,7 +233,7 @@ export async function createBookingAttempt(
       staff_on_behalf: input.staffOnBehalf,
       audience: input.audience,
       agency_code: input.agencyCode,
-      supplier: SUPPLIER,
+      supplier: input.supplierAccount === 'shapontravels' ? 'shapontravels' : 'triplover',
       supplier_account: input.supplierAccount,
       state: 'draft',
       search_id: input.searchId,

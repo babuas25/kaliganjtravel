@@ -38,7 +38,10 @@ import { isFlightReadSupplier, type FlightReadSupplier } from '@/lib/flights/sup
 // older quote under the changed integrity contract.
 const QUOTE_KEY_PREFIX = 'flight:quote:v4:';
 const QUOTE_SCHEMA_VERSION = 4;
-const QUOTE_ENCODING_PREFIX = 'z:';
+// New writes use binary deflate instead of Base64. Keep the legacy text decoder
+// for quotes written by the previous deployment until their 20-minute TTL ends.
+const QUOTE_BINARY_PREFIX = Buffer.from('b:', 'ascii');
+const QUOTE_LEGACY_PREFIX = 'z:';
 const DEFAULT_QUOTE_TTL_SECONDS = 20 * 60;
 const MAX_QUOTE_TTL_SECONDS = 20 * 60;
 const DEFAULT_QUOTE_MAX_BYTES = 256 * 1024;
@@ -280,10 +283,10 @@ export type StoredSearchWrite = {
 export type RedisFlightQuoteClient = {
   set(
     key: string,
-    value: string,
+    value: string | Buffer,
     options: { NX?: true; PX?: number }
   ): Promise<string | null>;
-  get(key: string): Promise<string | null>;
+  get(key: string): Promise<string | Buffer | null>;
   eval(
     script: string,
     options: { keys: string[]; arguments: string[] }
@@ -1033,22 +1036,35 @@ function repriceKey(
 }
 
 function encodeQuote(serialized: string): {
-  value: string;
+  value: Buffer;
   compressedBytes: number;
 } {
   const compressed = deflateRawSync(Buffer.from(serialized, 'utf8'), {
     level: 9,
   });
   return {
-    value: `${QUOTE_ENCODING_PREFIX}${compressed.toString('base64url')}`,
+    value: Buffer.concat([QUOTE_BINARY_PREFIX, compressed]),
     compressedBytes: compressed.byteLength,
   };
 }
 
-function decodeQuote(value: string): string | null {
-  if (!value.startsWith(QUOTE_ENCODING_PREFIX)) return null;
+function decodeQuote(value: string | Buffer): string | null {
   try {
-    const compressed = Buffer.from(value.slice(QUOTE_ENCODING_PREFIX.length), 'base64url');
+    const raw = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf8');
+    let compressed: Buffer;
+    if (raw.subarray(0, QUOTE_BINARY_PREFIX.length).equals(QUOTE_BINARY_PREFIX)) {
+      compressed = raw.subarray(QUOTE_BINARY_PREFIX.length);
+    } else if (
+      raw.subarray(0, QUOTE_LEGACY_PREFIX.length).toString('ascii') ===
+      QUOTE_LEGACY_PREFIX
+    ) {
+      compressed = Buffer.from(
+        raw.subarray(QUOTE_LEGACY_PREFIX.length).toString('ascii'),
+        'base64url'
+      );
+    } else {
+      return null;
+    }
     if (compressed.byteLength === 0) return null;
     return inflateRawSync(compressed, {
       maxOutputLength: MAX_QUOTE_INFLATED_BYTES,
@@ -1212,7 +1228,7 @@ function hydrateQuote(payload: unknown, now: number): StoredSearch | null {
   };
 }
 
-function parseQuote(raw: string, now: number): StoredSearch | null {
+function parseQuote(raw: string | Buffer, now: number): StoredSearch | null {
   try {
     const decoded = decodeQuote(raw);
     return decoded ? hydrateQuote(JSON.parse(decoded), now) : null;
@@ -1221,9 +1237,12 @@ function parseQuote(raw: string, now: number): StoredSearch | null {
   }
 }
 
-function exactStoredCandidate(raw: string | null, expected: string): 'match' | 'missing' | 'mismatch' {
+function exactStoredCandidate(
+  raw: string | Buffer | null,
+  expected: Buffer
+): 'match' | 'missing' | 'mismatch' {
   if (raw === null) return 'missing';
-  return raw === expected ? 'match' : 'mismatch';
+  return Buffer.isBuffer(raw) && raw.equals(expected) ? 'match' : 'mismatch';
 }
 
 function luaStatus(value: unknown): string {
@@ -1288,7 +1307,7 @@ function validRepriceCandidate(candidate: RepricedSelection): boolean {
 }
 
 function selectionVerification(
-  raw: string | null,
+  raw: string | Buffer | null,
   principal: PricingPrincipal,
   digest: string
 ): 'match' | 'missing' | 'uncommitted' | 'mismatch' | 'invalid' {
@@ -1299,11 +1318,13 @@ function selectionVerification(
 }
 
 function parseRepricedSelection(
-  raw: string,
+  raw: string | Buffer,
   principal: PricingPrincipal
 ): RepricedSelection | null {
   try {
-    const candidate: unknown = JSON.parse(raw);
+    const candidate: unknown = JSON.parse(
+      Buffer.isBuffer(raw) ? raw.toString('utf8') : raw
+    );
     return validRepricedSelection(candidate) &&
       samePricingPrincipal(candidate.principal, principal)
       ? candidate
@@ -1338,12 +1359,12 @@ export function createRedisFlightQuoteStore(
   const now = options.now ?? Date.now;
   const createSearchId = options.createSearchId ?? randomUUID;
 
-  const get = async (key: string): Promise<RedisAttempt<string | null>> =>
+  const get = async (key: string): Promise<RedisAttempt<string | Buffer | null>> =>
     withRedisTimeout(() => options.client.get(key));
 
   const verifySearchWrite = async (
     key: string,
-    serialized: string
+    serialized: Buffer
   ): Promise<'match' | 'missing' | 'mismatch' | 'unavailable'> => {
     const read = await get(key);
     if (read.state !== 'value') return 'unavailable';
@@ -1392,7 +1413,7 @@ export function createRedisFlightQuoteStore(
       const serialized = canonicalJson(payload);
       const serializedBytes = Buffer.byteLength(serialized, 'utf8');
       const encoded = encodeQuote(serialized);
-      const storedBytes = Buffer.byteLength(encoded.value, 'utf8');
+      const storedBytes = encoded.value.byteLength;
       const sectionBytes = {
         context: Buffer.byteLength(canonicalJson(compactGraph.context), 'utf8'),
         signatures: Buffer.byteLength(canonicalJson(compactGraph.itineraries), 'utf8'),
@@ -1726,7 +1747,7 @@ const runtimeRedisAdapter: RedisFlightQuoteClient = {
   },
   async get(key) {
     const client = await runtimeRedisClient();
-    return client.get(key);
+    return client.sendCommand<Buffer | null>(['GET', key], { returnBuffers: true });
   },
   async eval(script, options) {
     const client = await runtimeRedisClient();

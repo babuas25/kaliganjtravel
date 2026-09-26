@@ -1570,6 +1570,26 @@ const stored = await instanceA.storeSearch('supplier-trans', refs(), 'takeoff');
 assert.equal(stored.searchId, searchId);
 assert.equal(stored.timing.redisPersistenceOutcome, 'success');
 assert.equal(redis.calls.set, 1);
+const binaryQuote = redis.entry(`flight:quote:v4:{${searchId}}`)?.value;
+assert.ok(Buffer.isBuffer(binaryQuote), 'new Redis quotes must be stored as binary');
+assert.equal(binaryQuote.subarray(0, 2).toString('ascii'), 'b:');
+const legacyTextQuote = `z:${binaryQuote.subarray(2).toString('base64url')}`;
+assert.ok(
+  binaryQuote.byteLength < Buffer.byteLength(legacyTextQuote, 'utf8'),
+  'binary compression must save Redis bytes without losing reference data'
+);
+
+// Quotes from the prior deployment must remain readable until their TTL ends.
+const legacyClock = { now: 1_000_000 };
+const legacyRedis = new FakeRedis(legacyClock);
+const legacyStore = storeFor(legacyRedis, legacyClock, searchId);
+legacyRedis.entries.set(`flight:quote:v4:{${searchId}}`, {
+  value: Buffer.from(legacyTextQuote, 'utf8'),
+  expiresAt: legacyClock.now + 60_000,
+});
+const legacyRead = await legacyStore.readSearch(searchId);
+assert.equal(legacyRead?.refsByItineraryId.size, refs().size);
+assert.equal(legacyRead?.uniqueTransId, 'supplier-trans');
 
 const instanceB = storeFor(redis, clock, searchId);
 const searchB = await instanceB.readSearch(searchId, { consistency: 'durable' });

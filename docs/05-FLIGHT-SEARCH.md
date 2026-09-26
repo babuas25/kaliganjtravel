@@ -281,6 +281,13 @@ await storeSearch(uniqueTransId, refsByItineraryId, supplierAccount);
 // Redis confirms the immutable quote before Search emits a result event.
 ```
 
+The graph is compressed and stored as binary bytes. The reader also accepts
+Base64-encoded quotes written by the preceding deployment until they expire.
+Each Search quote is capped by `FLIGHT_QUOTE_MAX_BYTES` (256 KiB by default),
+so a large supplier result is reduced before it is shown. Redis still needs
+headroom for its own overhead and RePrice keys; the 30 MB plan is not a promise
+of a fixed number of simultaneous searches.
+
 ### Cache TTL
 
 - **Duration**: 20 minutes

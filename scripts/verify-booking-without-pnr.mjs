@@ -31,7 +31,9 @@ class TriploverError extends Error {
   constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; }
 }
 class ShapontravelsWriteError extends Error {
-  constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; }
+  constructor(kind, code, status, operation = 'NewTicket') {
+    super(code); this.kind = kind; this.code = code; this.status = status; this.operation = operation;
+  }
 }
 const client = {
   TriploverError,
@@ -152,7 +154,7 @@ const routeDependencies = {
     },
     shapontravelsTicketIdentityReady: shaponIdentity,
   },
-  '@/lib/shapontravels/client': { isShapontravelsConfigured: () => true },
+  '@/lib/shapontravels/client': { isShapontravelsConfigured: () => true, ShapontravelsWriteError },
   '@/lib/wallet/http': http,
   '@/lib/wallet/permissions': load('lib/wallet/permissions.ts', { '@/lib/impexp/booking-source': {} }),
 };
@@ -288,11 +290,19 @@ shaponReply = new ShapontravelsWriteError('pending', 'PENDING', 202);
 effects.length = 0;
 assert.equal((await issue()).status, 503);
 assert.deepEqual(effects, ['reserve', 'reconciliation']);
+boundary.httpStatus = 409;
+shaponReply = new ShapontravelsWriteError('protocol', 'INSUFFICIENT_FUNDS', 409);
+effects.length = 0;
+const refused = await issue();
+assert.equal(refused.status, 409);
+assert.equal((await refused.json()).error.errorCode, 'SUPPLIER_WALLET_INSUFFICIENT');
+assert.deepEqual(effects, ['reserve', 'release']);
+boundary.httpStatus = 200;
 booking.supplier_refs = { ...supplierRefs, itemCodeRef: 'invalid' };
 effects.length = 0;
 assert.equal(await canSubmit(), false);
 assert.equal((await issue()).status, 409);
 assert.deepEqual(effects, []);
-assert.equal(shaponCalls.length, 2);
+assert.equal(shaponCalls.length, 3);
 
 console.log('Saved-reference delayed issue, separate locators, Book echoes, complete passenger tickets, deadline grants, Shapontravels route and pending-result protection passed.');

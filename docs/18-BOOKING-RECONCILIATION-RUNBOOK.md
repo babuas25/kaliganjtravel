@@ -63,6 +63,16 @@ ticket/financial evidence. A Held read or one negative endpoint cannot prove
 non-issuance after an uncertain write; record the approved manual supplier-
 portal attestation and use the non-issuance workflow.
 
+The recorded Shapontravels **NewTicket** HTTP 409 `INSUFFICIENT_FUNDS` is a
+narrow exception: Shapon's wallet reservation fails before it dispatches
+ticketing. Only a matching, durably recorded response boundary is definitive;
+other 409s, timeouts, and incomplete responses retain their normal uncertainty
+protection. On 2026-09-27, the single-booking
+`resolve_ktt0aen460aen46_wallet_refusal_v1` workflow used that recorded
+response for `KTT0AEN460AEN46`, released its existing hold, and restored On
+Hold without a separate portal attestation. This workflow cannot be reused for
+another booking or operation.
+
 Do not reuse the historical remediation snapshot as decision evidence. Do not
 paste raw supplier/passenger payloads into reasons, tickets, chat, or email.
 When evidence is stale, acquire it again under a new request identity; never

@@ -274,8 +274,9 @@ export async function shapontravelsIssueRequest(
   }
   await hooks.onResponse({ httpStatus: response.status, receivedAt: new Date().toISOString() });
   if (response.status !== 200) {
-    // Even a supplier rejection is not proof that a ticket was not issued.
-    // Keep the wallet reservation in reconciliation after dispatch.
+    // Most post-dispatch rejections leave the outcome uncertain. The caller
+    // recognizes only the documented pre-dispatch NewTicket 409
+    // INSUFFICIENT_FUNDS after this response boundary is durably recorded.
     throw new ShapontravelsWriteError(
       response.status === 202 ? 'pending' : 'protocol',
       response.status === 202 ? 'ISSUE_OUTCOME_UNKNOWN' : responseCode(body),

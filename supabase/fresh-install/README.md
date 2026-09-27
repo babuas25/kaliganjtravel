@@ -4,6 +4,18 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Shapontravels wallet refusal recovery, 2026-09-27:** applied
+`20260927020000_shapon_wallet_refusal_recovery.sql` as the sole pending forward
+migration after its full-schema PGlite test passed. The follow-up hosted dry run
+reported no pending migrations. The exact recorded NewTicket HTTP 409
+`INSUFFICIENT_FUNDS` for `KTT0AEN460AEN46` was resolved once through the
+single-booking audited RPC. The booking is On Hold, its BDT 5,083.15 reservation
+is released, the issue operation failed, and its reconciliation case is resolved.
+Read-only hosted verification found one hold-release ledger entry, BDT 115,662.00
+available and BDT 0.00 on hold in the affected wallet account. No supplier
+ticket request was sent by this recovery. The RPC's exact identity and state
+guards prevent it from acting on another booking or a later issue attempt.
+
 **Shapontravels supplier reference, 2026-09-27:** applied
 `20260927010000_shapontravels_supplier_reference.sql` as the sole pending
 migration after the local hold database and client tests passed. The follow-up

@@ -37,7 +37,7 @@ import {
   issueShapontravelsTicket,
   shapontravelsTicketIdentityReady,
 } from '@/lib/shapontravels/ticket';
-import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
+import { isShapontravelsConfigured, ShapontravelsWriteError } from '@/lib/shapontravels/client';
 import { walletFail, walletOk, walletOperationResponse } from '@/lib/wallet/http';
 import { canIssueBooking } from '@/lib/wallet/permissions';
 
@@ -427,6 +427,10 @@ export async function POST(request: NextRequest) {
       error,
       supplierLifecycle.boundarySnapshot()
     );
+    const supplierWalletRefused = error instanceof ShapontravelsWriteError &&
+      error.operation === 'NewTicket' && error.status === 409 &&
+      error.code === 'INSUFFICIENT_FUNDS' &&
+      supplierFailure.failureClass === 'definitive-failure';
     const supplierBalanceUnverified = supplierWalletIsInsufficient(error);
     if (
       supplierFailure.failureClass === 'uncertain' ||
@@ -510,9 +514,11 @@ export async function POST(request: NextRequest) {
     await dispatchBookingStatusEmails(booking.id);
     return released.ok
       ? walletFail(
-          502,
-          'TICKET_ISSUE_FAILED',
-          'The airline declined ticket issuance. The full wallet hold was released.'
+          supplierWalletRefused ? 409 : 502,
+          supplierWalletRefused ? 'SUPPLIER_WALLET_INSUFFICIENT' : 'TICKET_ISSUE_FAILED',
+          supplierWalletRefused
+            ? 'Ticketing is temporarily unavailable. No ticket was issued and your wallet hold was released. Contact support before another attempt.'
+            : 'The airline declined ticket issuance. The full wallet hold was released.'
         )
       : walletFail(
           503,

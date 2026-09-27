@@ -23,8 +23,8 @@ class TriploverError extends Error {
   }
 }
 class ShapontravelsWriteError extends Error {
-  constructor(kind, code, status = null) {
-    super(code); this.kind = kind; this.status = status;
+  constructor(kind, code, status = null, operation = 'NewTicket') {
+    super(code); this.kind = kind; this.code = code; this.status = status; this.operation = operation;
   }
 }
 
@@ -100,6 +100,16 @@ const cases = [
     'uncertain', 'network_after_write'],
   [new ShapontravelsWriteError('supplier', 'INVALID_FARE', 422),
     { ...response200, httpStatus: 422 }, 'definitive-failure', 'supplier_rejected'],
+  [new ShapontravelsWriteError('protocol', 'INSUFFICIENT_FUNDS', 409),
+    { ...response200, httpStatus: 409 }, 'definitive-failure', 'supplier_rejected'],
+  [new ShapontravelsWriteError('protocol', 'INSUFFICIENT_FUNDS', 409),
+    { ...response200, supplierResponseRecorded: false, httpStatus: 409 }, 'uncertain', 'incomplete_response'],
+  [new ShapontravelsWriteError('protocol', 'INSUFFICIENT_FUNDS', 409),
+    response200, 'uncertain', 'incomplete_response'],
+  [new ShapontravelsWriteError('protocol', 'VERIFIED_HELD_BOOKING_REQUIRED', 409),
+    { ...response200, httpStatus: 409 }, 'uncertain', 'incomplete_response'],
+  [new ShapontravelsWriteError('protocol', 'INSUFFICIENT_FUNDS', 409, 'Book'),
+    { ...response200, httpStatus: 409 }, 'uncertain', 'incomplete_response'],
   [new TriploverError('auth', 'expired token', 401), { ...response200, httpStatus: 401 }, 'definitive-failure', 'supplier_auth_rejected'],
   [new Error('unexpected mapper failure'), response200, 'uncertain', 'unexpected_after_write'],
 ];

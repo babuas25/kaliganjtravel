@@ -254,7 +254,7 @@ export default function BookingActions({
   onSupplierActionBusyChange,
   autoRefreshDeadline = false,
   allowTicketing = true,
-  holdOnlySupplier = false,
+  supplierIssueUnavailable = false,
   issuingForAssignedOwner = false,
   allowImportedConfirmation = false,
   allowImportedSync = false,
@@ -289,7 +289,7 @@ export default function BookingActions({
   onSupplierActionBusyChange?: (busy: boolean) => void;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
-  holdOnlySupplier?: boolean;
+  supplierIssueUnavailable?: boolean;
   issuingForAssignedOwner?: boolean;
   allowImportedConfirmation?: boolean;
   allowImportedSync?: boolean;
@@ -713,6 +713,10 @@ export default function BookingActions({
           result?: 'verified' | 'pending' | 'not_found';
           supplierStatus?: string | null;
           supplierPublicRef?: string | null;
+          supplierTicket?: {
+            result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
+            ticketCount?: number;
+          } | null;
         };
         error?: string | { errorMessage?: string };
         verification?: ImportedTicketVerification | null;
@@ -732,10 +736,20 @@ export default function BookingActions({
         setImportedVerification(body.verification ?? null);
       }
       if (!automatic) {
+        const ticketFinding = body.data?.supplierTicket;
+        const ticketMessage = ticketFinding?.result === 'verified'
+          ? ` Supplier ticket evidence matches ${ticketFinding.ticketCount} passenger(s); staff must reconcile the local booking.`
+          : ticketFinding?.result === 'pending'
+            ? ' Supplier ticketing is still pending; do not issue again.'
+            : ticketFinding?.result === 'not_found'
+              ? ' No saved ticket was found. This is inconclusive; do not issue again until staff investigate.'
+              : ticketFinding
+                ? ' Supplier ticket evidence could not be verified; staff must investigate.'
+                : '';
         setMessage(
           allowShaponStatusCheck
             ? body.data?.result === 'verified'
-              ? `Supplier reports ${body.data.supplierStatus ?? 'a booking'} (${body.data.supplierPublicRef}). This read did not change the local booking status.`
+              ? `Supplier reports ${body.data.supplierStatus ?? 'a booking'} (${body.data.supplierPublicRef}). This read did not change the local booking status.${ticketMessage}`
               : body.data?.result === 'pending'
                 ? 'The supplier is still processing this booking. This read did not change the local booking status.'
                 : 'The supplier lookup found no booking. This is inconclusive; staff must investigate before changing the local status.'
@@ -1503,8 +1517,8 @@ export default function BookingActions({
                       'We are verifying the latest booking details with the airline.'
                   : status === 'unconfirmed'
                       ? 'The airline PNR must be verified before ticketing or cancellation.'
-                      : holdOnlySupplier && (status === 'on-hold' || status === 'pending')
-                        ? 'This booking is on hold. Ticket issue is not available for this supplier yet.'
+                      : supplierIssueUnavailable && (status === 'on-hold' || status === 'pending')
+                        ? 'Ticket issue is currently unavailable for this booking.'
                       : 'The ticketing deadline has passed.'}
             </p>
           </div>

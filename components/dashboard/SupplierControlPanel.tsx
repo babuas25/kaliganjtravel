@@ -47,7 +47,7 @@ export default function SupplierControlPanel({
       const result = await saveSupplierControlAction({
         activeSupplier,
         bookingEnabled,
-        ticketingEnabled: activeSupplier === 'shapontravels' ? false : ticketingEnabled,
+        ticketingEnabled,
         expectedVersion: controls.version,
       });
       setMessage({
@@ -148,7 +148,7 @@ export default function SupplierControlPanel({
 
         {activeSupplier === 'shapontravels' && (
           <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-            Shapontravels supports held bookings. Ticketing is not available yet.
+            Shapontravels issues tickets from held bookings. Direct ticket fares remain unavailable.
           </p>
         )}
 
@@ -173,14 +173,14 @@ export default function SupplierControlPanel({
           <label className="flex cursor-pointer items-center justify-between gap-4">
             <span>
               <span className="block text-sm font-semibold text-navy-950">Enable ticketing</span>
-              <span className="block text-xs text-navy-700">Allows direct ticket fares and issuing held bookings.</span>
+              <span className="block text-xs text-navy-700">Allows issuing held bookings. Direct ticket fares depend on supplier support.</span>
             </span>
             <input
               type="checkbox"
               className="h-4 w-4 accent-brand-orange"
               checked={ticketingEnabled}
               onChange={(event) => setTicketingEnabled(event.target.checked)}
-              disabled={isPending || !selectedSupplierAvailable || !bookingEnabled || activeSupplier === 'shapontravels'}
+              disabled={isPending || !selectedSupplierAvailable || !bookingEnabled}
             />
           </label>
         </div>

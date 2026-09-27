@@ -33,6 +33,11 @@ import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { enrichIssuedTicket } from '@/lib/triplover/issued-ticket-enrichment';
 import { isTriploverSupplier } from '@/lib/triplover/config';
 import { issueTicket } from '@/lib/triplover/ticket';
+import {
+  issueShapontravelsTicket,
+  shapontravelsTicketIdentityReady,
+} from '@/lib/shapontravels/ticket';
+import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
 import { walletFail, walletOk, walletOperationResponse } from '@/lib/wallet/http';
 import { canIssueBooking } from '@/lib/wallet/permissions';
 
@@ -77,7 +82,8 @@ export async function GET(request: NextRequest) {
   if (!isBookingCurrency(booking.currency)) {
     return walletFail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
   }
-  if (booking.import_source === 'MANUAL' || booking.supplier !== 'triplover') {
+  if (booking.import_source === 'MANUAL' ||
+      !['triplover', 'shapontravels'].includes(booking.supplier)) {
     return walletFail(
       409,
       'EXTERNAL_SUPPLIER_BOOKING',
@@ -86,22 +92,26 @@ export async function GET(request: NextRequest) {
         : 'This imported booking must be managed in its external supplier system.'
     );
   }
-  if (!isTriploverSupplier(booking.supplier_account)) {
+  if (booking.supplier === 'shapontravels'
+      ? booking.supplier_account !== 'shapontravels'
+      : !isTriploverSupplier(booking.supplier_account)) {
     return walletFail(
       409,
       'SUPPLIER_ACCOUNT_UNAVAILABLE',
       'This booking was created before supplier-account tracking. Please contact support.'
     );
   }
-  const localTimeLimit = await readBookingLocalTimeLimitContext(booking.id);
+  const localTimeLimit = booking.supplier === 'triplover'
+    ? await readBookingLocalTimeLimitContext(booking.id)
+    : null;
   if (
-    localTimeLimit.localGrantActive &&
+    localTimeLimit?.localGrantActive &&
     localTimeLimit.localDeadlineAt &&
     Date.parse(localTimeLimit.localDeadlineAt) <= Date.now()
   ) {
     return walletFail(410, 'BOOKING_EXPIRED', 'The approved local ticketing deadline has passed.');
   }
-  if (localTimeLimit.requestRequired && !localTimeLimit.localDeadlineActive) {
+  if (localTimeLimit?.requestRequired && !localTimeLimit.localDeadlineActive) {
     return walletFail(
       409,
       'LOCAL_TIME_LIMIT_REQUIRED',
@@ -110,6 +120,21 @@ export async function GET(request: NextRequest) {
   }
   if (!canIssueBooking(session, booking)) {
     return walletFail(403, 'ISSUE_FORBIDDEN', 'You cannot issue this booking.');
+  }
+  if (booking.supplier === 'shapontravels' &&
+      (booking.status !== 'on-hold' || booking.direct_ticketing ||
+       booking.import_source !== null)) {
+    return walletFail(409, 'BOOKING_NOT_ISSUABLE',
+      'Only a held Shapontravels API booking can be ticketed here.');
+  }
+  if (booking.supplier === 'shapontravels' &&
+      !shapontravelsTicketIdentityReady(booking)) {
+    return walletFail(409, 'SUPPLIER_REFERENCES_MISSING',
+      'This booking is missing verified supplier ticketing references.');
+  }
+  if (booking.supplier === 'shapontravels' && !isShapontravelsConfigured()) {
+    return walletFail(503, 'SUPPLIER_ACCOUNT_UNAVAILABLE',
+      'Shapontravels ticketing is unavailable on this server.');
   }
   if (!booking.booking_owner_type || !booking.booking_owner_key) {
     return walletFail(
@@ -178,7 +203,8 @@ export async function POST(request: NextRequest) {
   if (!isBookingCurrency(booking.currency)) {
     return walletFail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
   }
-  if (booking.import_source === 'MANUAL' || booking.supplier !== 'triplover') {
+  if (booking.import_source === 'MANUAL' ||
+      !['triplover', 'shapontravels'].includes(booking.supplier)) {
     return walletFail(
       409,
       'EXTERNAL_SUPPLIER_BOOKING',
@@ -187,7 +213,9 @@ export async function POST(request: NextRequest) {
         : 'This imported booking must be managed in its external supplier system.'
     );
   }
-  if (!isTriploverSupplier(booking.supplier_account)) {
+  if (booking.supplier === 'shapontravels'
+      ? booking.supplier_account !== 'shapontravels'
+      : !isTriploverSupplier(booking.supplier_account)) {
     return walletFail(
       409,
       'SUPPLIER_ACCOUNT_UNAVAILABLE',
@@ -195,15 +223,19 @@ export async function POST(request: NextRequest) {
     );
   }
   const supplierAccount = booking.supplier_account;
-  const localTimeLimit = await readBookingLocalTimeLimitContext(booking.id);
+  const triploverAccount = isTriploverSupplier(supplierAccount)
+    ? supplierAccount : null;
+  const localTimeLimit = booking.supplier === 'triplover'
+    ? await readBookingLocalTimeLimitContext(booking.id)
+    : null;
   if (
-    localTimeLimit.localGrantActive &&
+    localTimeLimit?.localGrantActive &&
     localTimeLimit.localDeadlineAt &&
     Date.parse(localTimeLimit.localDeadlineAt) <= Date.now()
   ) {
     return walletFail(410, 'BOOKING_EXPIRED', 'The approved local ticketing deadline has passed.');
   }
-  if (localTimeLimit.requestRequired && !localTimeLimit.localDeadlineActive) {
+  if (localTimeLimit?.requestRequired && !localTimeLimit.localDeadlineActive) {
     return walletFail(
       409,
       'LOCAL_TIME_LIMIT_REQUIRED',
@@ -221,11 +253,25 @@ export async function POST(request: NextRequest) {
       'This booking is missing supplier references and needs reconciliation.'
     );
   }
+  if (booking.supplier === 'shapontravels' &&
+      (booking.status !== 'on-hold' || booking.direct_ticketing ||
+       booking.import_source !== null)) {
+    return walletFail(409, 'BOOKING_NOT_ISSUABLE',
+      'Only a held Shapontravels API booking can be ticketed here.');
+  }
+  if (booking.supplier === 'shapontravels' &&
+      !shapontravelsTicketIdentityReady(booking)) {
+    return walletFail(409, 'SUPPLIER_REFERENCES_MISSING',
+      'This booking is missing verified supplier ticketing references.');
+  }
+  if (booking.supplier === 'shapontravels' && !isShapontravelsConfigured()) {
+    return walletFail(503, 'SUPPLIER_ACCOUNT_UNAVAILABLE',
+      'Shapontravels ticketing is unavailable on this server.');
+  }
 
   const manuallyQueued = booking.status === 'pending' && booking.payment_state === 'captured';
   const supplierInput = {
     ...refs,
-    supplier: supplierAccount,
     expectedPassengerCount: booking.passenger_counts
       ? Object.values(booking.passenger_counts).reduce((sum, count) => sum + count, 0)
       : undefined,
@@ -235,7 +281,7 @@ export async function POST(request: NextRequest) {
     action: 'ticketing',
     subjectType: 'booking',
     subjectId: booking.id,
-    payload: supplierInput,
+    payload: { ...supplierInput, supplier: supplierAccount },
   });
   const reserved = manuallyQueued
     ? await beginLegacyManualIssue(
@@ -288,10 +334,19 @@ export async function POST(request: NextRequest) {
   );
 
   try {
-    const outcome = await issueTicket(supplierInput, supplierLifecycle);
-    const { outcome: enrichedOutcome, ticketDetails } = await enrichIssuedTicket(
-      outcome, refs.uniqueTransId, supplierAccount
-    );
+    const outcome = supplierAccount === 'shapontravels'
+      ? await issueShapontravelsTicket(
+          { ...supplierInput, expectedPassengerCount: supplierInput.expectedPassengerCount ?? 0 },
+          operationRequest.requestKey,
+          supplierLifecycle
+        )
+      : await issueTicket(
+          { ...supplierInput, supplier: triploverAccount! }, supplierLifecycle
+        );
+    const { outcome: enrichedOutcome, ticketDetails } =
+      supplierAccount === 'shapontravels'
+        ? { outcome: { ...outcome, airlinesPnr: [outcome.pnr] }, ticketDetails: null }
+        : await enrichIssuedTicket(outcome, refs.uniqueTransId, triploverAccount!);
     const captured = manuallyQueued
       ? await finalizeManualIssue(
           booking.id,
@@ -337,7 +392,7 @@ export async function POST(request: NextRequest) {
       parsed.data.bookingReference,
       bookingScopeFor(session)
     );
-    if (updated) {
+    if (updated?.supplier === 'triplover') {
       try {
         await reconcilePostTicketingRace({
           booking: updated,

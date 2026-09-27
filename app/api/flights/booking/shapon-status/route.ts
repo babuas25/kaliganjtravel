@@ -4,8 +4,9 @@ import { canRefreshBookingSupplierDetails } from '@/lib/dashboard/booking-lifecy
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
 import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { shapontravelsReadBooking } from '@/lib/shapontravels/client';
+import { shapontravelsReadBooking, shapontravelsReadTicket } from '@/lib/shapontravels/client';
 import { verifyShapontravelsBookingStatus } from '@/lib/shapontravels/booking-status';
+import { parseShapontravelsTicketReceipt, shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
 import { walletFail, walletOk } from '@/lib/wallet/http';
 
 export const runtime = 'nodejs';
@@ -69,7 +70,41 @@ export async function POST(request: Request) {
       return walletFail(409, 'SUPPLIER_IDENTITY_UNVERIFIED',
         'Supplier details did not verify against this booking. Staff reconciliation is required.');
     }
-    return walletOk(status);
+    let supplierTicket: {
+      result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
+      ticketCount?: number;
+      ticketCodeRef?: string;
+    } | null = null;
+    if (booking.status === 'in-progress' || booking.payment_state === 'reconciliation') {
+      if (!shapontravelsTicketIdentityReady(booking)) {
+        supplierTicket = { result: 'unverified' };
+      } else {
+        try {
+          const ticketRead = await shapontravelsReadTicket(booking.booking_code_ref);
+          if (ticketRead.httpStatus === 202) {
+            supplierTicket = { result: 'pending' };
+          } else if (ticketRead.httpStatus === 404) {
+            supplierTicket = { result: 'not_found' };
+          } else {
+            const ticket = parseShapontravelsTicketReceipt(ticketRead.body, {
+              ...refs,
+              pnr: booking.pnr!,
+              bookingRefNumber: booking.booking_ref_number!,
+              bookingCodeRef: booking.booking_code_ref,
+              expectedPassengerCount: Object.values(booking.passenger_counts)
+                .reduce<number>((sum, value) => sum + (value ?? 0), 0),
+            });
+            supplierTicket = ticket
+              ? { result: 'verified', ticketCount: ticket.ticketNumbers.length,
+                  ticketCodeRef: ticket.ticketCodeRef }
+              : { result: 'unverified' };
+          }
+        } catch {
+          supplierTicket = { result: 'unavailable' };
+        }
+      }
+    }
+    return walletOk({ ...status, supplierTicket });
   } catch (error) {
     console.error('[shapontravels] booking status read failed', {
       bookingId: booking.id,

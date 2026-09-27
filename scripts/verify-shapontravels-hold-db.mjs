@@ -65,8 +65,41 @@ try {
   assert.equal(booking.supplier_refs.priceCodeRef, price);
   assert.equal((await finalize()).id, booking.id, 'finalizer replay does not create another booking');
   assert.equal((await db.query('select booking_uses_saved_references(b) as allowed from flight_bookings b where id=$1', [booking.id])).rows[0].allowed, false,
-    'the Triplover ticketing path cannot issue a Shapontravels hold');
+    'Shapontravels requires a known supplier deadline before issuing');
   assert.equal((await db.query('select count(*)::int as n from flight_bookings where attempt_id=$1', [attemptId])).rows[0].n, 1);
+
+  // Run the real wallet claim and finalizer against a synthetic supplier
+  // receipt. No supplier Issue call or live wallet is involved.
+  const wallet = (await db.query("select (wallet_ensure_account('user','shapon-hold-owner','BDT')).*" )).rows[0];
+  await db.query('update wallet_accounts set available_balance=1000000 where id=$1', [wallet.id]);
+  const issueKey = `operation:v1:${digest(`issue:${booking.id}`)}`;
+  const issueHash = digest(`issue-payload:${booking.id}`);
+  const claim = (await db.query('select wallet_begin_booking_issue_v2($1,$2,$3,$4,$5) as result',
+    [booking.id, 'shapon-hold-owner', 'customer', issueKey, issueHash])).rows[0].result;
+  assert.equal(claim.ok, true, JSON.stringify(claim));
+  assert.equal((await db.query('select wallet_begin_booking_issue_v2($1,$2,$3,$4,$5) as result',
+    [booking.id, 'shapon-hold-owner', 'customer', issueKey, issueHash])).rows[0].result.replay, true);
+  assert.equal((await db.query('select mark_booking_operation_supplier_call_started($1,$2,$3) as result',
+    [claim.operationId, issueKey, issueHash])).rows[0].result.started, true);
+  assert.equal((await db.query('select mark_booking_operation_supplier_response_received($1,$2,$3,200) as result',
+    [claim.operationId, issueKey, issueHash])).rows[0].result.ok, true);
+  const ticket = { pnr: booking.pnr, bookingStatus: 'Confirmed',
+    ticketCodeRef: randomUUID(), ticketNumbers: ['1234567890123'] };
+  const capture = () => db.query('select wallet_capture_reservation_v2($1,$2,$3,$4,$5,$6,$7) as result',
+    [booking.id, 'shapon-hold-owner', 'customer', issueKey, issueHash,
+      claim.operationId, JSON.stringify(ticket)]);
+  assert.equal((await capture()).rows[0].result.ok, true);
+  assert.equal((await capture()).rows[0].result.replay, true);
+  const issued = (await db.query(`select status,payment_state,supplier_public_ref,
+      booking_ref_number,ticket_code_ref,ticket_numbers from flight_bookings where id=$1`,
+    [booking.id])).rows[0];
+  assert.equal(issued.status, 'confirmed');
+  assert.equal(issued.payment_state, 'captured');
+  assert.equal(issued.supplier_public_ref, 'STRTESTHOLD');
+  assert.equal(issued.booking_ref_number, supplierBookingUuid);
+  assert.equal(issued.ticket_code_ref, ticket.ticketCodeRef);
+  assert.deepEqual(issued.ticket_numbers, ticket.ticketNumbers);
+  assert.equal((await db.query("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='booking_confirm'", [booking.id])).rows[0].n, 1);
 
   await assert.rejects(db.query(`insert into booking_attempts(id,access_token_hash,audience,
       supplier,supplier_account,state,search_id,itinerary_id,unique_trans_id,

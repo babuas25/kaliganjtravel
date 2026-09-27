@@ -51,6 +51,8 @@ import {
 } from '@/lib/db/flight-bookings';
 import { readStaffBookingLifecycleTimeline } from '@/lib/db/booking-lifecycle-timeline';
 import { readBookingLocalTimeLimitContext } from '@/lib/db/booking-local-time-limit';
+import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
+import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
 import { storedTicketReferences, usesStoredBookingReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import { readBookingUserVisibilityContext } from '@/lib/db/booking-visibility';
 import { listStaffBookingLifecycle } from '@/lib/db/booking-lifecycle';
@@ -153,6 +155,14 @@ export default async function BookingDetailsPage({
     : await readBookingByPublicRef(reference, bookingScopeFor(session), true);
   if (!row) notFound();
   if (row.public_ref !== reference) redirect(`/dashboard/bookings/${encodeURIComponent(row.public_ref)}`);
+  const supplierTicketingEnabled = row.supplier === 'shapontravels'
+    ? (await getSupplierOperationalControls()).ticketingEnabled &&
+      isShapontravelsConfigured()
+    : false;
+  const canIssueSupplierBooking = row.supplier === 'shapontravels' &&
+    supplierTicketingEnabled && row.status === 'on-hold' &&
+    !row.direct_ticketing && row.import_source === null &&
+    canIssueBooking(session, row);
   const piiAccess = bookingPiiAccessFor(session.role);
   const stored = storedTravellers(row.passengers);
   const travellers =
@@ -323,9 +333,10 @@ export default async function BookingDetailsPage({
           canRefreshBookingTicketingTime(session.role)
         }
         allowTicketing={
-          row.supplier === 'triplover' && canIssueBooking(session, row)
+          (row.supplier === 'triplover' && canIssueBooking(session, row)) ||
+          canIssueSupplierBooking
         }
-        holdOnlySupplier={row.supplier === 'shapontravels'}
+        supplierIssueUnavailable={row.supplier === 'shapontravels' && !canIssueSupplierBooking}
         showPostTicketActions={
           ticketManagementRolloutEnabled() &&
           canViewTicketManagementRequest(session.role)

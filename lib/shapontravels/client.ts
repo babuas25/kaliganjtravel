@@ -219,13 +219,74 @@ export class ShapontravelsWriteError extends Error {
     readonly status: number | null = null,
     readonly requestId: string | null = null,
     readonly pendingBookingId: string | null = null,
-    readonly pendingReference: string | null = null
+    readonly pendingReference: string | null = null,
+    readonly operation: 'Book' | 'NewTicket' = 'Book'
   ) {
-    super(`Shapontravels Book ${code}` +
+    super(`Shapontravels ${operation} ${code}` +
       (pendingBookingId ? ` bookingId=${pendingBookingId}` : '') +
       (pendingReference ? ` reference=${pendingReference}` : ''));
     this.name = 'ShapontravelsWriteError';
   }
+}
+
+/** One physical held-ticket issue request. A response gap never triggers replay. */
+export async function shapontravelsIssueRequest(
+  payload: unknown,
+  idempotencyKey: string,
+  hooks: import('@/lib/triplover/client').SupplierWriteLifecycleHooks
+): Promise<unknown> {
+  let config: Credentials;
+  try {
+    config = credentials();
+  } catch {
+    throw new ShapontravelsWriteError('unconfigured', 'NOT_CONFIGURED', null, null, null, null, 'NewTicket');
+  }
+  let token: Token;
+  try {
+    token = await accessToken(config);
+  } catch {
+    throw new ShapontravelsWriteError('auth', 'AUTH_UNAVAILABLE', null, null, null, null, 'NewTicket');
+  }
+  await hooks.beforeRequest();
+  let response: Response;
+  try {
+    response = await fetch(new URL('api/ticket/NewTicket', config.base), {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token.value}`,
+        'content-type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+      redirect: 'error',
+      signal: AbortSignal.timeout(110_000),
+    });
+  } catch {
+    throw new ShapontravelsWriteError('network', 'ISSUE_NETWORK', null, null, null, null, 'NewTicket');
+  }
+  let body: unknown;
+  try {
+    body = await boundedJson(response, 8 * 1024 * 1024);
+  } catch {
+    throw new ShapontravelsWriteError('protocol', 'INVALID_ISSUE_RESPONSE', response.status,
+      response.headers.get('x-request-id'), null, null, 'NewTicket');
+  }
+  await hooks.onResponse({ httpStatus: response.status, receivedAt: new Date().toISOString() });
+  if (response.status !== 200) {
+    // Even a supplier rejection is not proof that a ticket was not issued.
+    // Keep the wallet reservation in reconciliation after dispatch.
+    throw new ShapontravelsWriteError(
+      response.status === 202 ? 'pending' : 'protocol',
+      response.status === 202 ? 'ISSUE_OUTCOME_UNKNOWN' : responseCode(body),
+      response.status,
+      response.headers.get('x-request-id'),
+      null,
+      null,
+      'NewTicket'
+    );
+  }
+  return body;
 }
 
 function bookingPublicReference(response: Response): string | null {
@@ -238,6 +299,49 @@ export type ShapontravelsBookingRead = {
   supplierPublicRef: string | null;
   body: unknown;
 };
+
+export type ShapontravelsTicketRead = {
+  httpStatus: 200 | 202 | 404;
+  body: unknown;
+};
+
+/** Saved ticket state for operator reconciliation; this never sends Issue. */
+export async function shapontravelsReadTicket(
+  bookingId: string
+): Promise<ShapontravelsTicketRead> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bookingId)) {
+    throw new ShapontravelsReadError('INVALID_BOOKING_LOOKUP');
+  }
+  const config = credentials();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await accessToken(config);
+    let response: Response;
+    try {
+      response = await fetch(new URL(`api/bookings/${bookingId}/ticket`, config.base), {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token.value}` },
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch {
+      throw new ShapontravelsReadError('TICKET_READ_NETWORK');
+    }
+    if (response.status === 401 && attempt === 0) {
+      if (cachedToken?.value === token.value) cachedToken = null;
+      await response.body?.cancel();
+      continue;
+    }
+    const body = await boundedJson(response, 8 * 1024 * 1024);
+    if (response.status === 200 || response.status === 202 || response.status === 404) {
+      return { httpStatus: response.status, body };
+    }
+    throw new ShapontravelsReadError(
+      responseCode(body), response.status, response.headers.get('x-request-id')
+    );
+  }
+  throw new ShapontravelsReadError('AUTH_FAILED');
+}
 
 /** Reads a saved supplier booking. This never sends Book, Issue, or Cancel. */
 export async function shapontravelsReadBooking(

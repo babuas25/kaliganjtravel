@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import ts from 'typescript';
 import { z } from 'zod';
 import { airlinePnrModule } from './helpers/airline-pnr.mjs';
@@ -28,6 +28,9 @@ const refs = { uniqueTransId: 'saved-transaction', priceCodeRef: 'saved-price', 
 let supplierReply;
 const supplierCalls = [];
 class TriploverError extends Error {
+  constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; }
+}
+class ShapontravelsWriteError extends Error {
   constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; }
 }
 const client = {
@@ -99,7 +102,7 @@ class SupplierWriteBoundaryError extends Error {}
 const classifier = load('lib/booking-lifecycle/supplier-uncertainty.ts', {
   '@/lib/booking-lifecycle/supplier-write-hooks': { SupplierWriteBoundaryError },
   '@/lib/triplover/client': client,
-  '@/lib/shapontravels/client': { ShapontravelsWriteError: class extends Error {} },
+  '@/lib/shapontravels/client': { ShapontravelsWriteError },
 });
 const http = {
   walletOk: (data) => Response.json({ success: true, data }),
@@ -107,11 +110,19 @@ const http = {
   walletOperationResponse: (value) => Response.json(value, { status: 409 }),
 };
 const session = { clerkId: 'owner', role: 'customer' };
+const shaponCalls = [];
+let shaponReply = null;
+const shaponIdentity = load('lib/shapontravels/ticket.ts', {
+  '@/lib/triplover/ticket-payload': ticketPayload,
+  './client': { ShapontravelsWriteError, shapontravelsIssueRequest: async () => { throw new Error('Unexpected transport'); } },
+}).shapontravelsTicketIdentityReady;
 const routeDependencies = {
   '@/lib/booking-lifecycle/ticketing-flow': flow,
   '@/lib/currency': currencyModule,
   '@/lib/dashboard/bookings': { bookingScopeFor: () => ({ kind: 'user', clerkId: 'owner' }) },
-  '@/lib/booking-lifecycle/operation-request': { createOperationRequestIdentity: (input) => input },
+  '@/lib/booking-lifecycle/operation-request': load('lib/booking-lifecycle/operation-request.ts', {
+    'node:crypto': { createHash },
+  }),
   '@/lib/booking-lifecycle/supplier-uncertainty': classifier,
   '@/lib/booking-lifecycle/supplier-write-hooks': { bookingOperationSupplierWriteHooks: () => ({ boundarySnapshot: () => boundary }) },
   '@/lib/booking-lifecycle/post-ticketing-reconciliation.server': { reconcilePostTicketingRace: async () => {} },
@@ -133,6 +144,15 @@ const routeDependencies = {
   '@/lib/triplover/issued-ticket-enrichment': { enrichIssuedTicket: async (value) => ({ outcome: value, ticketDetails: null }) },
   '@/lib/triplover/config': { isTriploverSupplier: (value) => ['firsttrip', 'takeoff', 'triplover'].includes(value) },
   '@/lib/triplover/ticket': ticket,
+  '@/lib/shapontravels/ticket': {
+    issueShapontravelsTicket: async (input, idempotencyKey) => {
+      shaponCalls.push({ input, idempotencyKey });
+      if (shaponReply instanceof Error) throw shaponReply;
+      return shaponReply;
+    },
+    shapontravelsTicketIdentityReady: shaponIdentity,
+  },
+  '@/lib/shapontravels/client': { isShapontravelsConfigured: () => true },
   '@/lib/wallet/http': http,
   '@/lib/wallet/permissions': load('lib/wallet/permissions.ts', { '@/lib/impexp/booking-source': {} }),
 };
@@ -244,4 +264,35 @@ await assert.rejects(book.bookFlight(refs, [], {}, 'triplover'), error => error.
 assert.equal(ticketPayload.completeTicketNumbers([{ ticketNumbers: ['T1'] }], 2), null);
 assert.equal(ticketPayload.completeTicketNumbers([{ ticketNumbers: ['T1'] }, { ticketNumbers: ['T1'] }], 2), null);
 assert.equal(ticketPayload.completeTicketNumbers([{ ticketNumbers: ['T1', ''] }], 1), null);
-console.log('Saved-reference delayed issue, separate locators, Book echoes, complete passenger tickets, deadline grants, no PNR call, replay and uncertain-result protection passed.');
+
+// The Shapontravels route must claim the same wallet operation, carry the
+// stable request identity, and protect funds if the supplier outcome is pending.
+const supplierRefs = { uniqueTransId: randomUUID(), priceCodeRef: randomUUID(), itemCodeRef: randomUUID() };
+booking = {
+  ...base, supplier: 'shapontravels', supplier_account: 'shapontravels',
+  pnr: '0AEKGH', booking_ref_number: randomUUID(), booking_code_ref: randomUUID(),
+  supplier_refs: supplierRefs,
+  supplier_ticketing_deadline_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+};
+assert.equal(await canSubmit(), true);
+shaponReply = { pnr: booking.pnr, ticketCodeRef: randomUUID(), ticketNumbers: ['7790000000001'], bookingStatus: 'Confirmed' };
+effects.length = 0;
+assert.equal((await issue()).status, 200);
+assert.deepEqual(effects, ['reserve', 'capture']);
+assert.equal(shaponCalls.length, 1);
+assert.equal(shaponCalls[0].input.bookingRefNumber, booking.booking_ref_number);
+assert.equal(shaponCalls[0].input.bookingCodeRef, booking.booking_code_ref);
+assert.equal(shaponCalls[0].input.expectedPassengerCount, 1);
+assert.ok(shaponCalls[0].idempotencyKey);
+shaponReply = new ShapontravelsWriteError('pending', 'PENDING', 202);
+effects.length = 0;
+assert.equal((await issue()).status, 503);
+assert.deepEqual(effects, ['reserve', 'reconciliation']);
+booking.supplier_refs = { ...supplierRefs, itemCodeRef: 'invalid' };
+effects.length = 0;
+assert.equal(await canSubmit(), false);
+assert.equal((await issue()).status, 409);
+assert.deepEqual(effects, []);
+assert.equal(shaponCalls.length, 2);
+
+console.log('Saved-reference delayed issue, separate locators, Book echoes, complete passenger tickets, deadline grants, Shapontravels route and pending-result protection passed.');

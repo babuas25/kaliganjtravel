@@ -13,6 +13,8 @@ import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
 import { readWalletForOwner } from '@/lib/db/wallet';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { isTriploverSupplier } from '@/lib/triplover/config';
+import { shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
+import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
 import { walletFail, walletOk } from '@/lib/wallet/http';
 import { canIssueBooking } from '@/lib/wallet/permissions';
 
@@ -54,7 +56,9 @@ export async function GET(request: NextRequest) {
     [operationState, openReconciliationCase, localTimeLimit, wallet] = await Promise.all([
       readActiveBookingOperationState(booking.id),
       readOpenBookingReconciliationCaseForBooking(booking.id),
-      readBookingLocalTimeLimitContext(booking.id),
+      booking.supplier === 'triplover'
+        ? readBookingLocalTimeLimitContext(booking.id)
+        : Promise.resolve(null),
       booking.booking_owner_type && booking.booking_owner_key
         ? readWalletForOwner(
             {
@@ -75,19 +79,21 @@ export async function GET(request: NextRequest) {
 
   const supplierControls = await getSupplierOperationalControls();
   const localDeadlineExpired = Boolean(
-    localTimeLimit.localGrantActive &&
+    localTimeLimit?.localGrantActive &&
       localTimeLimit.localDeadlineAt &&
       Date.parse(localTimeLimit.localDeadlineAt) <= Date.now()
   );
   const localTimeLimitBlocked = Boolean(
-    localTimeLimit.requestRequired && !localTimeLimit.localDeadlineActive
+    localTimeLimit?.requestRequired && !localTimeLimit.localDeadlineActive
   );
   const reconciliationRequired =
     booking.payment_state === 'reconciliation' ||
     operationState === 'needs_reconciliation' ||
     Boolean(openReconciliationCase);
   const operationActive = operationState !== null;
-  const supplierReferencesReady = storedTicketReferences(booking) !== null;
+  const supplierReferencesReady = storedTicketReferences(booking) !== null &&
+    (booking.supplier !== 'shapontravels' ||
+      shapontravelsTicketIdentityReady(booking));
   const requiredAmount =
     booking.payment_state === 'captured'
       ? 0
@@ -103,8 +109,14 @@ export async function GET(request: NextRequest) {
   const canSubmit = Boolean(
     supplierControls.ticketingEnabled &&
       booking.import_source !== 'MANUAL' &&
-      booking.supplier === 'triplover' &&
-      isTriploverSupplier(booking.supplier_account) &&
+      (booking.supplier === 'triplover'
+        ? isTriploverSupplier(booking.supplier_account)
+        : booking.supplier === 'shapontravels' &&
+          booking.supplier_account === 'shapontravels' &&
+          booking.status === 'on-hold' &&
+          !booking.direct_ticketing &&
+          booking.import_source === null &&
+          isShapontravelsConfigured()) &&
       !localDeadlineExpired &&
       !localTimeLimitBlocked &&
       !reconciliationRequired &&

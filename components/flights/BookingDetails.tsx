@@ -847,7 +847,7 @@ export default function BookingDetails({
   allowTicketingTimeRefresh = false,
   autoRefreshDeadline = false,
   allowTicketing = true,
-  holdOnlySupplier = false,
+  supplierIssueUnavailable = false,
   showPostTicketActions = false,
   allowPostTicketOwnerActions = false,
   allowedPostTicketActions = [],
@@ -872,7 +872,7 @@ export default function BookingDetails({
   allowTicketingTimeRefresh?: boolean;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
-  holdOnlySupplier?: boolean;
+  supplierIssueUnavailable?: boolean;
   showPostTicketActions?: boolean;
   allowPostTicketOwnerActions?: boolean;
   allowedPostTicketActions?: readonly TicketManagementAction[];
@@ -1197,7 +1197,7 @@ export default function BookingDetails({
           onSupplierActionBusyChange={setSupplierActionBusy}
           autoRefreshDeadline={autoRefreshDeadline}
           allowTicketing={allowTicketing}
-          holdOnlySupplier={holdOnlySupplier}
+          supplierIssueUnavailable={supplierIssueUnavailable}
           showPostTicketActions={showPostTicketActions}
           allowPostTicketOwnerActions={allowPostTicketOwnerActions}
           allowedPostTicketActions={allowedPostTicketActions}

@@ -64,8 +64,29 @@ try {
   assert.equal(booking.ticketing_deadline_at.toISOString(), '2030-01-01T06:00:00.000Z');
   assert.equal(booking.supplier_refs.priceCodeRef, price);
   assert.equal((await finalize()).id, booking.id, 'finalizer replay does not create another booking');
-  assert.equal((await db.query('select booking_uses_saved_references(b) as allowed from flight_bookings b where id=$1', [booking.id])).rows[0].allowed, false,
-    'Shapontravels requires a known supplier deadline before issuing');
+  const savedReferencesAllowed = async () => (await db.query(
+    'select booking_uses_saved_references(b) as allowed from flight_bookings b where id=$1',
+    [booking.id]
+  )).rows[0].allowed;
+  assert.equal(await savedReferencesAllowed(), true,
+    'Verified Shapontravels API holds can use saved references');
+  await db.query('update flight_bookings set supplier_public_ref=null where id=$1', [booking.id]);
+  assert.equal(await savedReferencesAllowed(), false, 'Missing verified STR cannot bypass a deadline');
+  await db.query('update flight_bookings set supplier_public_ref=$2 where id=$1', [booking.id, 'STRTESTHOLD']);
+  await db.query("update flight_bookings set supplier_refs=supplier_refs || '{\"itemCodeRef\":null}'::jsonb where id=$1", [booking.id]);
+  assert.equal(await savedReferencesAllowed(), false, 'Incomplete Book references cannot bypass a deadline');
+  await db.query('update flight_bookings set supplier_refs=$2 where id=$1',
+    [booking.id, JSON.stringify(outcome.supplierRefs)]);
+  assert.equal(await savedReferencesAllowed(), true);
+  await db.query("update flight_bookings set supplier_ticketing_deadline_at=now()-interval '1 minute' where id=$1", [booking.id]);
+  assert.equal((await db.query(
+    "select wallet_begin_booking_issue($1,'shapon-hold-owner','customer','expired-claim') as result",
+    [booking.id]
+  )).rows[0].result.code, 'BOOKING_EXPIRED', 'A known expired deadline still blocks the wallet claim');
+  await db.query('update flight_bookings set supplier_ticketing_deadline_at=null where id=$1', [booking.id]);
+  assert.equal((await db.query('select ticketing_deadline_at from flight_bookings where id=$1',
+    [booking.id])).rows[0].ticketing_deadline_at, null,
+  'An unverified supplier deadline remains unknown');
   assert.equal((await db.query('select count(*)::int as n from flight_bookings where attempt_id=$1', [attemptId])).rows[0].n, 1);
 
   // Run the real wallet claim and finalizer against a synthetic supplier
@@ -76,7 +97,9 @@ try {
   const issueHash = digest(`issue-payload:${booking.id}`);
   const claim = (await db.query('select wallet_begin_booking_issue_v2($1,$2,$3,$4,$5) as result',
     [booking.id, 'shapon-hold-owner', 'customer', issueKey, issueHash])).rows[0].result;
-  assert.equal(claim.ok, true, JSON.stringify(claim));
+  assert.equal(claim.ok, true, `A verified hold with no deadline must reserve once: ${JSON.stringify(claim)}`);
+  assert.equal((await db.query('select count(*)::int as n from wallet_reservations where booking_id=$1',
+    [booking.id])).rows[0].n, 1);
   assert.equal((await db.query('select wallet_begin_booking_issue_v2($1,$2,$3,$4,$5) as result',
     [booking.id, 'shapon-hold-owner', 'customer', issueKey, issueHash])).rows[0].result.replay, true);
   assert.equal((await db.query('select mark_booking_operation_supplier_call_started($1,$2,$3) as result',

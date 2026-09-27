@@ -76,8 +76,8 @@ function isDuplicateBookingRejection(error: TriploverError): boolean {
  * destructive request could have reached the supplier. A complete supplier
  * rejection is definitive except for 5xx and HTTP-200 business errors, whose
  * real-world side effect may disagree with the envelope. Protocol/incomplete
- * responses after a write are uncertain except for a durably recorded,
- * documented pre-dispatch NewTicket wallet refusal.
+ * responses after a write are uncertain except for durably recorded,
+ * documented pre-dispatch NewTicket wallet/cutoff refusals.
  */
 export function classifySupplierWriteFailure(
   error: unknown,
@@ -129,12 +129,13 @@ export function classifySupplierWriteFailure(
     if (error.kind === 'network') {
       return result(boundary, 'uncertain', 'network_after_write', error);
     }
-    // Shapontravels reserves its own wallet before dispatching NewTicket in the
-    // same transaction. This exact 409 means that reservation failed and no
-    // supplier issue was sent. Require a recorded response boundary so a lost
-    // local write still keeps the Kaliganj wallet hold protected.
+    // Shapontravels checks the staff cutoff, then reserves its own wallet,
+    // before dispatching NewTicket. These exact 409s mean no supplier issue
+    // was sent. Require a recorded response boundary so a lost local write
+    // still keeps the Kaliganj wallet hold protected.
     if (error.operation === 'NewTicket' && error.kind === 'protocol' &&
-        error.status === 409 && error.code === 'INSUFFICIENT_FUNDS' &&
+        error.status === 409 &&
+        (error.code === 'INSUFFICIENT_FUNDS' || error.code === 'HOLD_TIME_LIMIT_EXPIRED') &&
         boundary.httpStatus === 409 &&
         boundary.supplierResponseObserved && boundary.supplierResponseRecorded) {
       return result(boundary, 'definitive-failure', 'supplier_rejected', error);

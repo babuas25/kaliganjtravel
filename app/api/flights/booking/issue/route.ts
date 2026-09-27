@@ -431,6 +431,10 @@ export async function POST(request: NextRequest) {
       error.operation === 'NewTicket' && error.status === 409 &&
       error.code === 'INSUFFICIENT_FUNDS' &&
       supplierFailure.failureClass === 'definitive-failure';
+    const supplierCutoffExpired = error instanceof ShapontravelsWriteError &&
+      error.operation === 'NewTicket' && error.status === 409 &&
+      error.code === 'HOLD_TIME_LIMIT_EXPIRED' &&
+      supplierFailure.failureClass === 'definitive-failure';
     const supplierBalanceUnverified = supplierWalletIsInsufficient(error);
     if (
       supplierFailure.failureClass === 'uncertain' ||
@@ -514,10 +518,13 @@ export async function POST(request: NextRequest) {
     await dispatchBookingStatusEmails(booking.id);
     return released.ok
       ? walletFail(
-          supplierWalletRefused ? 409 : 502,
-          supplierWalletRefused ? 'SUPPLIER_WALLET_INSUFFICIENT' : 'TICKET_ISSUE_FAILED',
+          supplierWalletRefused || supplierCutoffExpired ? 409 : 502,
+          supplierWalletRefused ? 'SUPPLIER_WALLET_INSUFFICIENT'
+            : supplierCutoffExpired ? 'SUPPLIER_TIME_LIMIT_EXPIRED' : 'TICKET_ISSUE_FAILED',
           supplierWalletRefused
             ? 'Ticketing is temporarily unavailable. No ticket was issued and your wallet hold was released. Contact support before another attempt.'
+            : supplierCutoffExpired
+              ? 'The supplier booking time limit has passed. No ticket was issued and your wallet hold was released.'
             : 'The airline declined ticket issuance. The full wallet hold was released.'
         )
       : walletFail(

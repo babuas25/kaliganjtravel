@@ -4,6 +4,15 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Shapontravels saved-reference issue gate, 2026-09-27:** applied
+`20260927030000_shapon_saved_reference_ticketing.sql` as the sole pending
+migration after the full local regression suite passed. A follow-up hosted dry
+run found no pending migrations. A read-only hosted check of
+`KTT0AEN460AEN46` confirmed `booking_uses_saved_references=true`, On Hold,
+payment Released, no active issue operation, and only the previously released
+reservation. The migration changed a helper function; it did not reserve wallet
+funds or send NewTicket. Known effective deadlines still block when expired.
+
 **Shapontravels wallet refusal recovery, 2026-09-27:** applied
 `20260927020000_shapon_wallet_refusal_recovery.sql` as the sole pending forward
 migration after its full-schema PGlite test passed. The follow-up hosted dry run

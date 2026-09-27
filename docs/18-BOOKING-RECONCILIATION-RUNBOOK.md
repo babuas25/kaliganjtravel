@@ -63,9 +63,10 @@ ticket/financial evidence. A Held read or one negative endpoint cannot prove
 non-issuance after an uncertain write; record the approved manual supplier-
 portal attestation and use the non-issuance workflow.
 
-The recorded Shapontravels **NewTicket** HTTP 409 `INSUFFICIENT_FUNDS` is a
-narrow exception: Shapon's wallet reservation fails before it dispatches
-ticketing. Only a matching, durably recorded response boundary is definitive;
+The recorded Shapontravels **NewTicket** HTTP 409 `INSUFFICIENT_FUNDS` and
+`HOLD_TIME_LIMIT_EXPIRED` are narrow exceptions: Shapon's wallet reservation
+and staff-cutoff checks fail before it dispatches ticketing. Only a matching,
+durably recorded response boundary is definitive;
 other 409s, timeouts, and incomplete responses retain their normal uncertainty
 protection. On 2026-09-27, the single-booking
 `resolve_ktt0aen460aen46_wallet_refusal_v1` workflow used that recorded

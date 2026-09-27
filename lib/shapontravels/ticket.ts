@@ -47,7 +47,8 @@ export async function issueShapontravelsTicket(
 ): Promise<TicketIssueOutcome> {
   const body = await shapontravelsIssueRequest({
     PNR: input.pnr,
-    BookingRefNumber: input.bookingRefNumber,
+    // NewTicket expects the PNR mirror; Book's receipt UUID stays in storage.
+    BookingRefNumber: input.pnr,
     UniqueTransID: input.uniqueTransId,
     PriceCodeRef: input.priceCodeRef,
     ItemCodeRef: input.itemCodeRef,

@@ -20,14 +20,14 @@ function compile(file, imports, globals = {}) {
   return module.exports;
 }
 
-const refs = {
+const refs = Object.freeze({
   uniqueTransId: '11111111-1111-4111-8111-111111111111',
   itemCodeRef: '22222222-2222-4222-8222-222222222222',
   priceCodeRef: '33333333-3333-4333-8333-333333333333',
   bookingCodeRef: '44444444-4444-4444-8444-444444444444',
   bookingRefNumber: '55555555-5555-4555-8555-555555555555',
   pnr: 'ABC123', expectedPassengerCount: 1,
-};
+});
 const ticketCodeRef = '66666666-6666-4666-8666-666666666666';
 const ticketInfoes = [{ ticketNumbers: ['1234567890123'] }];
 const receipt = {
@@ -72,7 +72,7 @@ assert.equal(issued.ticketCodeRef, ticketCodeRef);
 assert.deepEqual(Array.from(issued.ticketNumbers), ['1234567890123']);
 assert.equal(request.key, 'operation:v1:fixed');
 assert.deepEqual(JSON.parse(JSON.stringify(request.payload)), {
-  PNR: refs.pnr, BookingRefNumber: refs.bookingRefNumber,
+  PNR: refs.pnr, BookingRefNumber: refs.pnr,
   UniqueTransID: refs.uniqueTransId, PriceCodeRef: refs.priceCodeRef,
   ItemCodeRef: refs.itemCodeRef, BookingCodeRef: refs.bookingCodeRef,
 });
@@ -109,6 +109,14 @@ async function transport(status) {
       assert.equal(init.method, 'POST');
       assert.equal(init.headers['Idempotency-Key'], 'operation:v1:fixed');
       assert.equal(init.headers.authorization, 'Bearer stm_ticket');
+      const payload = JSON.parse(init.body);
+      assert.equal(payload.BookingRefNumber, payload.PNR,
+        'Shapon NewTicket requires BookingRefNumber to mirror PNR, not the Book receipt UUID');
+      assert.deepEqual(payload, {
+        PNR: refs.pnr, BookingRefNumber: refs.pnr,
+        UniqueTransID: refs.uniqueTransId, PriceCodeRef: refs.priceCodeRef,
+        ItemCodeRef: refs.itemCodeRef, BookingCodeRef: refs.bookingCodeRef,
+      });
       return new Response(JSON.stringify(status === 200 ? receipt :
         status === 202 ? { issueId: refs.bookingCodeRef, state: 'pending' } :
           { error: 'SUPPLIER_REPORTED_FAILURE' }), { status });
@@ -119,17 +127,24 @@ async function transport(status) {
     beforeRequest: async () => events.push('before'),
     onResponse: async value => events.push(value.httpStatus),
   };
+  const adapter = compile('lib/shapontravels/ticket.ts', {
+    '@/lib/triplover/ticket-payload': payloadModule,
+    './client': client,
+  });
+  const issue = () => adapter.issueShapontravelsTicket(refs, 'operation:v1:fixed', hooks);
   if (status === 200) {
-    assert.equal((await client.shapontravelsIssueRequest({}, 'operation:v1:fixed', hooks)).item2.isSuccess, true);
+    assert.equal((await issue()).bookingStatus, 'Confirmed');
   } else {
     await assert.rejects(
-      client.shapontravelsIssueRequest({}, 'operation:v1:fixed', hooks),
+      issue(),
       error => error.kind === (status === 202 ? 'pending' : 'protocol') &&
         error.operation === 'NewTicket'
     );
   }
   assert.equal(issueCalls, 1, 'Unknown outcomes never repeat the Issue mutation');
   assert.deepEqual(events, ['before', status]);
+  assert.equal(refs.bookingRefNumber, '55555555-5555-4555-8555-555555555555',
+    'The saved Book receipt UUID remains available for status verification');
 }
 await transport(200);
 await transport(202);

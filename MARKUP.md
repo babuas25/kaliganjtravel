@@ -5,7 +5,11 @@ the current behavior of `/dashboard/markup`, the server-side pricing engine,
 rule precedence, database constraints, and the checks required when the feature
 changes.
 
-Last reviewed against the implementation: 2026-07-31.
+This engine prices Triplover offers. The separate Shapontravels pricing
+path uses the supplier's final `fareBreakdown.payable` directly and does
+not apply local markup rules; see the [supplier guide](./docs/29-SHAPONTRAVELS-READ-ONLY-GUIDE.md).
+
+Last reviewed against the implementation: 2026-09-28.
 
 ## 1. The short version
 
@@ -13,17 +17,12 @@ Last reviewed against the implementation: 2026-07-31.
 - The browser never chooses its pricing audience. Search and RePrice derive it
   from the verified server session.
 - A rule targets one audience and one airline/route coverage combination.
-- Pricing has **two stages**. A base rule (all airlines, all routes) prices the
-  supplier fare; one adjustment rule (agency, airline, or route) then modifies
-  that selling price. Never more than two rules; matching rules beyond these
-  two are ignored.
-- A percentage is always a percentage of the **running selling price**: the
-  supplier payable at stage one, the stage one result at stage two. Both stages
-  modify a price, so the effect always matches the number the rule is applied
-  to.
-- Positive normal markup starts from supplier payable and is capped at gross.
-  The cap and the floor are re-checked after **each** stage, so composition
-  cannot walk past either.
+- Pricing applies **one matching rule only**, selected by audience and coverage
+  priority. Other matching rules do not add to that rule.
+- An ordinary percentage is calculated from **supplier payable**. Margin share
+  uses available supplier-to-gross margin; LCC percentages use supplier base fare.
+- Positive normal markup starts from supplier payable and is capped at safe
+  gross. Discounts stop at the taxes-and-AIT floor.
 - Negative fixed or percentage values are discounts. They may go below supplier
   payable, but cannot remove taxes or AIT.
 - The explicitly enabled LCC service-margin mode replaces the calculation
@@ -39,12 +38,11 @@ flowchart LR
     A["Verified server session"] --> B["Derive pricing audience"]
     B --> C["Load active rules for that audience"]
     D["Triplover Search or RePrice"] --> E["Normalize supplier fare"]
-    C --> F["Select base rule and adjustment rule"]
+    C --> F["Select the highest-priority matching rule"]
     E --> F
-    F --> G["Stage 1: price the supplier fare"]
-    G --> H["Stage 2: adjust that selling price"]
-    H --> I["Store private pricing snapshot"]
-    H --> J["Return role-authorized public fare"]
+    F --> G["Price the fare using only that rule"]
+    G --> I["Store private pricing snapshot"]
+    G --> J["Return role-authorized public fare"]
 ```
 
 The active-rule database read starts alongside the Triplover request, so the
@@ -116,59 +114,39 @@ validator.
 `bidirectional = true` is meaningful only for a specific route. For example,
 `DAC -> CXB` with bidirectional enabled also matches `CXB -> DAC`.
 
-## 6. How the two rules are chosen
+## 6. How the rule is chosen
 
-`selectMarkupRules()` returns at most two rules:
+`selectMarkupRules()` returns `{ rule: MarkupRule | null }`. It filters active
+rules to those matching the audience, airline, and requested route, then picks
+only the first rule in this order:
 
-| Stage | Scope of the rule | Job |
-| --- | --- | --- |
-| `base` | All airlines **and** all routes | Prices the supplier fare |
-| `adjustment` | Any rule naming an airline, a route, or both | Modifies the base stage result |
+| Priority | Audience | Airline | Route |
+| --- | --- | --- | --- |
+| 1 | Specific agent | Specific | Specific |
+| 2 | Specific agent | All | Specific |
+| 3 | Specific agent | Specific | All |
+| 4 | Specific agent | All | All |
+| 5 | All B2B users | Specific | Specific |
+| 6 | All B2B users | All | Specific |
+| 7 | All B2B users | Specific | All |
+| 8 | All B2B users | All | All |
 
-It filters active matching rules exactly as before, sorts them with the same
-comparator, and then takes the best rule of each scope. Precedence inside a
-stage is unchanged:
+B2C considers only B2C rules, using the same four coverage levels. A matching
+specific-agency rule always beats any all-B2B rule, even when the agency rule
+covers all airlines and all routes. Within one audience, route specificity
+outranks airline specificity: **all airlines + specific route** beats
+**specific airline + all routes**.
 
-1. A specific-agency rule beats an all-B2B rule.
-2. A route-specific rule beats an all-routes rule.
-3. At the same route specificity, a specific-airline rule beats an
-   all-airlines rule.
-4. For a multicity search, a match on the earliest requested leg wins.
-5. `updated_at` descending is the deterministic final tie-breaker.
+For equal audience and coverage specificity, a match on the earliest requested
+leg wins; `updated_at` descending is the final tie-breaker.
 
-This means **all airlines + specific route** beats **specific airline + all
-routes** *within the adjustment stage*, because route specificity is evaluated
-before airline specificity.
-
-For one agency, the adjustment stage resolves in this order:
-
-1. Specific agent + specific airline + specific route
-2. Specific agent + all airlines + specific route
-3. Specific agent + specific airline + all routes
-4. The same three coverage levels for the all-B2B audience
-
-and the base stage resolves between the agent's own all-airlines/all-routes
-rule and the all-B2B one, preferring the agent's. B2C uses the same shape but
-has no cross-audience fallback.
-
-**The two stages resolve independently.** An agency keeps its own base margin
-even when the winning adjustment came from the all-B2B audience.
-
-This is the one precedence consequence worth knowing. The single-rule engine
-sorted by audience tier *first*, so an agency's own all-airlines/all-routes
-rule outranked **every** all-B2B rule, including route- and airline-specific
-ones: those never reached that agency at all. With independent stages, the
-agency's rule takes the base slot and a scoped all-B2B rule can now adjust it.
-An agency that should ignore all-B2B scoped rules needs its own rule at the
-same coverage, which outranks the all-B2B one inside the adjustment stage.
-
-Rules beyond these two never apply. A specific-airline rule and an
-all-airlines/specific-route rule cannot both adjust the same itinerary; the
-precedence list above picks one.
+A general rule is a fallback when no higher-priority rule matches. It never
+adds another layer to the selected rule. Existing rule rows require no migration;
+the new selection order determines which one applies to new Search and RePrice
+calculations.
 
 The database unique index permits only one row for an exact
-audience/agency/airline/route/direction scope, so at most one base rule can
-exist per audience.
+audience/agency/airline/route/direction scope.
 
 A trigger also rejects semantically overlapping route scopes: for example,
 `DAC -> CXB` cannot coexist with `DAC <-> CXB` in the same audience and airline
@@ -187,31 +165,18 @@ instead of creating another one.
 Positive fixed and percentage values are markups. Negative values are
 discounts. Margin share is never negative.
 
-A percentage is always a percentage of the **running selling price** — the
-price the rule is being applied to:
+The monetary basis depends on the selected rule's calculation:
 
-| Stage | Percentage is a percentage of |
+| Calculation | Basis |
 | --- | --- |
-| `base` | The **supplier payable** |
-| `adjustment` | The **stage 1 result** |
-| LCC service margin | The supplier **base fare** |
-
-With no base rule, stage 2 also starts from the supplier payable, so a lone
-scoped rule and a lone base rule price identically. The LCC service margin is
-the one exception: it replaces the calculation instead of adjusting a price,
-so it keeps the base fare as its basis.
-
-`margin_share` also ignores the stage: its basis is the supplier-to-gross
-margin, a property of the supplier fare, in both slots.
+| Ordinary percentage | **Supplier payable** |
+| Margin share | **Available supplier-to-gross margin** |
+| LCC service-margin percentage | Supplier **base fare** |
 
 Fixed markup multiplies the configured value by the total passenger count.
 Percentage and margin-share calculations already use totals for the whole
-offer, so they are not multiplied by passenger count again.
-
-In code the basis is a property of the function you call —
-`runningStageAmount()` for either stage, `lccServiceAmount()` for the
-exception — not a branch, so a future edit cannot silently point a stage at
-the wrong number.
+offer, so they are not multiplied by passenger count again. Coverage specificity
+does not change the basis of the calculation.
 
 All business validation must remain in `validateMarkupRuleInput()`. HTML input
 attributes are usability aids, not a security or data-integrity boundary.
@@ -239,7 +204,7 @@ marginShareRequest = availableMargin * rule.value / 100
 
 ### The guard rail
 
-One clamp, applied after every stage:
+One clamp, applied to the price produced by the selected ordinary rule:
 
 ```text
 clamp(price) = max(minimumSelling, min(price, safeGross))
@@ -252,32 +217,29 @@ still wins if the two ever cross.
 ### Normal markup or discount
 
 ```text
-selling₁ = clamp(supplierPayable + request(supplierPayable))  // stage 1
-selling₂ = clamp(selling₁        + request(selling₁))         // stage 2
+sellingPrice = clamp(supplierPayable + selectedRuleRequest)
 ```
 
-Each stage calculates from the price it is applied to. With no base rule,
-stage 1 is skipped and the running price stays at supplier payable. With no
-adjustment rule, `clamp` is idempotent and `selling₂` equals `selling₁`. Either
-way a lone rule prices identically in either slot.
-
-Because the clamp runs after each stage, a positive adjustment on top of a base
-rule that already reached the cap adds nothing, and no combination of rules can
-sell above gross or below payable taxes and AIT.
+Only the selected rule contributes an amount. For example, an all-routes
+BDT 100 rule and a matching route-specific BDT 100 rule produce a requested
+markup of BDT 100 per passenger, not BDT 200.
 
 Important commercial behavior: a negative rule can make the selling price
 lower than supplier payable. The protection is a taxes-and-AIT floor, not a
 supplier-payable floor. Treat any change to this behavior as a business and
 financial decision.
 
-`PricingSnapshot.grossCapApplied` records an upper-cap event in either stage.
-`PricingSnapshot.discountFloorApplied` records a lower-floor event in either
-stage. `PricingSnapshot.components` records each stage — its rule, the basis
-the calculation used, the requested amount, and the running price before and
-after — so any stored selling price can be reconstructed without re-reading the
-rules table. Snapshots written before two-stage pricing have no `components`.
-`ruleId`, `markupType` and `markupValue` continue to describe the single most
-specific rule that priced the offer.
+`PricingSnapshot.grossCapApplied` records an upper-cap event and
+`PricingSnapshot.discountFloorApplied` records a lower-floor event.
+`PricingSnapshot.components` contains at most one new component, with
+`stage: 'rule'`: the rule, calculation basis, requested amount, and price before
+and after applying it. `ruleId`, `markupType`, and `markupValue` describe that
+same selected rule.
+
+Historical snapshots are preserved. Their components may use the legacy
+`base` and `adjustment` stages, and older snapshots may omit `components`.
+The component type retains those legacy values for compatibility; new pricing
+does not create those stages or recalculate stored booking snapshots.
 
 ### LCC service-margin exception
 
@@ -291,17 +253,12 @@ sellingPrice = max(gross, supplierPayable) + requestedServiceMargin
 
 This mode:
 
-- must target a specific airline, so it can only ever occupy the adjustment
-  slot;
-- **replaces** the calculation instead of adjusting it — the base rule does not
-  apply, and its percentage stays a percentage of base fare;
+- must target a specific airline;
+- applies only when that LCC rule wins the normal rule-selection priority;
+- uses safe gross plus a fixed per-passenger amount or a percentage of base fare;
 - accepts only a positive fixed or percentage value;
 - does not accept margin share or discounts; and
 - is the only pricing path intentionally allowed above gross.
-
-Ignoring the base rule costs nothing commercially: an LCC fare has no
-supplier-to-gross margin, so a base rule would have been clamped to zero
-anyway. It keeps "one deliberate exception above gross" true.
 
 The application does not automatically identify an LCC from the carrier code.
 The Super Admin must deliberately enable the switch for the rule.
@@ -328,9 +285,9 @@ available margin   BDT   398.11
 | Margin share `50` | BDT 199.06 | BDT 199.06 | BDT 5,549.95 | 50% of available margin |
 | LCC fixed BDT `200` | BDT 200.00 | BDT 200.00 | BDT 5,949.00 | Explicitly added above gross |
 
-### Two stages together
+### Competing rules
 
-A rounder fare makes the composition easy to follow:
+For this illustrative one-passenger fare:
 
 ```text
 base fare          BDT 4,800.00
@@ -340,20 +297,20 @@ supplier payable   BDT 5,600.00
 available margin   BDT   400.00
 ```
 
-| Base rule | Adjustment rule | Stage 1 | Stage 2 | Reason |
-| --- | --- | ---: | ---: | --- |
-| `+1%` | none | BDT 5,656.00 | — | 1% of the 5,600 supplier payable |
-| `+1%` | BS `-300` fixed | BDT 5,656.00 | BDT 5,356.00 | 300 off the stage 1 price |
-| `+1%` | BS `-5%` | BDT 5,656.00 | BDT 5,373.20 | 5% of the 5,656 stage 1 price |
-| `+300` | BS `+300` | BDT 5,900.00 | BDT 6,000.00 | Stage 2 stops at the gross cap |
-| `-100` | BS `-9,000` | BDT 5,500.00 | BDT 1,200.00 | Stage 2 stops at the taxes + AIT floor |
+The following pairs target the same audience and match the itinerary:
+
+| General rule | More specific rule | Selected request | Selling price |
+| --- | --- | ---: | ---: |
+| All airlines/all routes `+100` | All airlines/JSR ↔ DAC `+100` | BDT 100.00 | BDT 5,700.00 |
+| All airlines/all routes `+1%` | BS/all routes `-300` fixed | BDT -300.00 | BDT 5,300.00 |
+| All airlines/all routes `+1%` | BS/all routes `-5%` | BDT -280.00 | BDT 5,320.00 |
+| All airlines/all routes `+300` | BS/all routes `+500` | BDT 500.00 | BDT 6,000.00 (gross cap) |
+| All airlines/all routes `-100` | BS/all routes `-9,000` | BDT -9,000.00 | BDT 1,200.00 (taxes + AIT floor) |
 
 The builder preview calls the same `priceOffer()` function used by Search and
-RePrice, with the illustrative values above, and resolves the real saved base
-rule for the chosen audience so a scoped draft is previewed in context. This
-keeps caps, discount floors, safe-gross behavior, and minor-unit rounding
-identical; Search and RePrice replace only the sample inputs with each live
-supplier response.
+RePrice, with an illustrative fare and the draft rule alone. This keeps caps, discount
+floors, safe-gross behavior, and minor-unit rounding identical; Search and
+RePrice select the matching rule and use each live supplier response.
 
 ## 10. Failure behavior
 
@@ -361,13 +318,12 @@ Pricing must fail closed without exposing supplier net.
 
 | Situation | Selling-price behavior |
 | --- | --- |
-| B2C has no matching rule in either stage | Safe gross: the greater of calculated gross and supplier payable |
-| Agency has no matching rule in either stage | Supplier payable |
-| Adjustment rule matches but no base rule does | Stage 1 is skipped; the adjustment prices from supplier payable |
-| Base rule matches but no adjustment rule does | Stage 2 is skipped; the base rule alone prices the fare |
+| B2C has no matching rule | Safe gross: the greater of calculated gross and supplier payable |
+| Agency has no matching rule | Supplier payable |
+| Multiple ordinary rules match | Only the highest-priority rule prices from supplier payable |
 | Super Admin search | Supplier payable; no rule lookup |
 | Rule storage is unavailable for any customer-facing audience | Safe gross |
-| Requested positive markup exceeds available margin | Cap at gross, in whichever stage reaches it |
+| Requested positive markup exceeds available margin | Cap at safe gross |
 | Requested discount would remove taxes or AIT | Stop at the taxes-and-AIT floor |
 
 The pricing-rules page disables changes when storage is unconfigured or its initial
@@ -469,10 +425,10 @@ When adding an audience, coverage type, or calculation mode:
 4. Update `RuleRow`, `SELECT`, `toRule()`, and `rowFor()` in
    `lib/db/markup-rules.ts`.
 5. Update active audience queries without broadening commercial data access.
-6. Update `selectMarkupRules()` and document the exact precedence, keeping the
-   base and adjustment stages separately resolved.
-7. Update `priceOffer()` using integer minor-unit arithmetic, and keep every
-   stage behind `clampSelling()`.
+6. Update `selectMarkupRules()` and document the exact precedence, selecting
+   at most one rule.
+7. Update `priceOffer()` using integer minor-unit arithmetic, and keep ordinary
+   rule calculations behind `clampSelling()`.
 8. Verify the same behavior through Search and RePrice.
 9. Update the preview, rule labels, this guide, and `DATABASE.md`.
 10. Run the automated checks and the manual matrix below.
@@ -481,8 +437,8 @@ Do not:
 
 - accept an audience, agency code, supplier price, or prior selling total from
   the browser as authoritative;
-- apply more than one rule per stage, or add a third stage;
-- clamp only once at the end instead of after each stage;
+- apply more than one rule to an itinerary;
+- bypass the gross cap or taxes-and-AIT floor for ordinary rules;
 - query the database once per itinerary;
 - expose service-role credentials, supplier references, or full pricing
   snapshots to the browser;
@@ -498,8 +454,13 @@ Run:
 npm run typecheck
 npm run lint
 npm run build
-npx supabase db push --linked --dry-run
+npm run verify:markup-priority
+npm run verify:canonical-pricing-regression
 ```
+
+When a change includes a database migration, also run
+`npx supabase db push --linked --dry-run`. Exclusive rule selection does not
+change the database schema or require that migration check.
 
 Verification baseline on 2026-07-30: typecheck, lint, and production build pass;
 the linked Supabase project is synchronized through migration `0014`; and the
@@ -510,12 +471,12 @@ Minimum pricing test matrix:
 
 - B2C, all B2B, specific agency, and Super Admin audience resolution
 - all four airline/route coverage combinations
-- base rule alone, adjustment rule alone, and both together
-- an agency base rule combined with an all-B2B adjustment rule
-- base-stage percentage taken from the supplier payable
-- adjustment-stage percentage taken from the stage 1 price
-- a lone rule pricing identically in either slot
-- a positive adjustment adding nothing when stage 1 already hit the gross cap
+- each coverage alone and multiple competing coverage rules
+- route-specific BDT 100 plus general BDT 100 applying only BDT 100
+- an agency all-airlines/all-routes rule overriding a scoped all-B2B rule
+- ordinary percentages calculated from supplier payable
+- new snapshots containing at most one component with `stage: 'rule'`
+- compatibility with legacy stored pricing components
 - specific agency overriding all B2B
 - route-specific overriding all-routes
 - specific airline overriding all airlines at equal route specificity
@@ -559,10 +520,10 @@ Manual UI smoke test:
 | Super Admin does not see markup | Expected: Super Admin is the supplier-payable audit audience |
 | A large positive rule has no further effect | It reached the gross cap |
 | A large discount is smaller than requested | It reached the taxes-and-AIT floor |
-| An airline rule seems to add less than configured | Expected if the base rule already reached the gross cap; check `components` in the snapshot |
-| A percentage looks bigger than expected | Expected: a percentage is taken from the running selling price — the supplier payable at stage 1, the stage 1 result at stage 2 — never from the base fare |
-| A price changed after adding an unrelated global rule | Expected: the global rule is now the base stage for that audience |
-| Agency receives the all-B2B value | No matching specific-agency rule outranked it in that stage |
+| A rule seems to add less than configured | Check available supplier-to-gross margin and `grossCapApplied` in the snapshot |
+| A percentage looks bigger than expected | Ordinary percentages use supplier payable; only LCC service-margin percentages use base fare |
+| A general rule seems to have no effect | Expected when a higher-priority rule matches; inspect the selected `ruleId` |
+| Agency receives the all-B2B value | No active matching specific-agency rule was found |
 | An all-airlines route rule beats an airline-wide rule | Expected: route specificity outranks airline specificity |
 | A route-overlap error appears | A one-way or bidirectional rule already covers that route in the same audience and airline scope |
 | LCC rule does not add above gross | Confirm it is positive, fixed/percentage, targets one airline, and has `lcc_service_margin = true` |

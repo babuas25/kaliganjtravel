@@ -1,6 +1,11 @@
 # Pricing and Markup System
 
-This document describes the ShoponTravels pricing engine, including the two-stage markup model, rule structure, audience-based pricing, and integration with flight search. The pricing system applies commercial markup and discount rules to supplier fares to generate selling prices for different customer segments.
+This document describes the ShoponTravels pricing engine, including the single-rule priority model, rule structure, audience-based pricing, and integration with flight search. The pricing system applies commercial markup and discount rules to supplier fares to generate selling prices for different customer segments.
+
+The engine described here prices Triplover offers. The separate Shapontravels
+pricing path validates and uses the supplier's final
+`fareBreakdown.payable` directly; it does not apply local markup rules. See the
+[Shapontravels supplier guide](./29-SHAPONTRAVELS-READ-ONLY-GUIDE.md).
 
 **Related Documentation:**
 - [`docs/05-FLIGHT-SEARCH.md`](./05-FLIGHT-SEARCH.md) - Flight search architecture and supplier integration
@@ -23,15 +28,15 @@ The pricing system transforms supplier fares (from Triplover API) into selling p
 
 1. **Server-Side Security**: Pricing rules are commercial data stored server-only. Browsers never query the markup_rules table directly (RLS enabled with no policies).
 
-2. **Two-Stage Pricing**: Base rule prices the supplier fare; adjustment rule modifies that result. Never more than two rules per itinerary.
+2. **One Selected Rule**: Only the highest-priority matching rule prices an itinerary. Other matching rules do not add another markup or discount.
 
 3. **Audience-Derived Pricing**: The browser never chooses its pricing audience. Search and RePrice derive it from the verified server session.
 
-4. **Percentage Semantics**: A percentage is always a percentage of the **running selling price** (supplier payable at stage one, stage one result at stage two).
+4. **Percentage Semantics**: Ordinary percentages use **supplier payable**. Margin share uses available supplier-to-gross margin; LCC service-margin percentages use supplier base fare.
 
-5. **Gross Cap and Tax Floor**: Positive markup cannot exceed supplier-to-gross margin; discounts cannot remove taxes or AIT. Both bounds are re-checked after each stage.
+5. **Gross Cap and Tax Floor**: Positive markup cannot exceed supplier-to-gross margin; discounts cannot remove taxes or AIT. Both bounds are enforced on the selected ordinary rule.
 
-6. **LCC Exception**: Explicitly enabled LCC service-margin mode replaces calculation rather than adjusting it, allowing pricing above gross for low-cost carriers.
+6. **LCC Exception**: A selected rule with explicitly enabled LCC service-margin mode adds its amount above safe gross. It follows the same selection priority as other rules.
 
 ### Pricing Flow
 
@@ -40,58 +45,47 @@ flowchart LR
     A["Verified server session"] --> B["Derive pricing audience"]
     B --> C["Load active rules for that audience"]
     D["Triplover Search or RePrice"] --> E["Normalize supplier fare"]
-    C --> F["Select base rule and adjustment rule"]
+    C --> F["Select the highest-priority matching rule"]
     E --> F
-    F --> G["Stage 1: price the supplier fare"]
-    G --> H["Stage 2: adjust that selling price"]
-    H --> I["Store private pricing snapshot"]
-    H --> J["Return role-authorized public fare"]
+    F --> G["Price the fare using only that rule"]
+    G --> I["Store private pricing snapshot"]
+    G --> J["Return role-authorized public fare"]
 ```
 
 The active-rule database read starts alongside the Triplover request, so the application does not add a separate sequential database wait after the supplier responds. Rule selection is performed locally for each normalized itinerary.
 
 ---
 
-## 2. Two-Stage Pricing Model
+## 2. Single-Rule Pricing Model
 
-The pricing engine uses exactly two stages to calculate the final selling price:
-
-### Stage 1: Base Rule
-- **Scope**: All airlines AND all routes
-- **Purpose**: Prices the supplier fare to establish an initial selling price
-- **Basis**: Supplier payable amount
-- **Effect**: Applies markup/discount to transform supplier fare into selling price
-
-### Stage 2: Adjustment Rule
-- **Scope**: Any rule naming an airline, a route, or both
-- **Purpose**: Modifies the base stage result for specific scenarios
-- **Basis**: The running selling price (result from stage 1)
-- **Effect**: Fine-tunes pricing for specific airlines, routes, or agencies
-
-### Stage Independence
-
-The two stages resolve independently:
-- An agency keeps its own base margin even when the winning adjustment came from the all-B2B audience
-- Each stage applies its own gross cap and tax floor
-- Composition cannot walk past either bound because both are re-checked after each stage
+The pricing engine selects one rule and applies it once. General rules provide
+fallback coverage when a higher-priority rule does not match. They never add
+another layer to a specific rule.
 
 ### Example Calculation
 
-```
+```text
 Supplier Payable:  BDT 10,000
 Gross Price:       BDT 12,000
 Available Margin:  BDT 2,000
 
-Stage 1 (Base: 10% of supplier):
-  10,000 + (10,000 × 0.10) = 11,000
-  Gross cap check: 11,000 ≤ 12,000 ✓
+B2C rules:
+  All airlines, all routes:       BDT 100 per passenger
+  All airlines, JSR ↔ DAC:        BDT 100 per passenger
 
-Stage 2 (Adjustment: 5% of running price):
-  11,000 + (11,000 × 0.05) = 11,550
-  Gross cap check: 11,550 ≤ 12,000 ✓
+For one passenger on JSR ↔ DAC:
+  Selected rule: the route-specific BDT 100 rule
+  Final Selling Price: 10,000 + 100 = BDT 10,100
 
-Final Selling Price: BDT 11,550
+For a route with no more specific matching rule:
+  Selected rule: the all-routes BDT 100 rule
+  Final Selling Price: 10,000 + 100 = BDT 10,100
 ```
+
+Existing saved rules keep their audiences, coverage, and configured values.
+This selection change needs no database migration. Historical booking pricing
+snapshots remain unchanged; new Search and RePrice calculations use the current
+selection behavior.
 
 ---
 
@@ -125,7 +119,7 @@ A markup rule defines how to price fares for a specific audience, airline, and r
 - Example: BDT 500 per passenger
 
 #### Percentage
-- Applies a percentage of the running selling price
+- Applies a percentage of supplier payable (supplier base fare in LCC service-margin mode)
 - Value range: -100% to 100% (cannot be zero)
 - Example: 10% markup or -5% discount
 - Stored with 2 decimal precision, calculated using basis points
@@ -181,7 +175,7 @@ If an expected B2B role has no valid agency code, it safely falls back to B2C pr
 
 ## 5. Rule Selection Logic and Precedence
 
-The `selectMarkupRules()` function in [`lib/markup.ts`](../lib/markup.ts) returns at most two rules: one base rule and one adjustment rule.
+The `selectMarkupRules()` function in [`lib/markup.ts`](../lib/markup.ts) returns `{ rule: MarkupRule | null }`, containing only the highest-priority matching rule.
 
 ### Selection Process
 
@@ -190,12 +184,11 @@ The `selectMarkupRules()` function in [`lib/markup.ts`](../lib/markup.ts) return
 3. **Filter by Airline**: Rules must match the itinerary's airline (or be NULL for all airlines)
 4. **Filter by Route**: Rules must match a route in the itinerary (or be NULL for all routes)
 5. **Sort by Precedence**: Apply precedence rules to rank candidates
-6. **Select Base**: Choose the highest-priority rule with all-airlines/all-routes scope
-7. **Select Adjustment**: Choose the highest-priority rule with any other scope
+6. **Select One Rule**: Choose the first candidate and ignore all other matches; return `rule: null` when no rule matches
 
 ### Precedence Order
 
-Inside each stage, rules are ranked by:
+All matching rules are ranked by:
 
 1. **Audience Specificity**: Specific-agency rule beats all-B2B rule
 2. **Route Specificity**: Route-specific rule beats all-routes rule
@@ -206,19 +199,32 @@ Inside each stage, rules are ranked by:
 ### Scope Precedence
 
 **Important**: Route specificity is evaluated before airline specificity. This means:
-- All airlines + specific route beats specific airline + all routes (within adjustment stage)
+- Within one audience, all airlines + specific route beats specific airline + all routes
 - Route matching is more important than airline matching
 
 ### Example: Agency Rule Resolution
 
-For one agency, the adjustment stage resolves in this order:
+For one agency, the first matching rule in this order wins:
 
 1. Specific agent + specific airline + specific route
 2. Specific agent + all airlines + specific route
 3. Specific agent + specific airline + all routes
-4. The same three coverage levels for the all-B2B audience
+4. Specific agent + all airlines + all routes
+5. All B2B users + specific airline + specific route
+6. All B2B users + all airlines + specific route
+7. All B2B users + specific airline + all routes
+8. All B2B users + all airlines + all routes
 
-The base stage resolves between the agent's own all-airlines/all-routes rule and the all-B2B one, preferring the agent's.
+An agency's matching all-airlines/all-routes rule therefore outranks even a
+route-specific all-B2B rule. B2C uses only its own audience's rules, in the same
+four coverage levels. No selected rule is combined with a fallback rule.
+
+### Rule Builder Preview
+
+The builder previews the draft rule alone using the same `priceOffer()` function
+as Search and RePrice and an illustrative one-passenger fare. Saved fallback
+rules are not added to the preview. Live pricing first resolves the winning
+rule against the requested itinerary.
 
 ### Coverage Combinations
 
@@ -262,8 +268,8 @@ requestedMinor = 500 × 100 × 2 = 100,000 (BDT 1,000 total)
 ### Percentage Markup
 
 ```typescript
-// Percentage of running selling price
-basisMinor = runningSellingMinor
+// Percentage of supplier payable
+basisMinor = supplierMinor
 basisPoints = rule.value × 100  // Store 7.25% as 725 basis points
 requestedMinor = (basisMinor × basisPoints) / 10,000
 ```
@@ -289,13 +295,15 @@ basisPoints = 50 × 100 = 5,000
 requestedMinor = (200,000 × 5,000) / 10,000 = 100,000 (BDT 1,000)
 ```
 
-### Stage Calculation
+### Selected-Rule Calculation
 
-Each stage:
-1. Calculates requested amount using `runningStageAmount()`
-2. Adds to running selling price
-3. Applies gross cap and tax floor via `clampSelling()`
-4. Stores component in pricing snapshot for audit trail
+For the selected ordinary rule:
+
+1. Calculate its requested amount using supplier payable, available margin, or
+   passenger count according to the markup type.
+2. Add that amount to supplier payable.
+3. Apply the gross cap and tax floor via `clampSelling()`.
+4. Store one component with `stage: 'rule'` in the pricing snapshot.
 
 ---
 
@@ -332,7 +340,8 @@ if (lccServiceRule) {
 - LCC service-margin rules must target a specific airline (validation enforces this)
 - Cannot be combined with margin_share markup type
 - Must have positive value
-- Replaces normal two-stage calculation (not an adjustment layer)
+- Uses safe gross as the baseline when the LCC rule wins the normal selection priority
+- Adds fixed markup per passenger or a percentage of supplier base fare
 
 ### Example
 
@@ -420,7 +429,7 @@ const clampSelling = (value) =>
 
 **Behavior:**
 - If markup would exceed gross, selling price is capped at gross
-- Applied after each stage, so composition cannot walk past the cap
+- Applied to the selected ordinary rule
 - `grossCapApplied` flag in snapshot indicates if cap was hit
 
 ### Tax Floor (Lower Bound)
@@ -436,30 +445,22 @@ const minimumSellingMinor = fareMinimums.reduce((sum, amount) => sum + amount, 0
 
 **Behavior:**
 - If discount would go below taxes + AIT, selling price is floored at that minimum
-- Applied after each stage
+- Applied to the selected ordinary rule
 - `discountFloorApplied` flag in snapshot indicates if floor was hit
 
-### Stage-Level Enforcement
+### Selected-Rule Enforcement
 
-Both bounds are re-checked after **each** stage:
+Both bounds are checked against the selected ordinary rule's requested price:
 
 ```typescript
-// Stage 1
-const target = runningMinor + stage.requestedMinor
-const next = clampSelling(target)
-grossCapApplied ||= target > safeGrossMinor
-discountFloorApplied ||= target < minimumSellingMinor
-runningMinor = next
-
-// Stage 2
-const target = runningMinor + stage.requestedMinor
-const next = clampSelling(target)
-grossCapApplied ||= target > safeGrossMinor
-discountFloorApplied ||= target < minimumSellingMinor
-runningMinor = next
+const target = supplierMinor + requestedMinor
+const sellingMinor = clampSelling(target)
+const grossCapApplied = target > safeGrossMinor
+const discountFloorApplied = target < minimumSellingMinor
 ```
 
-This ensures that even if stage 1 uses the full margin, stage 2 cannot exceed gross, and even if stage 1 applies a deep discount, stage 2 cannot remove taxes.
+No other matching rule contributes to `requestedMinor`. The floor is applied
+last so taxes and AIT remain protected even when the supplier data is inconsistent.
 
 ---
 
@@ -620,7 +621,7 @@ const audience = pricingAudienceForRole(role, agencyCode)
 // 2. Load active rules for that audience (in parallel with supplier request)
 const { rules } = await activeMarkupRulesFor(audience)
 
-// 3. For each normalized itinerary, select matching rules
+// 3. For each normalized itinerary, select the highest-priority matching rule
 const selection = selectMarkupRules(rules, audience, airlineCode, routes)
 
 // 4. Apply pricing calculation
@@ -651,7 +652,7 @@ const audience = pricingAudienceForRole(role, agencyCode)
 // 2. Load active rules for that audience
 const { rules } = await activeMarkupRulesFor(audience)
 
-// 3. Select matching rules based on reprice itinerary
+// 3. Select the highest-priority matching rule based on the reprice itinerary
 const selection = selectMarkupRules(rules, audience, airlineCode, routes)
 
 // 4. Apply pricing to live supplier fare
@@ -692,7 +693,7 @@ type PricingSnapshot = {
   ruleId: string | null
   markupType: MarkupType | null
   markupValue: number | null
-  components?: PricingComponent[]  // Two-stage detail
+  components?: PricingComponent[]  // New snapshots contain at most one 'rule' component
 }
 ```
 
@@ -721,18 +722,21 @@ without copying it into payment state or ledger data. See
 
 ### Component Tracking
 
-Each stage stores a component for full transparency:
+A selected rule stores one component with `stage: 'rule'`. When no rule is
+applied, new snapshots contain an empty components array. Historical snapshots
+may omit the array or retain `base` and `adjustment` components; these values
+remain in the type for compatibility and are not migrated:
 
 ```typescript
 type PricingComponent = {
-  stage: 'base' | 'adjustment'
+  stage: 'rule' | 'base' | 'adjustment'  // Last two values are historical only
   ruleId: string
   markupType: MarkupType
   markupValue: number
   basisAmount: number      // Money percentage was taken from
   requestedAmount: number   // Amount rule requested
-  sellingBefore: number     // Price before this stage
-  sellingAfter: number      // Price after this stage
+  sellingBefore: number     // Price before this rule
+  sellingAfter: number      // Price after this rule
 }
 ```
 
@@ -755,15 +759,15 @@ These rules must never be broken when modifying the pricing system:
 
 2. **Audience Derivation**: The pricing audience must be derived only from the verified server session. The request body must never be allowed to supply or override the audience.
 
-3. **Two-Stage Maximum**: Exactly two rules may apply: one base (all-airlines/all-routes) and one adjustment (any other scope). Matching rules beyond these two must be ignored.
+3. **One-Rule Maximum**: At most one rule may apply. Audience and coverage priority select the winner; all other matching rules must be ignored.
 
-4. **Gross Cap Enforcement**: Positive markup can never exceed the supplier-to-gross margin. The cap must be re-checked after each stage.
+4. **Gross Cap Enforcement**: Ordinary positive markup is capped at safe gross, the greater of calculated gross and supplier payable.
 
-5. **Tax Floor Enforcement**: Discounts can never remove taxes or AIT. The floor must be re-checked after each stage.
+5. **Tax Floor Enforcement**: Discounts can never remove taxes or AIT. The selected ordinary rule must respect this floor.
 
 6. **LCC Exception Only**: The only path allowed above gross is an explicitly flagged LCC service-margin rule. This mode must require a specific airline and positive value.
 
-7. **Percentage Basis**: A percentage must always be a percentage of the running selling price (supplier payable at stage one, stage one result at stage two), except for margin_share which uses available margin.
+7. **Percentage Basis**: Ordinary percentages use supplier payable. Margin share uses available supplier-to-gross margin. LCC service-margin percentages use supplier base fare.
 
 8. **Minor Unit Arithmetic**: All monetary calculations must use minor units (1/100 of currency unit) to avoid floating-point precision issues.
 
@@ -791,8 +795,11 @@ When making changes to the pricing system, verify:
 - [ ] Test with all markup types (fixed, percentage, margin_share)
 - [ ] Test LCC service-margin mode with positive values
 - [ ] Test negative markup for discounts
-- [ ] Verify gross cap is still enforced after each stage
-- [ ] Verify tax floor is still enforced after each stage
+- [ ] Verify the selected ordinary rule respects the gross cap
+- [ ] Verify the selected ordinary rule respects the tax floor
+- [ ] Verify competing rules produce only one applied rule
+- [ ] Verify an agency-wide rule beats a scoped all-B2B rule
+- [ ] Verify a specific-route rule beats the same audience's all-routes rule
 - [ ] Test multicity itineraries with leg position precedence
 - [ ] Test bidirectional route matching
 
@@ -815,6 +822,8 @@ When making changes to the pricing system, verify:
 
 ### Integration Testing
 
+- [ ] Run `npm run verify:markup-priority`
+- [ ] Run `npm run verify:canonical-pricing-regression`
 - [ ] Run full search flow with markup application
 - [ ] Run full reprice flow with markup re-calculation
 - [ ] Verify pricing snapshots are stored correctly
@@ -842,24 +851,24 @@ Rules: None matching
 Result: Gross price (supplier fare + taxes + AIT + service charge)
 ```
 
-### Scenario 2: B2B Agency with Base Rule Only
+### Scenario 2: B2B Agency with a General Rule Only
 
-```
+```text
 Audience: agency (agencyCode: "AGENCY01")
-Base Rule: 10% fixed markup (all airlines, all routes)
-Adjustment Rule: None
-Result: Supplier payable + 10% markup
+Matching Rule: 10% percentage markup (all airlines, all routes)
+Result: Supplier payable + 10% of supplier payable, capped at safe gross
 ```
 
-### Scenario 3: B2B Agency with Route Adjustment
+### Scenario 3: B2B Agency with a More Specific Rule
 
-```
+```text
 Audience: agency (agencyCode: "AGENCY01")
-Base Rule: 5% margin share (all airlines, all routes)
-Adjustment Rule: 15% fixed markup (BG airline, DAC-CXB route)
-Result:
-  Stage 1: Supplier + 5% of margin
-  Stage 2: Stage 1 result + 15% per passenger
+Agency General Rule: 5% margin share (all airlines, all routes)
+Agency Route Rule: BDT 150 fixed markup (BG airline, DAC-CXB route)
+Result for BG on DAC-CXB:
+  Only the route rule applies: supplier payable + BDT 150 per passenger
+  The general margin-share rule contributes nothing
+  Gross cap applies
 ```
 
 ### Scenario 4: LCC with Service Margin
@@ -874,11 +883,10 @@ Result: Safe gross + BDT 500 (can exceed normal gross)
 
 ```
 Audience: b2c
-Base Rule: 10% percentage markup (all airlines, all routes)
-Adjustment Rule: -5% percentage discount (all airlines, all routes)
-Result:
-  Stage 1: Supplier + 10%
-  Stage 2: Stage 1 result - 5%
+General Rule: 10% percentage markup (all airlines, all routes)
+Route Rule: -5% percentage discount (all airlines, DAC-CXB)
+Result for DAC-CXB:
+  Only the route rule applies: supplier payable - 5% of supplier payable
   Floor: Cannot go below taxes + AIT
 ```
 
@@ -913,7 +921,7 @@ Result: Supplier payable (no markup applied)
 **Check**:
 1. Verify rule does not have `lccServiceMargin = true` unless intended
 2. Check if margin_share is consuming more than available margin
-3. Verify gross cap is applied after each stage
+3. Verify the selected ordinary rule respects the gross cap
 4. Check pricing snapshot for `grossCapApplied` flag
 
 ### Discount Removes Taxes
@@ -921,7 +929,7 @@ Result: Supplier payable (no markup applied)
 **Symptom**: Selling price below taxes + AIT.
 
 **Check**:
-1. Verify tax floor is applied after each stage
+1. Verify the selected ordinary rule respects the tax floor
 2. Check pricing snapshot for `discountFloorApplied` flag
 3. Verify discount allocation preserves tax amounts
 4. Check fare minimum calculation
@@ -946,7 +954,7 @@ Result: Supplier payable (no markup applied)
 2. Verify rule targets specific airline (airline_code not NULL)
 3. Verify markup type is fixed or percentage (not margin_share)
 4. Verify value is positive
-5. Check that rule is selected in adjustment stage
+5. Check that the LCC rule wins the audience and coverage priority
 
 ---
 
@@ -964,7 +972,7 @@ Result: Supplier payable (no markup applied)
 - All calculations use integer arithmetic (minor units)
 - No floating-point operations in pricing path
 - Allocation algorithm is O(n) where n is number of fare types
-- Two-stage calculation is bounded and predictable
+- Applying a single selected rule keeps calculation bounded and predictable
 
 ### Parallel Execution
 
@@ -1008,7 +1016,8 @@ Result: Supplier payable (no markup applied)
 ### Audit Trail
 
 - Pricing snapshots stored with search results
-- Components array tracks two-stage calculation
+- New components arrays contain at most one selected-rule calculation with `stage: 'rule'`
+- Historical snapshots retain their original component stages
 - Gross cap and discount floor flags recorded
 - Rule IDs and values preserved for audit
 

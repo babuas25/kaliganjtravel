@@ -31,6 +31,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run verify:ci
+      - run: npm run verify:markup-priority
+      - run: npm run verify:canonical-pricing-regression
 
   build:
     name: Production build

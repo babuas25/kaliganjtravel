@@ -36,7 +36,6 @@ import {
   priceOffer,
   type MarkupRule,
   type MarkupRuleInput,
-  type PricingComponent,
   validateMarkupRuleInput,
 } from '@/lib/markup';
 
@@ -256,14 +255,8 @@ function percent(value: number) {
   })}%`;
 }
 
-/** A base rule prices the supplier fare; anything scoped adjusts its result. */
-function isBaseScope(rule: { airlineCode: string | null; origin: string | null }) {
-  return rule.airlineCode === null && !rule.origin;
-}
-
-function percentageBasisLabel(baseScope: boolean, lccServiceMargin = false) {
-  if (lccServiceMargin) return 'base fare';
-  return baseScope ? 'supplier payable' : 'the base-rule price';
+function percentageBasisLabel(lccServiceMargin = false) {
+  return lccServiceMargin ? 'base fare' : 'supplier payable';
 }
 
 function ruleValueLabel(rule: MarkupRule) {
@@ -276,60 +269,11 @@ function ruleValueLabel(rule: MarkupRule) {
   if (rule.markupType === 'margin_share') {
     return `${percent(rule.value)} of available supplier margin`;
   }
-  const basis = percentageBasisLabel(
-    isBaseScope(rule),
-    rule.lccServiceMargin
-  );
+  const basis = percentageBasisLabel(rule.lccServiceMargin);
   if (rule.value < 0) {
     return `${percent(rule.value)} discount on ${basis}`;
   }
   return `${percent(rule.value)} of ${basis}`;
-}
-
-function componentEffectLabel(component: PricingComponent) {
-  const sign = component.requestedAmount < 0 ? '−' : '+';
-  if (component.markupType === 'fixed') {
-    return `${sign}${money(Math.abs(component.markupValue))} per passenger`;
-  }
-  const amount = `${sign}${money(Math.abs(component.requestedAmount))}`;
-  if (component.markupType === 'margin_share') {
-    return `${percent(component.markupValue)} of available supplier margin · ${amount}`;
-  }
-  return `${sign}${percent(component.markupValue)} of ${percentageBasisLabel(
-    component.stage === 'base'
-  )} · ${amount}`;
-}
-
-/**
- * The saved rule that would price the supplier fare before this draft adjusts
- * it. Mirrors `selectMarkupRules()`: an agency keeps its own base rule and
- * falls back to the all-B2B one, and B2C never crosses audiences.
- */
-function baseRuleForDraft(
-  rules: MarkupRule[],
-  draft: RuleDraft,
-  editingId: string | null
-): MarkupRule | null {
-  const globals = rules
-    .filter(
-      (rule) =>
-        rule.active && rule.id !== editingId && isBaseScope(rule)
-    )
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-
-  if (draft.audience === 'b2c') {
-    return globals.find((rule) => rule.audience === 'b2c') ?? null;
-  }
-
-  const own =
-    draft.audience === 'agency' && draft.agencyCode
-      ? globals.find(
-          (rule) =>
-            rule.audience === 'agency' &&
-            rule.agencyCode === draft.agencyCode
-        )
-      : undefined;
-  return own ?? globals.find((rule) => rule.audience === 'b2b') ?? null;
 }
 
 function PriceExample() {
@@ -405,16 +349,13 @@ function PriceExample() {
 function RulePreview({
   draft,
   summary,
-  baseRule,
 }: {
   draft: RuleDraft;
   summary: string;
-  baseRule: MarkupRule | null;
 }) {
   const lccServiceMargin =
     draft.lccServiceMargin && draft.value > 0;
   const supplier = lccServiceMargin ? EXAMPLE_GROSS : EXAMPLE_SUPPLIER;
-  const draftIsBase = draft.scope === 'all';
   const previewRule: MarkupRule = {
     id: 'preview',
     audience: 'b2c',
@@ -436,9 +377,7 @@ function RulePreview({
   const preview = priceOffer({
     audience: { kind: 'b2c' },
     rulesAvailable: true,
-    rules: draftIsBase
-      ? { base: previewRule, adjustment: null }
-      : { base: baseRule, adjustment: previewRule },
+    rules: { rule: previewRule },
     supplierTotalPrice: supplier,
     basePrice: EXAMPLE_BASE,
     taxes: EXAMPLE_GROSS - EXAMPLE_BASE,
@@ -459,7 +398,6 @@ function RulePreview({
   const requested = preview.snapshot.requestedMarkupAmount;
   const applied = preview.snapshot.markupAmount;
   const selling = preview.totalPrice;
-  const stages = preview.snapshot.components ?? [];
 
   return (
     <div
@@ -482,37 +420,6 @@ function RulePreview({
           </p>
         </div>
       </div>
-
-      {stages.length > 1 && (
-        <ol className="mt-4 space-y-1.5">
-          <li className="flex items-center justify-between gap-3 px-3 text-[11px] text-navy-700/55">
-            <span>Supplier payable</span>
-            <span className="font-semibold">{money(supplier)}</span>
-          </li>
-          {stages.map((stage) => (
-            <li
-              key={`${stage.stage}-${stage.ruleId}`}
-              className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 text-xs ring-1 ring-navy-100"
-            >
-              <span className="min-w-0">
-                <span className="block font-semibold text-navy-950">
-                  {stage.ruleId === 'preview'
-                    ? 'This rule'
-                    : `Base rule · ${
-                        baseRule ? markupRuleScope(baseRule) : 'all airlines'
-                      }`}
-                </span>
-                <span className="mt-0.5 block text-navy-700/60">
-                  {componentEffectLabel(stage)}
-                </span>
-              </span>
-              <span className="shrink-0 font-semibold text-navy-950">
-                {money(stage.sellingAfter)}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
 
       <div className="mt-4 grid grid-cols-3 divide-x divide-navy-100 rounded-md bg-white py-3 ring-1 ring-navy-100">
         <div className="px-3">
@@ -542,11 +449,8 @@ function RulePreview({
       </div>
 
       <p className="mt-2 text-[11px] text-navy-700/55">
-        Example uses one passenger and a BDT 4,524 base fare.
-        {!lccServiceMargin &&
-          !draftIsBase &&
-          !baseRule &&
-          ' No saved base rule covers this audience yet, so this rule prices from supplier payable on its own.'}
+        Example applies this rule alone for one passenger, with{' '}
+        {money(supplier)} supplier payable and a BDT 4,524 base fare.
         {!lccServiceMargin &&
           requested - applied >= 0.005 &&
           ` Markup is capped at gross by ${money(requested - applied)}.`}
@@ -557,9 +461,6 @@ function RulePreview({
           )} so taxes and AIT remain payable.`}
         {lccServiceMargin &&
           ' This service margin is added above gross.'}
-        {lccServiceMargin &&
-          baseRule &&
-          ' An LCC service margin replaces the base rule instead of adjusting it.'}
       </p>
     </div>
   );
@@ -625,14 +526,8 @@ export default function MarkupManager({
         : draft.scope === 'all-route'
           ? `every airline on ${routeLabel}`
           : `${draft.airlineCode || 'the selected airline'} on ${routeLabel}`;
-  const draftIsBase = draft.scope === 'all';
   const draftPercentageBasis = percentageBasisLabel(
-    draftIsBase,
     draft.lccServiceMargin && draft.value > 0
-  );
-  const previewBaseRule = useMemo(
-    () => baseRuleForDraft(rules, draft, editingId),
-    [rules, draft, editingId]
   );
   const markupLabel =
     draft.markupType === 'fixed'
@@ -751,7 +646,27 @@ export default function MarkupManager({
             Hide examples
           </span>
         </summary>
-        <div className="border-t border-navy-100 bg-navy-50/40 p-4">
+        <div className="space-y-4 border-t border-navy-100 bg-navy-50/40 p-4">
+          <div className="text-xs leading-relaxed text-navy-700/75">
+            <p className="font-semibold text-navy-950">
+              Only one matching active rule applies.
+            </p>
+            <p className="mt-1">
+              A specific agent&apos;s matching rules take priority over all-B2B
+              rules. B2C customers use only B2C rules. Within each audience,
+              coverage is checked in this order:
+            </p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5">
+              <li>Specific airline + specific route</li>
+              <li>All airlines + specific route</li>
+              <li>Specific airline + all routes</li>
+              <li>All airlines + all routes</li>
+            </ol>
+            <p className="mt-2">
+              The first matching rule sets the price. Broader rules are used
+              only as fallbacks; their amounts are never added together.
+            </p>
+          </div>
           <PriceExample />
         </div>
       </details>
@@ -1159,11 +1074,7 @@ export default function MarkupManager({
               Review and save
             </div>
 
-            <RulePreview
-              draft={draft}
-              summary={ruleSummary}
-              baseRule={previewBaseRule}
-            />
+            <RulePreview draft={draft} summary={ruleSummary} />
 
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -1239,8 +1150,7 @@ export default function MarkupManager({
             </p>
           </div>
           <p className="text-xs text-navy-700/60">
-            The all-airlines rule prices the fare; the most specific rule
-            adjusts it
+            Only the highest-priority matching rule applies
           </p>
         </div>
 
@@ -1347,9 +1257,7 @@ export default function MarkupManager({
                     <p className="mt-0.5 text-xs text-navy-700/60">
                       {rule.lccServiceMargin
                         ? 'Explicit service margin added above gross'
-                        : isBaseScope(rule)
-                          ? 'Base stage: prices the supplier fare, capped at gross'
-                          : 'Adjusts the base-rule price; capped at gross, floored at taxes and AIT'}
+                        : 'Prices from supplier payable; capped at gross, floored at taxes and AIT'}
                     </p>
                   </div>
 

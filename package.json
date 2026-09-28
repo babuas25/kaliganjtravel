@@ -146,6 +146,7 @@
     "verify:booking-hidden-notifications": "node scripts/verify-booking-hidden-notifications.mjs",
     "verify:supplier-reference-import": "node scripts/verify-supplier-reference-import.mjs",
     "verify:canonical-pricing-regression": "node scripts/verify-canonical-pricing-regression.mjs",
+    "verify:markup-priority": "node scripts/verify-markup-priority.mjs",
     "verify:staff-on-behalf-booking:live": "node scripts/verify-staff-on-behalf-booking-live.mjs",
     "verify:kaliganj-branding": "node scripts/verify-kaliganj-branding.mjs",
     "verify:kaliganj-markup": "node scripts/verify-kaliganj-markup.mjs",

@@ -1,22 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 
 import ts from 'typescript';
 
 const projectRoot = new URL('../', import.meta.url);
 const currentSource = await readFile(new URL('lib/markup.ts', projectRoot), 'utf8');
-const baselineSource = execFileSync('git', ['show', 'HEAD:lib/markup.ts'], {
-  cwd: projectRoot,
-  encoding: 'utf8',
-});
-
-// Supplier Import must remain a consumer of this module, never an editor of it.
-assert.equal(
-  currentSource,
-  baselineSource,
-  'Canonical markup implementation changed while adding Supplier API Import',
-);
 
 function loadMarkup(source) {
   const output = ts.transpileModule(source, {
@@ -37,7 +25,6 @@ function loadMarkup(source) {
   return module.exports;
 }
 
-const baseline = loadMarkup(baselineSource);
 const current = loadMarkup(currentSource);
 const now = '2026-08-25T00:00:00.000Z';
 const rule = (values) => ({
@@ -78,50 +65,58 @@ const fareInput = {
   rulesAvailable: true,
 };
 const scenarios = [
-  { name: 'b2c-airline', audience: { kind: 'b2c' } },
-  { name: 'b2b-fallback-route', audience: { kind: 'agency', agencyCode: 'AG-TWO' } },
-  { name: 'agency-specific-route', audience: { kind: 'agency', agencyCode: 'AG-ONE' } },
-  { name: 'superadmin-supplier', audience: { kind: 'superadmin' } },
+  { name: 'b2c-airline', audience: { kind: 'b2c' }, selectedRuleId: 'b2c-bs', payable: 37502.56, markup: 735.34 },
+  { name: 'b2b-fallback-route', audience: { kind: 'agency', agencyCode: 'AG-TWO' }, selectedRuleId: 'b2b-route', payable: 36842.22, markup: 75 },
+  { name: 'agency-specific-route', audience: { kind: 'agency', agencyCode: 'AG-ONE' }, selectedRuleId: 'agency-route', payable: 37318.73, markup: 551.51 },
+  { name: 'agency-global-over-b2b-route', audience: { kind: 'agency', agencyCode: 'AG-ONE' }, omittedRuleId: 'agency-route', selectedRuleId: 'agency-base', payable: 36817.22, markup: 50 },
+  { name: 'superadmin-supplier', audience: { kind: 'superadmin' }, selectedRuleId: null, payable: 36767.22, markup: 0 },
 ];
 
-const results = scenarios.map(({ name, audience }) => {
-  const beforeSelection = baseline.selectMarkupRules(rules, audience, 'BS', routes);
-  const afterSelection = current.selectMarkupRules(rules, audience, 'BS', routes);
-  assert.deepEqual(afterSelection, beforeSelection, `${name}: markup selection changed`);
-  const beforePrice = baseline.priceOffer({
-    ...fareInput, audience, rules: beforeSelection,
+// Numeric expectations are independent of HEAD, so this remains useful after
+// commit and explicitly rejects a return to base-plus-adjustment composition.
+const results = scenarios.map(({ name, audience, omittedRuleId, selectedRuleId, payable, markup }) => {
+  const selection = current.selectMarkupRules(rules.filter((candidate) => candidate.id !== omittedRuleId), audience, 'BS', routes);
+  assert.equal(selection.rule?.id ?? null, selectedRuleId, `${name}: exclusive rule selection`);
+  const priced = current.priceOffer({
+    ...fareInput, audience, rules: selection,
   });
-  const afterPrice = current.priceOffer({
-    ...fareInput, audience, rules: afterSelection,
-  });
-  assert.deepEqual(afterPrice, beforePrice, `${name}: fare/User Payable changed`);
+  assert.equal(priced.totalPrice, payable, `${name}: User Payable`);
+  assert.equal(priced.snapshot.markupAmount, markup, `${name}: one rule's markup`);
+  assert.equal(priced.snapshot.ruleId, selectedRuleId);
+  assert.equal(priced.snapshot.sellingPrice, payable);
+  assert.equal(priced.snapshot.components.length, selectedRuleId === null ? 0 : 1);
+  if (selectedRuleId !== null) {
+    assert.equal(priced.snapshot.components[0].stage, 'rule');
+    assert.equal(priced.snapshot.components[0].ruleId, selectedRuleId);
+  }
   return {
     name,
-    selectedRuleIds: [afterSelection.base?.id, afterSelection.adjustment?.id].filter(Boolean),
-    payable: afterPrice.totalPrice,
-    fares: afterPrice.fares,
-    snapshot: afterPrice.snapshot,
+    selectedRuleId,
+    payable: priced.totalPrice,
+    markup: priced.snapshot.markupAmount,
   };
 });
 
-const [searchSource, repriceSource, prepareSource] = await Promise.all([
+const [searchSource, repriceSource, importSource, prepareSource] = await Promise.all([
   readFile(new URL('lib/triplover/search.ts', projectRoot), 'utf8'),
   readFile(new URL('lib/triplover/reprice.ts', projectRoot), 'utf8'),
+  readFile(new URL('lib/supplier-reference-import/pricing.server.ts', projectRoot), 'utf8'),
   readFile(new URL('app/api/flights/booking/prepare/route.ts', projectRoot), 'utf8'),
 ]);
-for (const [name, source] of [['Search', searchSource], ['RePrice', repriceSource]]) {
+for (const [name, source] of [['Search', searchSource], ['RePrice', repriceSource], ['Supplier Import', importSource]]) {
   assert.match(source, /activeMarkupRulesFor\(/, `${name} no longer loads canonical rules`);
   assert.match(source, /selectMarkupRules\(/, `${name} no longer selects canonical rules`);
   assert.match(source, /priceOffer\(\{/, `${name} no longer uses canonical fare pricing`);
 }
 assert.match(prepareSource, /resolveBookingActorContext\(/);
 assert.match(prepareSource, /readRepricedSelection\([\s\S]*?principal/);
+assert.match(importSource, /pricingAudienceForPrincipal\(actorContext\.principal\)/);
+assert.match(importSource, /pricingSnapshot: priced\.snapshot/);
 
 console.log(JSON.stringify({
   checks: 'passed',
-  canonicalSourceIdenticalToGitBaseline: true,
-  searchRepriceCanonicalCallsIntact: true,
+  exclusivePriorityAndNumericExpectations: true,
+  searchRepriceImportCanonicalCallsIntact: true,
   bookPricingPrincipalGuardIntact: true,
-  representativeBeforeAfterExactMatch: true,
   results,
 }, null, 2));

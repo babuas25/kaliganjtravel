@@ -80,11 +80,11 @@ export type SupplierFarePricing = {
 };
 
 /**
- * One stage of the two-stage calculation, stored so any selling price can be
- * reconstructed from the snapshot alone.
+ * The applied rule, stored so the selling price can be reconstructed from the
+ * snapshot alone. Legacy stage labels remain readable on historical snapshots.
  */
 export type PricingComponent = {
-  stage: 'base' | 'adjustment';
+  stage: 'rule' | 'base' | 'adjustment';
   ruleId: string;
   markupType: MarkupType;
   markupValue: number;
@@ -113,7 +113,7 @@ export type PricingSnapshot = {
   ruleId: string | null;
   markupType: MarkupType | null;
   markupValue: number | null;
-  /** Absent on snapshots written before two-stage pricing. */
+  /** At most one for new prices; older snapshots can contain two or omit it. */
   components?: PricingComponent[];
 };
 
@@ -279,35 +279,26 @@ function routeMatchIndex(
 }
 
 /**
- * The two rules that price one itinerary. Never more than two: a base rule
- * that prices the supplier fare, and one adjustment rule that modifies that
- * result. Matching rules beyond these two are ignored.
+ * Exactly one winning rule, or no matching rule. Broader matching rules are
+ * fallbacks and never contribute another markup layer.
  */
 export type MarkupRuleSelection = {
-  /** All airlines and all routes. Prices the supplier fare. */
-  base: MarkupRule | null;
-  /** Agency, airline or route scoped. Adjusts the base stage result. */
-  adjustment: MarkupRule | null;
+  rule: MarkupRule | null;
 };
 
 export const NO_MARKUP_RULES: MarkupRuleSelection = {
-  base: null,
-  adjustment: null,
+  rule: null,
 };
 
-function isBaseScope(rule: MarkupRule): boolean {
-  return rule.airlineCode === null && !rule.origin;
-}
-
 /**
- * Picks at most one rule for each stage. Precedence inside a stage is
- * unchanged: a rule for one agency beats the all-B2B fallback, route
- * specificity beats airline-wide, a named airline beats an all-airlines rule
+ * Picks the first matching rule in priority order: a rule for one agency beats
+ * the all-B2B fallback, route specificity beats airline-wide, and a named
+ * airline beats an all-airlines rule
  * at the same route specificity, an earlier requested leg wins for multicity
  * journeys, and updated time is the deterministic tie-breaker.
  *
- * The stages resolve independently, so an agency keeps its own base margin
- * even when the winning adjustment came from the all-B2B audience.
+ * Audience precedence applies across every scope: an agency's all-airlines,
+ * all-routes rule also beats a scoped all-B2B rule.
  */
 export function selectMarkupRules(
   rules: readonly MarkupRule[],
@@ -357,9 +348,7 @@ export function selectMarkupRules(
   });
 
   return {
-    base: candidates.find(({ rule }) => isBaseScope(rule))?.rule ?? null,
-    adjustment:
-      candidates.find(({ rule }) => !isBaseScope(rule))?.rule ?? null,
+    rule: candidates[0]?.rule ?? null,
   };
 }
 
@@ -393,18 +382,18 @@ function allocateMinor(total: number, weights: number[]): number[] {
 }
 
 /**
- * What one stage asks for: the money its percentage was taken from, and the
+ * What one rule asks for: the money its percentage was taken from, and the
  * amount itself. A fixed rule has no monetary basis — it is an amount per
  * passenger — so its basis is reported as zero.
  */
-type StageAmount = { basisMinor: number; requestedMinor: number };
+type RuleAmount = { basisMinor: number; requestedMinor: number };
 
-function stageAmount(
+function ruleAmount(
   rule: MarkupRule,
   percentageBasisMinor: number,
   availableMarginMinor: number,
   passengerCount: number
-): StageAmount {
+): RuleAmount {
   if (rule.markupType === 'fixed') {
     return {
       basisMinor: 0,
@@ -426,31 +415,28 @@ function stageAmount(
 }
 
 /**
- * Either stage. A percentage is a percentage of the running selling price: the
- * supplier payable before stage one, the stage one result at stage two. Both
- * stages modify a price, so the effect always matches the number the rule is
- * applied to, on every fare, whatever its tax split.
+ * A normal percentage is a percentage of supplier payable, regardless of the
+ * winning rule's airline, route or audience scope.
  *
  * Margin share is the exception: it is a share of the supplier-to-gross
- * margin, a property of the supplier fare, so it means the same in both
- * stages.
+ * margin, a property of the supplier fare.
  */
-function runningStageAmount(
+function supplierRuleAmount(
   rule: MarkupRule,
-  runningSellingMinor: number,
+  supplierMinor: number,
   availableMarginMinor: number,
   passengerCount: number
-): StageAmount {
-  return stageAmount(
+): RuleAmount {
+  return ruleAmount(
     rule,
-    runningSellingMinor,
+    supplierMinor,
     availableMarginMinor,
     passengerCount
   );
 }
 
 /**
- * Not a stage. An LCC service margin replaces the calculation with safe gross
+ * An LCC service margin replaces the normal calculation with safe gross
  * plus its margin, so its percentage stays a percentage of the base fare.
  *
  * The basis is chosen by which of these two functions the caller uses, not by
@@ -461,8 +447,8 @@ function lccServiceAmount(
   basePriceMinor: number,
   availableMarginMinor: number,
   passengerCount: number
-): StageAmount {
-  return stageAmount(
+): RuleAmount {
+  return ruleAmount(
     rule,
     basePriceMinor,
     availableMarginMinor,
@@ -472,14 +458,13 @@ function lccServiceAmount(
 
 function componentFor(
   rule: MarkupRule,
-  stage: PricingComponent['stage'],
   basisMinor: number,
   requestedMinor: number,
   beforeMinor: number,
   afterMinor: number
 ): PricingComponent {
   return {
-    stage,
+    stage: 'rule',
     ruleId: rule.id,
     markupType: rule.markupType,
     markupValue: rule.value,
@@ -493,13 +478,9 @@ function componentFor(
 /**
  * Turns supplier pricing into the only numbers safe to return to the browser.
  *
- * Two stages, guarded by the same clamp. The base rule prices the supplier
- * fare; the adjustment rule then modifies that selling price. Both work on the
- * running price, so a percentage means a percentage of the supplier payable at
- * stage one and of the stage one result at stage two. Positive markup can
- * consume only the available
- * supplier-to-gross margin; a discount never removes taxes or AIT, and both
- * bounds are re-checked after each stage, so stacking cannot walk past either.
+ * The one selected rule prices supplier payable directly. Positive markup can
+ * consume only the available supplier-to-gross margin; a discount never removes
+ * taxes or AIT, and both bounds apply to that one calculation.
  * B2C with no rule at all stays at gross; an agency with no rule stays at
  * supplier payable. A Super Admin always sees supplier payable. An explicitly
  * flagged LCC service rule replaces the calculation rather than adjusting it,
@@ -529,7 +510,7 @@ export function priceOffer({
 }): PricedOffer {
   // Defense in depth: even if a future caller accidentally supplies rules,
   // the verified Super Admin audience can never receive marked pricing.
-  const selection = audience.kind === 'superadmin' ? NO_MARKUP_RULES : rules;
+  const selectedRule = audience.kind === 'superadmin' ? null : rules.rule;
   const supplierMinor = Math.max(0, toMinor(supplierTotalPrice));
   const baseMinor = Math.max(0, toMinor(basePrice));
   const taxesMinor = Math.max(0, toMinor(taxes));
@@ -555,23 +536,15 @@ export function priceOffer({
     fareMinimumTotal
   );
 
-  // The one guard rail, unchanged from the single-rule engine and applied
-  // after every stage: a selling price may not pass safe gross, and may not
-  // fall below payable taxes and AIT. The floor is applied last so it still
-  // wins if the two ever cross.
+  // A selling price may not pass safe gross or fall below payable taxes and
+  // AIT. The floor is applied last so it still wins if the two ever cross.
   const clampSelling = (value: number) =>
     Math.max(minimumSellingMinor, Math.min(value, safeGrossMinor));
 
-  // An LCC rule is not an adjustment layer: it replaces the calculation with
-  // safe gross plus its service margin, so its percentage stays a percentage
-  // of base fare. Validation keeps the flag off all-airlines rules; the base
-  // slot is read only so a legacy row cannot silently lose the exception.
+  // Only the winning rule can request an LCC service margin, whose percentage
+  // stays a percentage of base fare and whose baseline is safe gross.
   const lccRule =
-    selection.adjustment?.lccServiceMargin === true
-      ? selection.adjustment
-      : selection.base?.lccServiceMargin === true
-        ? selection.base
-        : null;
+    selectedRule?.lccServiceMargin === true ? selectedRule : null;
   const lccAmount = lccRule
     ? lccServiceAmount(lccRule, baseMinor, availableMarginMinor, passengerCount)
     : null;
@@ -600,72 +573,34 @@ export function priceOffer({
     components.push(
       componentFor(
         lccRule,
-        lccRule === selection.base ? 'base' : 'adjustment',
         lccAmount.basisMinor,
         lccAmount.requestedMinor,
         safeGrossMinor,
         sellingMinor
       )
     );
-  } else if (selection.base || selection.adjustment) {
+  } else if (selectedRule) {
     basis = 'supplier';
-    let runningMinor = supplierMinor;
-
-    if (selection.base) {
-      // `runningMinor` is still the supplier payable here, so a base-stage
-      // percentage is a percentage of the supplier payable.
-      const stage = runningStageAmount(
-        selection.base,
-        runningMinor,
-        availableMarginMinor,
-        passengerCount
-      );
-      const target = runningMinor + stage.requestedMinor;
-      const next = clampSelling(target);
-      grossCapApplied ||= target > safeGrossMinor;
-      discountFloorApplied ||= target < minimumSellingMinor;
-      components.push(
-        componentFor(
-          selection.base,
-          'base',
-          stage.basisMinor,
-          stage.requestedMinor,
-          runningMinor,
-          next
-        )
-      );
-      requestedMarkup += stage.requestedMinor;
-      runningMinor = next;
-    }
-
-    if (selection.adjustment) {
-      // With no base rule the running price is still the supplier payable, so
-      // a lone scoped rule and a lone base rule price identically.
-      const stage = runningStageAmount(
-        selection.adjustment,
-        runningMinor,
-        availableMarginMinor,
-        passengerCount
-      );
-      const target = runningMinor + stage.requestedMinor;
-      const next = clampSelling(target);
-      grossCapApplied ||= target > safeGrossMinor;
-      discountFloorApplied ||= target < minimumSellingMinor;
-      components.push(
-        componentFor(
-          selection.adjustment,
-          'adjustment',
-          stage.basisMinor,
-          stage.requestedMinor,
-          runningMinor,
-          next
-        )
-      );
-      requestedMarkup += stage.requestedMinor;
-      runningMinor = next;
-    }
-
-    sellingMinor = runningMinor;
+    const amount = supplierRuleAmount(
+      selectedRule,
+      supplierMinor,
+      availableMarginMinor,
+      passengerCount
+    );
+    const target = supplierMinor + amount.requestedMinor;
+    sellingMinor = clampSelling(target);
+    grossCapApplied = target > safeGrossMinor;
+    discountFloorApplied = target < minimumSellingMinor;
+    requestedMarkup += amount.requestedMinor;
+    components.push(
+      componentFor(
+        selectedRule,
+        amount.basisMinor,
+        amount.requestedMinor,
+        supplierMinor,
+        sellingMinor
+      )
+    );
     appliedMarkup = sellingMinor - supplierMinor;
   } else if (audience.kind === 'superadmin') {
     basis = 'supplier';
@@ -681,9 +616,6 @@ export function priceOffer({
     appliedMarkup = 0;
   }
 
-  const effectiveRule = lccServiceRule
-    ? lccRule
-    : (selection.adjustment ?? selection.base);
   const allocationUsesGross = basis === 'gross';
 
   const publicFareTotals =
@@ -764,11 +696,10 @@ export function priceOffer({
       grossCapApplied,
       lccServiceMargin: lccServiceRule,
       discountFloorApplied,
-      // The most specific rule that priced this offer. `components` carries
-      // the full two-stage detail.
-      ruleId: effectiveRule?.id ?? null,
-      markupType: effectiveRule?.markupType ?? null,
-      markupValue: effectiveRule?.value ?? null,
+      // The sole winning rule and the calculation that produced this price.
+      ruleId: selectedRule?.id ?? null,
+      markupType: selectedRule?.markupType ?? null,
+      markupValue: selectedRule?.value ?? null,
       components,
     },
   };

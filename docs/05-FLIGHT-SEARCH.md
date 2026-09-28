@@ -62,9 +62,9 @@ The flight search system provides real-time flight availability and pricing thro
 │              Markup Application                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │  selectMarkupRules() - Rule selection                       │  │
-│  │  priceOffer() - Two-stage pricing                           │  │
-│  │  - Base rule pricing                                       │  │
-│  │  - Adjustment rule pricing                                 │  │
+│  │  priceOffer() - One selected rule                           │  │
+│  │  - Audience and coverage priority                          │  │
+│  │  - Other matching rules ignored                            │  │
 │  │  - Cap and floor enforcement                               │  │
 │  └────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -236,37 +236,51 @@ type BaggageInfo = {
 
 ## Markup Application
 
+This section describes local pricing for Triplover offers. The separate
+Shapontravels pricing path uses the supplier's final
+`fareBreakdown.payable` without adding local markup; see the
+[supplier guide](29-SHAPONTRAVELS-READ-ONLY-GUIDE.md).
+
 ### Rule Selection
 
-Markup rules are selected based on the user's pricing audience:
+The highest-priority matching markup rule is selected from the user's pricing
+audience and the itinerary's airline and requested routes:
 
 ```typescript
 const audience = pricingAudienceForRole(session.role, session.agencyCode);
-const rules = await activeMarkupRulesFor(audience);
-const selected = selectMarkupRules(rules, itinerary);
+const { ok, rules } = await activeMarkupRulesFor(audience);
+const selected = selectMarkupRules(rules, audience, airlineCode, routes);
 ```
 
 See [06-PRICING-AND-MARKUP.md](06-PRICING-AND-MARKUP.md) for detailed markup logic.
 
-### Two-Stage Pricing
+### One Selected Rule
 
-Pricing applies two rules:
-
-1. **Base Rule**: Prices the supplier fare (all airlines, all routes)
-2. **Adjustment Rule**: Modifies the base result (airline/route-specific)
+Pricing applies only `selected.rule`. A general rule provides fallback coverage
+when no higher-priority rule matches; it does not add another layer.
 
 ```typescript
-const priced = priceOffer(supplierFare, selected.base, selected.adjustment);
+const priced = priceOffer({
+  audience,
+  rulesAvailable: ok,
+  rules: selected,
+  supplierTotalPrice,
+  basePrice,
+  taxes,
+  ait,
+  fares,
+  passengerCount,
+});
 ```
 
 ### Price Enforcement
 
 Prices are enforced with caps and floors:
 
-- Gross price cannot exceed calculated gross
-- Net price cannot go below supplier payable
-- LCC service margin mode has special handling
-- Caps and floors checked after each stage
+- Ordinary markup is capped at safe gross: the greater of gross and supplier payable
+- Discounts may go below supplier payable but cannot remove taxes or AIT
+- A selected LCC service-margin rule adds its amount above safe gross
+- The selected ordinary rule is checked against both the cap and the floor
 
 ## Search Caching
 

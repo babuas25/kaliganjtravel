@@ -110,7 +110,7 @@ ShoponTravels International enables:
 - Reconciliation for ambiguous supplier outcomes
 
 ### Pricing & Markup
-- Two-stage pricing: base rule + adjustment rule
+- One matching pricing rule, selected by audience and coverage priority
 - Audience-specific pricing (B2C, B2B, agency-specific)
 - Airline and route-based markup rules
 - LCC service margin mode

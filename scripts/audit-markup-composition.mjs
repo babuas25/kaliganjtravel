@@ -1,6 +1,8 @@
 /**
- * One-time: show which live pricing scopes change when the engine moves from
- * "one winning rule" to "base rule + one adjustment rule".
+ * Historical, one-time audit of the former migration from "one winning rule"
+ * to "base rule + one adjustment rule". Neither formula below represents the
+ * current exclusive-rule engine, which uses supplier payable for percentages.
+ * Use `npm run verify:markup-priority` to verify current pricing behavior.
  *
  *   node scripts/audit-markup-composition.mjs
  *
@@ -10,7 +12,7 @@
  * environment (or .env.local, which it parses itself — this runs outside Next,
  * so nothing loads that file for it).
  *
- * Three configurations reprice:
+ * Three configurations repriced in that historical migration:
  *
  *   1. An audience holding both an all-airlines/all-routes rule and a scoped
  *      rule. Before, the scoped rule replaced the global one. Now the global
@@ -23,8 +25,8 @@
  *
  * The arithmetic is duplicated from `lib/markup.ts` rather than imported: that
  * file is TypeScript behind the app's module aliases, and a throwaway audit is
- * not worth a build step. It is checked against the real engine by the numbers
- * in MARKUP.md §9. Delete this script once the deltas have been approved.
+ * not worth a build step. It is retained only to explain the historical rollout;
+ * its output must not be used as a current pricing or deployment check.
  */
 
 import { readFileSync } from 'node:fs';
@@ -102,7 +104,7 @@ function fareMinors({ basePrice, taxes }) {
   };
 }
 
-/** The engine as it was: one winning rule, one clamp. */
+/** Historical engine: one winning rule, percentage of base fare, one clamp. */
 function sellingBefore(rule, fare) {
   const f = fareMinors(fare);
   if (!rule) return fromMinor(f.supplierMinor);
@@ -125,7 +127,7 @@ function sellingBefore(rule, fare) {
   return fromMinor(f.supplierMinor + applied);
 }
 
-/** The engine now: base stage, then adjustment stage, clamped after each. */
+/** Historical two-stage engine, clamped after each stage. */
 function sellingAfter(base, adjustment, fare) {
   const f = fareMinors(fare);
   const clamp = (value) =>
@@ -219,7 +221,7 @@ console.log(`${rules.length} active rule(s).\n`);
 
 /**
  * Audience buckets. An agency also inherits the all-B2B rules, so its bucket
- * carries both — matching how `selectMarkupRules()` resolves each stage.
+ * carries both — matching how the former engine resolved each stage.
  */
 const buckets = new Map();
 for (const rule of rules) {
@@ -266,6 +268,6 @@ for (const [key, bucket] of buckets) {
 
 console.log(
   changed === 0
-    ? 'No live scope changes price under two-stage pricing.'
-    : `${changed} scope(s) change price. Approve these before deploying.`
+    ? 'Historical comparison: no scope changes between the former formulas.'
+    : `Historical comparison: ${changed} scope(s) differ between the former formulas. This is not a current pricing audit.`
 );

@@ -1,12 +1,13 @@
 import 'server-only';
 
 /** Shapontravels uses issued machine credentials, not the Triplover login. */
-export type ShapontravelsRead = 'Search' | 'FareRules' | 'Reprice';
+export type ShapontravelsRead = 'Search' | 'FareRules' | 'Reprice' | 'Airlines';
 
 const PATHS: Record<ShapontravelsRead, string> = {
   Search: 'api/Search',
   FareRules: 'api/FareRules',
   Reprice: 'api/Reprice',
+  Airlines: 'api/Airlines',
 };
 const TOKEN_MARGIN_MS = 60_000;
 const LOGIN_TIMEOUT_MS = 20_000;
@@ -14,11 +15,13 @@ const READ_TIMEOUT_MS: Record<ShapontravelsRead, number> = {
   Search: 125_000,
   FareRules: 60_000,
   Reprice: 60_000,
+  Airlines: 15_000,
 };
 const BODY_LIMIT: Record<ShapontravelsRead, number> = {
   Search: 64 * 1024 * 1024,
   FareRules: 8 * 1024 * 1024,
   Reprice: 8 * 1024 * 1024,
+  Airlines: 128 * 1024,
 };
 
 type Credentials = { base: URL; clientId: string; clientSecret: string };
@@ -167,9 +170,11 @@ async function accessToken(config: Credentials): Promise<Token> {
 }
 
 /** Read calls only. No booking, ticketing, acceptance, or cancellation operation is exposed. */
+export function shapontravelsRead(operation: 'Airlines'): Promise<unknown>;
+export function shapontravelsRead(operation: Exclude<ShapontravelsRead, 'Airlines'>, payload: unknown): Promise<unknown>;
 export async function shapontravelsRead(
   operation: ShapontravelsRead,
-  payload: unknown
+  payload?: unknown
 ): Promise<unknown> {
   const config = credentials();
   const endpoint = new URL(PATHS[operation], config.base);
@@ -178,12 +183,12 @@ export async function shapontravelsRead(
     let response: Response;
     try {
       response = await fetch(endpoint, {
-        method: 'POST',
+        method: operation === 'Airlines' ? 'GET' : 'POST',
         headers: {
           authorization: `Bearer ${token.value}`,
-          'content-type': 'application/json',
+          ...(operation === 'Airlines' ? {} : { 'content-type': 'application/json' }),
         },
-        body: JSON.stringify(payload),
+        ...(operation === 'Airlines' ? {} : { body: JSON.stringify(payload) }),
         cache: 'no-store',
         redirect: 'error',
         signal: AbortSignal.timeout(READ_TIMEOUT_MS[operation]),

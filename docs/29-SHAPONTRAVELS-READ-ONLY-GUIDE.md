@@ -22,6 +22,8 @@ Then a Super Admin selects **Shapontravels** in Supplier Control. Only one suppl
 
 ## Read flow
 
+The Preferred Airlines picker requests KaligonjTours `GET /api/flights/airlines` when opened. The server reads Shapontravels `GET /api/Airlines` with its existing machine bearer token, checks the returned codes and names, and caches the directory for 15 minutes. The browser receives only the public directory. If the API is unavailable, the picker continues with its bundled airline list. A passenger can select up to eight carriers; Search sends their uppercase two-character codes in `preferredCarriers`. An empty list means any airline. Directory membership does not guarantee a fare for a particular route or date.
+
 1. The server exchanges the client credentials with `POST /auth/token` and caches the machine bearer token until near expiry. An HTTP 401 on a read causes one token renewal and retry.
 2. `POST /api/Search` receives the existing search request fields. The mapper accepts only complete directions and private segment references. Each selectable option is bound to `shapontravels` in the short-lived Redis quote. The browser receives only its own search and itinerary IDs.
 3. The public offer's `fareBreakdown.payable` is the final BDT price. The mapper validates the decimal breakdown and passenger totals. It does not add KaligonjTours markup to that amount.

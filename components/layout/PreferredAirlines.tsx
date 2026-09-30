@@ -1,9 +1,12 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Check, ChevronDown, Plane, Search, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AIRLINE_CATALOG } from '@/lib/airlines/catalog';
+
+type Airline = { code: string; name: string };
+const MAX_PREFERRED_AIRLINES = 8;
 
 export default function PreferredAirlines({
   className = '',
@@ -16,15 +19,35 @@ export default function PreferredAirlines({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [airlines, setAirlines] = useState<readonly Airline[]>(AIRLINE_CATALOG);
   const labelId = useId();
   const summaryId = useId();
-  const nameFor = (code: string) => AIRLINE_CATALOG.find((airline) => airline.code === code)?.name ?? code;
-  const matches = AIRLINE_CATALOG.filter((airline) =>
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    void fetch('/api/flights/airlines', { signal: controller.signal })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data: unknown) => {
+        if (!data || typeof data !== 'object' || !('items' in data) || !Array.isArray(data.items)) return;
+        const items = data.items;
+        if (items.length === 0 || items.length > 500 || !items.every((item: unknown) =>
+          item !== null && typeof item === 'object' &&
+          'code' in item && typeof item.code === 'string' && /^[A-Z0-9]{2}$/.test(item.code) &&
+          'name' in item && typeof item.name === 'string' && item.name.length > 0
+        )) return;
+        if (!controller.signal.aborted) setAirlines(items as Airline[]);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [open]);
+  const nameFor = (code: string) => airlines.find((airline) => airline.code === code)?.name ?? code;
+  const matches = airlines.filter((airline) =>
     `${airline.code} ${airline.name}`.toLowerCase().includes(query.trim().toLowerCase())
   );
-  const toggle = (code: string) => onChange(
-    value.includes(code) ? value.filter((selected) => selected !== code) : [...value, code]
-  );
+  const toggle = (code: string) => {
+    if (value.includes(code)) onChange(value.filter((selected) => selected !== code));
+    else if (value.length < MAX_PREFERRED_AIRLINES) onChange([...value, code]);
+  };
 
   return (
     <div className={className}>
@@ -68,8 +91,8 @@ export default function PreferredAirlines({
           </div>
           <div role="group" aria-label="Airlines" className="min-h-0 max-h-60 overflow-y-auto overscroll-contain p-1.5">
             {matches.map((airline) => (
-              <label key={airline.code} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition hover:bg-neutral-50 has-[:checked]:bg-brand-orange-light/50">
-                <input type="checkbox" checked={value.includes(airline.code)} onChange={() => toggle(airline.code)} className="peer sr-only" />
+              <label key={airline.code} className={`flex min-h-11 items-center gap-3 rounded-lg px-2.5 py-2 text-sm has-[:checked]:bg-brand-orange-light/50 ${value.length >= MAX_PREFERRED_AIRLINES && !value.includes(airline.code) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer transition hover:bg-neutral-50'}`}>
+                <input type="checkbox" checked={value.includes(airline.code)} disabled={value.length >= MAX_PREFERRED_AIRLINES && !value.includes(airline.code)} onChange={() => toggle(airline.code)} className="peer sr-only" />
                 <span aria-hidden className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-neutral-300 peer-checked:border-brand-orange peer-checked:bg-brand-orange peer-focus-visible:ring-2 peer-focus-visible:ring-brand-orange peer-focus-visible:ring-offset-2">
                   {value.includes(airline.code) && <Check className="h-3 w-3" />}
                 </span>
@@ -80,7 +103,7 @@ export default function PreferredAirlines({
             {matches.length === 0 && <p role="status" className="px-3 py-6 text-center text-sm text-neutral-500">No airlines found. Try another name or code.</p>}
           </div>
           <div className="flex shrink-0 items-center justify-between border-t border-neutral-100 bg-neutral-50/70 px-3 py-2.5">
-            <span role="status" className="text-xs text-neutral-500">{value.length ? `${value.length} selected` : 'All airlines included'}</span>
+            <span role="status" className="text-xs text-neutral-500">{value.length ? `${value.length} of ${MAX_PREFERRED_AIRLINES} selected` : 'All airlines included'}</span>
             <div className="flex items-center gap-2">
               {value.length > 0 && <button type="button" onClick={() => onChange([])} className="min-h-9 rounded-lg px-2 text-xs font-medium text-neutral-500 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">Clear all</button>}
               <button type="button" onClick={() => setOpen(false)} className="min-h-9 rounded-lg bg-navy-950 px-4 text-xs font-semibold text-white hover:bg-navy-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2">Done</button>

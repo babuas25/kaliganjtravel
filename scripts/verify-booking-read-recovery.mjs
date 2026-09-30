@@ -29,6 +29,7 @@ const client = { from() {
 } };
 const dbMocks = {
   '@/lib/db/booking-read-error': errors,
+  '@/lib/flights/booking-status': load('lib/flights/booking-status.ts'),
   '@/lib/supabase/server': { supabaseAdmin: () => storage },
   '@/lib/db/booking-visibility': { bookingUserVisibilitySchemaAvailable: async () => true },
 };
@@ -55,6 +56,48 @@ result = {data:{id:'found'},error:null};
 assert.equal((await attempts.readBookingAttempt('id','private-capability')).id,'found');
 result = {data:null,error:{message:'alias storage failed'}};
 await assert.rejects(()=>bookings.readBookingByPublicRef('STR123456789012',{kind:'all'},true),errors.BookingReadUnavailableError);
+
+// Renamed KTT links retain exactly the same agency/user/visibility boundary.
+const canonicalRef = 'KTT260930111111';
+const historicalRefs = ['KTTZETBHQZETBHQ', 'STR260930000001'];
+const aliasBooking = { id: 'alias-booking', public_ref: canonicalRef, user_id: 'owner',
+  agency_code: 'agency', hidden_from_user: false, status: 'on-hold' };
+let aliasFailure = false, canonicalFailure = false;
+storage = { from(table) {
+  const conditions = [];
+  const q = { select() { return q; }, limit() { return q; }, eq(key, value) { conditions.push([key, value]); return q; },
+    maybeSingle: async () => {
+      if (table === 'booking_reference_aliases') {
+        if (aliasFailure) return { data: null, error: { message: 'alias unavailable' } };
+        return { data: historicalRefs.includes(conditions.find(([key]) => key === 'alias')?.[1])
+          ? { booking_id: aliasBooking.id } : null, error: null };
+      }
+      if (canonicalFailure && conditions.some(([key]) => key === 'id')) {
+        return { data: null, error: { message: 'canonical reference unavailable' } };
+      }
+      return { data: conditions.every(([key, value]) => aliasBooking[key] === value) ? aliasBooking : null, error: null };
+    } };
+  return q;
+} };
+for (const reference of [...historicalRefs, canonicalRef]) {
+  assert.equal((await bookings.readBookingByPublicRef(reference, { kind: 'user', clerkId: 'owner' }, true)).public_ref, canonicalRef);
+  assert.equal((await bookings.readBookingByPublicRef(reference, { kind: 'agency', agencyCode: 'agency' }, true)).public_ref, canonicalRef);
+  assert.equal(await bookings.readBookingByPublicRef(reference, { kind: 'user', clerkId: 'other-user' }, true), null);
+  assert.equal(await bookings.readBookingByPublicRef(reference, { kind: 'agency', agencyCode: 'other-agency' }, true), null);
+  aliasBooking.hidden_from_user = true;
+  assert.equal(await bookings.readBookingByPublicRef(reference, { kind: 'user', clerkId: 'owner' }, true), null);
+  assert.equal((await bookings.readBookingByPublicRef(reference, { kind: 'all' }, true)).id, aliasBooking.id);
+  assert.equal((await bookings.readBookingByPublicRefForSuperAdmin(reference, true)).public_ref, canonicalRef);
+  aliasBooking.hidden_from_user = false;
+}
+aliasFailure = true;
+await assert.rejects(() => bookings.readBookingByPublicRef(historicalRefs[0], { kind: 'all' }, true), errors.BookingReadUnavailableError);
+await assert.rejects(() => bookings.readBookingByPublicRefForSuperAdmin(historicalRefs[0], true), errors.BookingReadUnavailableError);
+aliasFailure = false;
+canonicalFailure = true;
+await assert.rejects(() => bookings.readBookingByPublicRef(historicalRefs[0], { kind: 'all' }, true), errors.BookingReadUnavailableError);
+canonicalFailure = false;
+assert.equal(await bookings.readBookingByPublicRef('KTTUNKNOWN', { kind: 'all' }, true), null);
 
 let mode = 'storage', supplierCalls = 0, allowSupplierFailure = false, claims = 0;
 const effects = [];

@@ -51,7 +51,7 @@ const B2C_HEADER_CONTACT = {
 
 export type BookingRow = {
   id: string;
-  /** Stable KTT locator-based customer reference; legacy STR references remain supported. */
+  /** Stable KTT date/daily-serial reference in Asia/Dhaka; historical STR/KTT links remain supported. */
   public_ref: string;
   /** The operational row this booking came from. */
   attempt_id: string;
@@ -1232,7 +1232,7 @@ export async function listBookings(
 
 /** Resolve historical links without bypassing the caller's booking scope. */
 async function canonicalBookingReference(publicRef: string, throwOnReadError = false): Promise<string> {
-  if (!publicRef.startsWith('STR')) return publicRef;
+  if (!publicRef.startsWith('STR') && !publicRef.startsWith('KTT')) return publicRef;
   const supabase = supabaseAdmin();
   if (!supabase) return publicRef;
   const { data, error } = await supabase.from('booking_reference_aliases')

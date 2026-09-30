@@ -451,6 +451,36 @@ function DocumentHeader({
 
   return (
     <header className={styles.header}>
+      <div className={styles.printHeader}>
+        <h1>{ticketed ? 'E - Ticket' : 'Booking Confirmation'}</h1>
+        <div className={styles.printMasthead}>
+          <div>
+            <p className={styles.printAgencyName}>{booking.headerContact.name}</p>
+            <p>License No: {booking.headerContact.licenseNo || '--'}</p>
+            <p>{ticketed
+              ? 'Electronic ticket - carry a copy while travelling.'
+              : 'Booking confirmation - seats held with the airline.'}</p>
+          </div>
+          <div className={styles.printContact}>
+            <p>{booking.headerContact.address}</p>
+            <p>{booking.headerContact.mobile}</p>
+            <p>{booking.headerContact.email}</p>
+            <p><strong>Booking ID: {booking.publicRef}</strong></p>
+            <p><strong>{activity[0]}: {formatActivity(activity[1])}</strong></p>
+          </div>
+        </div>
+        <div className={styles.printReservation}>
+          <p><strong>Airline PNR: {validAirlinePnrs(booking.airlinesPnr).join(', ') || 'Not available'}</strong></p>
+          <p className={styles.printStatus} style={{ backgroundColor: STATUS_BADGE_COLORS[booking.status] }}>
+            {BOOKING_STATUS_LABELS[booking.status]}
+          </p>
+        </div>
+        <div className={styles.printMetadata}>
+          <p><strong>{trip[0]}:</strong> {trip[1]}</p>
+          <p><strong>Payment:</strong> {PAYMENT_LABELS[booking.paymentState]}</p>
+        </div>
+        {booking.statusMessage && <p className={styles.printStatusMessage}>{booking.statusMessage}</p>}
+      </div>
       <div className={`${styles.masthead} flex flex-col gap-3 border-t-4 border-brand-orange bg-brand-orange p-4 text-black sm:flex-row sm:items-start sm:justify-between`}>
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
@@ -682,8 +712,66 @@ function SegmentBlock({
 
   return (
     <>
+      <table className={styles.printSegment}>
+        <colgroup>
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '32%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '14%' }} />
+          <col style={{ width: '18%' }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th colSpan={6} className={styles.printFlightName}>
+              {segment.airline || segment.airlineCode} | Flight No: {segment.airlineCode}{segment.flightNumber}
+              {segment.aircraft ? ` | Aircraft: ${segment.aircraft}` : ''}
+              {total > 1 ? ` | Flight ${position} of ${total}` : ''}
+              {operatingCarrierLabel(segment) && <span className={styles.printOperatingCarrier}>{operatingCarrierLabel(segment)}</span>}
+            </th>
+          </tr>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Time</th>
+            <th scope="col">Flight Info</th>
+            <th scope="col">Flight Time</th>
+            <th scope="col">Cabin</th>
+            <th scope="col">Baggage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{formatDate(dateOf(segment.departure))}</td>
+            <td>{timeOf(segment.departure) || '--:--'}</td>
+            <td>
+              Departs: <strong>{segment.from}</strong>
+              {segment.departureTerminal && ` - Terminal ${segment.departureTerminal}`}
+              {segment.fromAirport && <span className={styles.printAirport}>{segment.fromAirport}</span>}
+            </td>
+            <td rowSpan={2}>{segment.duration || '--'}</td>
+            <td rowSpan={2}>
+              {segment.cabinClass || '--'}
+              {segment.bookingClass && <span className={styles.printAirport}>RBD {segment.bookingClass}</span>}
+            </td>
+            <td rowSpan={2}>
+              {segment.baggage && <span className={styles.printBaggage}>Check-in: {segment.baggage}</span>}
+              {segment.handBaggage && <span className={styles.printBaggage}>Cabin bag: {segment.handBaggage}</span>}
+              {!segment.baggage && !segment.handBaggage && '--'}
+            </td>
+          </tr>
+          <tr>
+            <td>{formatDate(dateOf(segment.arrival))}</td>
+            <td>{timeOf(segment.arrival) || '--:--'}{overnight > 0 && <sup> +{overnight}</sup>}</td>
+            <td>
+              Arrival: <strong>{segment.to}</strong>
+              {segment.arrivalTerminal && ` - Terminal ${segment.arrivalTerminal}`}
+              {segment.toAirport && <span className={styles.printAirport}>{segment.toAirport}</span>}
+            </td>
+          </tr>
+        </tbody>
+      </table>
       <div
-        className={`${styles.carrier} flex items-center justify-between gap-3 bg-neutral-50 px-3 py-2 ${
+        className={`${styles.carrier} ${styles.screenOnly} flex items-center justify-between gap-3 bg-neutral-50 px-3 py-2 ${
           first ? '' : `border-t ${HAIRLINE}`
         }`}
       >
@@ -710,7 +798,7 @@ function SegmentBlock({
         )}
       </div>
 
-      <div className={`${styles.journey} flex items-start gap-3 px-3 py-3`}>
+      <div className={`${styles.journey} ${styles.screenOnly} flex items-start gap-3 px-3 py-3`}>
         <Terminus
           time={timeOf(segment.departure)}
           code={segment.from}
@@ -747,7 +835,7 @@ function SegmentBlock({
 
       {facts.length > 0 && (
         <p
-          className={`${styles.baggage} flex flex-wrap gap-x-4 gap-y-1 border-t bg-neutral-50/50 px-3 py-1.5 text-[11px] text-neutral-500 ${HAIRLINE}`}
+          className={`${styles.baggage} ${styles.screenOnly} flex flex-wrap gap-x-4 gap-y-1 border-t bg-neutral-50/50 px-3 py-1.5 text-[11px] text-neutral-500 ${HAIRLINE}`}
         >
           {facts.map(([label, value]) => (
             <Fact key={label} label={label} value={value} />
@@ -783,7 +871,7 @@ function LegBlock({
 
   return (
     <div>
-      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+      <div className={`${styles.legHeading} mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5`}>
         <h3 className="flex items-center gap-2">
           {numbered && (
             <span className="rounded bg-brand-orange px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
@@ -910,7 +998,8 @@ export default function BookingDetails({
 
   // The supplier returns a flat list of ticket numbers with no passenger key.
   // Pairing them by position is only safe when the counts line up exactly;
-  // otherwise they stay in the references section, unattributed.
+  // Otherwise the downloaded booking copy lists them without assigning them
+  // to a passenger; individual copies explicitly state that mapping is missing.
   const ticketsAlign =
     booking.ticketNumbers.length > 0 &&
     booking.ticketNumbers.length === namedTravellers.length;
@@ -951,7 +1040,7 @@ export default function BookingDetails({
           <Section title="Passenger & Ticket Details" icon={Users}>
             {namedTravellers.length > 0 ? (
               <div className={`overflow-x-auto ${FRAME}`}>
-                <table className="w-full min-w-[34rem] border-collapse text-left">
+                <table className={`${styles.passengers} w-full min-w-[34rem] border-collapse text-left`}>
                   <thead>
                     <tr className="bg-neutral-50">
                       <HeadCell>Passenger</HeadCell>
@@ -996,40 +1085,51 @@ export default function BookingDetails({
                       ];
 
                       return (
-                        <tr
-                          key={`${traveller.passengerType}-${index}`}
-                          data-print-passenger-index={index}
-                          className={`border-t align-top ${HAIRLINE}`}
-                        >
-                          <td className="px-3 py-2.5">
-                            <p className="text-[13px] font-bold leading-tight text-navy-950">
-                              {name}
-                            </p>
-                            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10.5px] text-neutral-500">
-                              {identity.map(([label, value]) => (
-                                <Fact
-                                  key={label}
-                                  label={label}
-                                  value={value}
-                                />
-                              ))}
-                            </p>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-[12px] font-semibold text-navy-950">
-                            {LABELS[traveller.passengerType]}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600">
-                            {traveller.gender}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600">
-                            {formatDate(traveller.dateOfBirth)}
-                          </td>
-                          {ticketsAlign && (
-                            <td className="whitespace-nowrap px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums text-navy-950">
-                              {booking.ticketNumbers[index]}
+                        <Fragment key={`${traveller.passengerType}-${index}`}>
+                          <tr
+                            data-print-passenger-index={index}
+                            className={`border-t align-top ${HAIRLINE}`}
+                          >
+                            <td className="px-3 py-2.5">
+                              <p className="text-[13px] font-bold leading-tight text-navy-950">
+                                {name}
+                              </p>
+                              <p className={`${styles.screenOnly} mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10.5px] text-neutral-500`}>
+                                {identity.map(([label, value]) => (
+                                  <Fact
+                                    key={label}
+                                    label={label}
+                                    value={value}
+                                  />
+                                ))}
+                              </p>
                             </td>
-                          )}
-                        </tr>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-[12px] font-semibold text-navy-950">
+                              {LABELS[traveller.passengerType]}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600">
+                              {traveller.gender}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600">
+                              {formatDate(traveller.dateOfBirth)}
+                            </td>
+                            {ticketsAlign && (
+                              <td className="whitespace-nowrap px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums text-navy-950">
+                                {booking.ticketNumbers[index]}
+                              </td>
+                            )}
+                          </tr>
+                          <tr className={styles.printIdentityRow} data-print-passenger-index={index}>
+                            <td colSpan={ticketsAlign ? 5 : 4}>
+                              {identity.map(([label, value]) => (
+                                <Fact key={label} label={label} value={value} />
+                              ))}
+                              {!ticketsAlign && booking.ticketNumbers.length > 0 && (
+                                <span>Ticket number: passenger assignment unavailable</span>
+                              )}
+                            </td>
+                          </tr>
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -1050,6 +1150,12 @@ export default function BookingDetails({
                   {passengerPrivacyNotice ??
                     'Names are not shown after a reload — quote the booking reference and we can read them back to you.'}
                 </p>
+              </div>
+            )}
+            {!ticketsAlign && booking.ticketNumbers.length > 0 && (
+              <div className={styles.printUnassignedTickets} data-print-unassigned-tickets>
+                <p><strong>Booking ticket numbers:</strong> {booking.ticketNumbers.join(', ')}</p>
+                <p>Ticket numbers could not be matched to individual passengers.</p>
               </div>
             )}
           </Section>
@@ -1107,7 +1213,7 @@ export default function BookingDetails({
                       />
                     ))
                   ) : (
-                    <tr className={`border-t ${HAIRLINE}`}>
+                    <tr data-print-booking-fare-row="" className={`border-t ${HAIRLINE}`}>
                       <td
                         colSpan={hasMargin ? 7 : 6}
                         className="px-3 py-2.5 text-[11px] text-neutral-500"
@@ -1139,7 +1245,17 @@ export default function BookingDetails({
                         printKind="individual"
                         passengerIndex={index}
                       />
-                    ) : null
+                    ) : (
+                      <tr
+                        key={`individual-unavailable-${index}`}
+                        data-print-individual-fare-index={index}
+                        className={`print-individual-fare-row border-t ${HAIRLINE}`}
+                      >
+                        <td colSpan={hasMargin ? 7 : 6} className="px-3 py-2.5 text-[11px] text-neutral-500">
+                          Fare details are unavailable for this passenger.
+                        </td>
+                      </tr>
+                    )
                   )}
                   {individualFares.map((fare, index) =>
                     fare ? (

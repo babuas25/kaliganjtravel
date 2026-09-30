@@ -1050,6 +1050,9 @@ export default function BookingActions({
     const passengerRows = document.querySelectorAll<HTMLElement>(
       '[data-print-passenger-index]'
     );
+    const unassignedTickets = document.querySelectorAll<HTMLElement>(
+      '[data-print-unassigned-tickets]'
+    );
     const bookingFareRows = document.querySelectorAll<HTMLElement>(
       '[data-print-booking-fare-row]'
     );
@@ -1063,6 +1066,7 @@ export default function BookingActions({
 
     if (!withFare) document.documentElement.classList.add(hideFareClass);
     if (passengerCopy) {
+      unassignedTickets.forEach((block) => block.classList.add('print-passenger-hidden'));
       passengerRows.forEach((row) => {
         row.classList.toggle(
           'print-passenger-hidden',
@@ -1070,7 +1074,7 @@ export default function BookingActions({
         );
       });
     }
-    if (withFare && passengerCopy?.hasFare) {
+    if (withFare && passengerCopy) {
       bookingFareRows.forEach((row) => row.classList.add('print-fare-hidden'));
       bookingFareTotals.forEach((row) => row.classList.add('print-fare-hidden'));
       individualFareRows.forEach((row) => {
@@ -1088,6 +1092,7 @@ export default function BookingActions({
       document.title = originalTitle;
       document.documentElement.classList.remove(hideFareClass);
       passengerRows.forEach((row) => row.classList.remove('print-passenger-hidden'));
+      unassignedTickets.forEach((block) => block.classList.remove('print-passenger-hidden'));
       bookingFareRows.forEach((row) => row.classList.remove('print-fare-hidden'));
       bookingFareTotals.forEach((row) => row.classList.remove('print-fare-hidden'));
       individualFareRows.forEach((row) =>

@@ -12,13 +12,30 @@ const caseId = '1f0edcda-d5c5-4c37-b4ee-1ebc8609e81a';
 const reservationId = '58e5490e-e71f-4c30-b0d0-65a29e676570';
 const actor = 'test-superadmin';
 const requestKey = 'shapon-wallet-refusal:KTT0AEN460AEN46:v1';
+const dailyReferenceMigration = '20260930000000_ktt_daily_booking_references.sql';
+
+async function recoverySnapshot() {
+  const result = {};
+  const tables = (await db.query("select tablename from pg_tables where schemaname='public' order by tablename")).rows;
+  for (const { tablename } of tables) {
+    if (['booking_reference_aliases', 'booking_ref_counters'].includes(tablename)) continue;
+    const row = tablename === 'flight_bookings' ? "to_jsonb(t) - 'public_ref'" : 'to_jsonb(t)';
+    result[tablename] = (await db.query(`select coalesce(jsonb_agg(${row} order by t::text), '[]') as data
+      from public."${tablename}" t`)).rows[0].data;
+  }
+  return result;
+}
 
 try {
   await db.exec(`create role anon; create role authenticated; create role service_role;
     create schema auth; create schema storage; create schema extensions;
     create extension pgcrypto with schema extensions;`);
   const dir = 'supabase/fresh-install/supabase/migrations';
-  for (const file of fs.readdirSync(dir).filter(file => file.endsWith('.sql')).sort()) {
+  const migrations = fs.readdirSync(dir).filter(file => file.endsWith('.sql')).sort();
+  assert.ok(migrations.includes(dailyReferenceMigration));
+  // This named, already-completed repair ran while the booking had its old KTT
+  // reference. Exercise that historical state before applying the later rename.
+  for (const file of migrations.filter(file => file < dailyReferenceMigration)) {
     await db.exec(fs.readFileSync(`${dir}/${file}`, 'utf8'));
   }
   await db.query(`insert into app_users(clerk_id,role) values ($1,'superadmin')`, [actor]);
@@ -105,7 +122,17 @@ try {
   assert.equal((await db.query(`select count(*)::int as n from wallet_ledger_entries
       where reservation_id=$1 and transaction_type='hold_release'`,
   [reservationId])).rows[0].n, 1);
-  console.log('Shapon wallet refusal recovery verified');
+  const recovered = await recoverySnapshot();
+  for (const file of migrations.filter(file => file >= dailyReferenceMigration)) {
+    await db.exec(fs.readFileSync(`${dir}/${file}`, 'utf8'));
+  }
+  assert.deepEqual(await recoverySnapshot(), recovered,
+    'The later reference rename must preserve the completed recovery, wallet, and audit records');
+  assert.equal((await db.query(`select booking_id from booking_reference_aliases
+    where alias='KTT0AEN460AEN46'`)).rows[0].booking_id, bookingId);
+  assert.match((await db.query('select public_ref from flight_bookings where id=$1',
+    [bookingId])).rows[0].public_ref, /^KTT\d{12}$/);
+  console.log('Shapon wallet refusal recovery and preservation after the daily-reference migration verified');
 } finally {
   await db.close();
 }

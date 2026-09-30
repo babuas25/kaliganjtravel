@@ -126,7 +126,7 @@ export type PublicBookingAttempt = BookingOffer & {
 export type PublicBooking = BookingOffer & {
   /** Internal id. Never shown; `publicRef` is what a customer quotes. */
   bookingId: string;
-  /** KTT + GDS PNR + first airline PNR, with a unique suffix when needed. */
+  /** KTT + YYMMDD in Asia/Dhaka + a six-digit daily serial starting at 111111. */
   publicRef: string;
   status: BookingStatus;
   /** Customer-safe In Progress explanation; never an internal operation code. */

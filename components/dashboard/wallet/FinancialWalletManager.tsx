@@ -53,6 +53,7 @@ type WalletRow = {
   ownerType: 'user' | 'agency';
   ownerKey: string;
   ownerName: string;
+  ownerEmail: string | null;
   status: 'active' | 'frozen';
   currency: string;
   availableBalance: number;
@@ -320,6 +321,13 @@ function financialRoleLabel(role: string | undefined) {
   }
 }
 
+function walletOwnerDetail(wallet: WalletRow) {
+  if (wallet.ownerType === 'agency') return `ID: ${wallet.ownerKey}`;
+  return wallet.ownerEmail && wallet.ownerEmail !== wallet.ownerName
+    ? wallet.ownerEmail
+    : 'B2C customer';
+}
+
 function WalletPicker({
   wallets,
   value,
@@ -350,7 +358,7 @@ function WalletPicker({
                   {selected.ownerName}
                 </span>
                 <span className="block truncate text-xs text-neutral-500">
-                  ID: {selected.ownerKey}
+                  {walletOwnerDetail(selected)}
                 </span>
                 <span className="block text-xs font-semibold tabular-nums text-navy-700">
                   {money(selected.availableBalance, selected.currency)}
@@ -367,13 +375,13 @@ function WalletPicker({
           className="w-[var(--radix-popover-trigger-width)] p-0"
         >
           <Command>
-            <CommandInput placeholder="Search agency name or ID..." />
+            <CommandInput placeholder="Search user or agency name, email or ID..." />
             <CommandList>
               <CommandEmpty>No wallet found.</CommandEmpty>
               {wallets.map((wallet) => (
                 <CommandItem
                   key={wallet.accountId}
-                  value={`${wallet.ownerName} ${wallet.ownerKey}`}
+                  value={`${wallet.ownerName} ${wallet.ownerEmail ?? ''} ${wallet.ownerKey}`}
                   onSelect={() => {
                     onValueChange(wallet.accountId);
                     setOpen(false);
@@ -390,7 +398,7 @@ function WalletPicker({
                       {wallet.ownerName}
                     </span>
                     <span className="block break-all text-xs text-neutral-500">
-                      ID: {wallet.ownerKey}
+                      {walletOwnerDetail(wallet)}
                     </span>
                     <span className="mt-0.5 block text-xs font-semibold tabular-nums text-navy-700">
                       {money(wallet.availableBalance, wallet.currency)}
@@ -1088,7 +1096,10 @@ export default function FinancialWalletManager({
 
   const accountOwner = (accountId: string) => {
     const wallet = wallets.find((item) => item.accountId === accountId);
-    return wallet ? `${wallet.ownerType}: ${wallet.ownerKey}` : accountId;
+    if (!wallet) return accountId;
+    return wallet.ownerType === 'agency'
+      ? `${wallet.ownerName} (${wallet.ownerKey})`
+      : wallet.ownerName;
   };
 
   const tabs: TabDefinition[] = [
@@ -1419,12 +1430,10 @@ export default function FinancialWalletManager({
                     >
                       <td className="px-4 py-3">
                         <span className="font-semibold capitalize">
-                          {wallet.ownerType === 'agency'
-                            ? wallet.ownerName
-                            : 'User'}
+                          {wallet.ownerName}
                         </span>
                         <span className="mt-0.5 block text-xs text-neutral-500">
-                          {wallet.ownerKey}
+                          {walletOwnerDetail(wallet)}
                         </span>
                       </td>
                       <td className="px-4 py-3">

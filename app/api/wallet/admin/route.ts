@@ -5,6 +5,7 @@ import { listAgencies } from '@/lib/db/agencies';
 import { recordSecurityAuditEvent } from '@/lib/db/security';
 import { listWallets, setWalletStatus } from '@/lib/db/wallet';
 import { checkActionLimit } from '@/lib/rate-limit';
+import { supabaseAdmin } from '@/lib/supabase/server';
 import { walletFail, walletOk } from '@/lib/wallet/http';
 import { canManageWallet, canReadWallet } from '@/lib/wallet/permissions';
 
@@ -16,16 +17,43 @@ const schema = z.object({
   reason: z.string().trim().max(1000).optional(),
 });
 
+type WalletOwnerUser = {
+  clerk_id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+};
+
 export async function GET() {
   const session = await getDashboardSession();
   if (!session) return walletFail(401, 'SIGN_IN_REQUIRED', 'Please sign in.');
   if (!canReadWallet(session.role)) {
     return walletFail(403, 'FORBIDDEN', 'Wallet read access is required.');
   }
+  const supabase = supabaseAdmin();
+  if (!supabase) return walletFail(503, 'STORAGE_ERROR', 'Wallet storage is unavailable.');
   let wallets;
   let agencies;
+  let users: Map<string, WalletOwnerUser>;
   try {
     [wallets, agencies] = await Promise.all([listWallets(), listAgencies()]);
+    const userIds = Array.from(
+      new Set(
+        wallets
+          .filter((wallet) => wallet.ownerType === 'user')
+          .map((wallet) => wallet.ownerKey)
+      )
+    );
+    const usersResult = userIds.length
+      ? await supabase
+          .from('app_users')
+          .select('clerk_id, email, first_name, last_name')
+          .in('clerk_id', userIds)
+      : { data: [] as WalletOwnerUser[], error: null };
+    if (usersResult.error) throw new Error('Wallet owner details could not be loaded.');
+    users = new Map(
+      ((usersResult.data ?? []) as WalletOwnerUser[]).map((user) => [user.clerk_id, user])
+    );
   } catch {
     return walletFail(503, 'STORAGE_ERROR', 'Wallet storage is unavailable.');
   }
@@ -34,13 +62,18 @@ export async function GET() {
   );
 
   return walletOk({
-    wallets: wallets.map((wallet) => ({
-      ...wallet,
-      ownerName:
-        wallet.ownerType === 'agency'
-          ? agencyNames.get(wallet.ownerKey) || 'Unnamed agency'
-          : 'B2C customer',
-    })),
+    wallets: wallets.map((wallet) => {
+      const user = wallet.ownerType === 'user' ? users.get(wallet.ownerKey) : undefined;
+      const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim();
+      return {
+        ...wallet,
+        ownerName:
+          wallet.ownerType === 'agency'
+            ? agencyNames.get(wallet.ownerKey) || 'Unnamed agency'
+            : name || user?.email || 'B2C customer',
+        ownerEmail: user?.email ?? null,
+      };
+    }),
   });
 }
 

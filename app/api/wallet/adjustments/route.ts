@@ -22,7 +22,7 @@ const schema = z.object({
   reason: z.string().trim().min(3).max(1000),
 });
 
-type RequesterRow = {
+type AppUserRow = {
   clerk_id: string;
   email: string | null;
   first_name: string | null;
@@ -40,13 +40,13 @@ type WalletOwnerRow = {
   owner_key: string;
 };
 
-function requesterName(requester: RequesterRow | undefined): string | null {
-  if (!requester) return null;
-  const name = [requester.first_name, requester.last_name]
+function personName(user: AppUserRow | undefined): string | null {
+  if (!user) return null;
+  const name = [user.first_name, user.last_name]
     .filter(Boolean)
     .join(' ')
     .trim();
-  return name || requester.email || null;
+  return name || user.email || null;
 }
 
 /**
@@ -86,7 +86,7 @@ async function serializeFinancialAdjustments(requests: AdjustmentRequestRow[]) {
   }
 
   const requesters = new Map(
-    ((requestersResult.data ?? []) as RequesterRow[]).map((requester) => [
+    ((requestersResult.data ?? []) as AppUserRow[]).map((requester) => [
       requester.clerk_id,
       requester,
     ])
@@ -121,6 +121,25 @@ async function serializeFinancialAdjustments(requests: AdjustmentRequestRow[]) {
   const agencyNames = new Map(
     agencies.map((agency) => [agency.agencyCode, agency.label.trim()] as const)
   );
+  const ownerIds = Array.from(
+    new Set(
+      Array.from(walletOwners.values())
+        .filter((wallet) => wallet.owner_type === 'user')
+        .map((wallet) => wallet.owner_key)
+    )
+  );
+  const ownersResult = ownerIds.length
+    ? await supabase
+        .from('app_users')
+        .select('clerk_id, email, first_name, last_name')
+        .in('clerk_id', ownerIds)
+    : { data: [] as AppUserRow[], error: null };
+  if (ownersResult.error) {
+    throw new Error('Adjustment wallet owner details could not be loaded.');
+  }
+  const owners = new Map(
+    ((ownersResult.data ?? []) as AppUserRow[]).map((owner) => [owner.clerk_id, owner])
+  );
 
   return requests.map((request) => {
     const walletAccount = walletAccounts.get(request.wallet_account_id);
@@ -130,12 +149,12 @@ async function serializeFinancialAdjustments(requests: AdjustmentRequestRow[]) {
     const agencyCode = wallet?.owner_type === 'agency' ? wallet.owner_key : null;
     return {
       ...request,
-      requester: { name: requesterName(requesters.get(request.requested_by_user_id)) },
+      requester: { name: personName(requesters.get(request.requested_by_user_id)) },
       target: {
         type: agencyCode ? 'agency' : 'user',
         name: agencyCode
           ? agencyNames.get(agencyCode) || 'Agency name not set'
-          : 'B2C customer wallet',
+          : (wallet && personName(owners.get(wallet.owner_key))) || 'B2C customer wallet',
         agencyCode,
       },
     };

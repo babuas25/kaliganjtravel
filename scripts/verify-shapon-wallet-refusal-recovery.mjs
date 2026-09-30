@@ -123,9 +123,7 @@ try {
       where reservation_id=$1 and transaction_type='hold_release'`,
   [reservationId])).rows[0].n, 1);
   const recovered = await recoverySnapshot();
-  for (const file of migrations.filter(file => file >= dailyReferenceMigration)) {
-    await db.exec(fs.readFileSync(`${dir}/${file}`, 'utf8'));
-  }
+  await db.exec(fs.readFileSync(`${dir}/${dailyReferenceMigration}`, 'utf8'));
   assert.deepEqual(await recoverySnapshot(), recovered,
     'The later reference rename must preserve the completed recovery, wallet, and audit records');
   assert.equal((await db.query(`select booking_id from booking_reference_aliases

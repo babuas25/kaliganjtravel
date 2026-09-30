@@ -15,7 +15,7 @@ import { agencyMemberIds, MAX_AGENCY_MEMBERS } from '@/lib/db/sub-users';
 import { canManageSubUsers, resolveRole, SUB_USER_ROLE } from '@/lib/roles';
 
 export const metadata: Metadata = {
-  title: 'Sub Users — Kaliganj Travels',
+  title: 'Sub Users — Kaliganj Tours & Travel',
 };
 
 /**

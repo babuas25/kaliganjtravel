@@ -49,7 +49,7 @@ assert.deepEqual(checkedCounts, {
   supplier_operational_settings: 1,
 }, 'Unexpected records: this verification is intended for an unused fresh installation');
 assert.deepEqual(result.migration_versions, ['20260911000000', '20260911010000']);
-assert.equal(result.company_name, 'Kaliganj Travels');
+assert.equal(result.company_name, 'Kaliganj Tours & Travel');
 assert.deepEqual(result.company_contact, { license: null, phone: '+880 1795-271171',
   email: 'support@kaliganjtravel.com', address: '1st Floor, Janata Super Market, Kaligonj, Jhenaidah, Bangladesh' });
 assert.equal(result.active_or_imaged_offers, 0);

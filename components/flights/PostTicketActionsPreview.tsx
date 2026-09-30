@@ -256,7 +256,7 @@ function RequestTimeline({
                           <dd className="font-semibold text-navy-950">{formatMinor(quote.airlineFee, quote.currency)}</dd>
                         </div>
                         <div className="flex items-center justify-between gap-2 text-neutral-600">
-                          <dt>Kaliganj Travels Service Fee</dt>
+                          <dt>Kaliganj Tours & Travel Service Fee</dt>
                           <dd className="font-semibold text-navy-950">{formatMinor(quote.serviceFee, quote.currency)}</dd>
                         </div>
                         <div className="flex items-end justify-between gap-2 border-t border-navy-950/10 pt-1.5">

@@ -11,7 +11,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   return (
     <div className="min-h-screen bg-[#faf9f6] text-navy-950">
       <header className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-3 sm:px-8">
-        <Link href="/" aria-label="Kaliganj Travels home" className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">
+        <Link href="/" aria-label="Kaliganj Tours & Travel home" className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">
           <SiteLogoMark logo={logo} className="h-10 w-20 rounded-lg">KT</SiteLogoMark>
           <span className="hidden text-sm font-bold sm:block">{SITE_NAME}</span>
         </Link>

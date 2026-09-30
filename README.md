@@ -1,4 +1,4 @@
-# Kaliganj Travels
+# Kaliganj Tours & Travel
 
 Flight booking and agency management application, rebranded using the logo, orange/neutral-ink style and public contacts at [kaliganjtravel.com](https://kaliganjtravel.com/).
 

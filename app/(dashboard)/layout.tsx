@@ -15,7 +15,7 @@ import {
 } from '@/lib/dashboard/session';
 
 export const metadata: Metadata = {
-  title: 'Dashboard — Kaliganj Travels',
+  title: 'Dashboard — Kaliganj Tours & Travel',
 };
 
 export default async function DashboardLayout({

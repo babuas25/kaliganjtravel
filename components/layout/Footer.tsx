@@ -79,7 +79,7 @@ export default function Footer() {
           <div className="col-span-2 md:col-span-2">
             <div className="flex items-center gap-2">
               <SiteLogoMark logo={null} className="h-16 w-28 rounded-lg">KT</SiteLogoMark>
-              <span className="text-lg font-bold text-black">Kaliganj Travels</span>
+              <span className="text-lg font-bold text-black">Kaliganj Tours & Travel</span>
             </div>
             <p className="mt-3 max-w-xs text-sm text-neutral-600">
               Flights, visas, and travel made simple.
@@ -127,14 +127,14 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-neutral-200 pt-6 md:flex-row">
           <p className="text-xs text-neutral-600">
-            © 2026 Kaliganj Travels. All rights reserved.
+            © 2026 Kaliganj Tours & Travel. All rights reserved.
           </p>
           <div className="flex items-center gap-2">
             <a
               href={SITE_FACEBOOK_HREF}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Kaliganj Travels on Facebook"
+              aria-label="Kaliganj Tours & Travel on Facebook"
               title="Facebook"
               className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-600 transition-colors hover:bg-white/20 hover:text-black"
             >
@@ -144,7 +144,7 @@ export default function Footer() {
               href={SITE_WHATSAPP_HREF}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Chat with Kaliganj Travels on WhatsApp at 01795-271171"
+              aria-label="Chat with Kaliganj Tours & Travel on WhatsApp at 01795-271171"
               title="WhatsApp: 01795-271171"
               className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-600 transition-colors hover:bg-[#25D366] hover:text-black"
             >

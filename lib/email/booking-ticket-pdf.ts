@@ -140,7 +140,7 @@ export async function confirmedBookingTicketPdf(input: {
   travellers: BookingTraveller[];
 }): Promise<Buffer> {
   const contact = input.booking.headerContact;
-  const headerLogo = contact.name === 'Kaliganj Travels' &&
+  const headerLogo = ['Kaliganj Tours & Travel', 'Kaliganj Travels'].includes(contact.name) &&
     (!contact.logoUrl || contact.logoUrl === '/brand/kaliganj-logo.png')
     ? path.join(process.cwd(), 'public', 'brand', 'kaliganj-logo.png')
     : await remoteImage(contact.logoUrl, ['res.cloudinary.com']);

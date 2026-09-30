@@ -1,8 +1,15 @@
-# Kaliganj Travels — fresh database installation
+# Kaliganj Tours & Travel — fresh database installation
 
 Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
+
+**Company display name, 2026-09-30:** applied
+`20260930010000_kaliganj_company_name.sql` as the sole pending migration.
+The company name had already been updated, so the guarded update made no further
+data change. Hosted readback confirms `Kaliganj Tours & Travel`; all 16 local
+migrations match remote history, and the follow-up dry run reports no pending
+migrations. Existing notification snapshots and the baseline remain unchanged.
 
 **Shapontravels saved-reference issue gate, 2026-09-27:** applied
 `20260927030000_shapon_saved_reference_ticketing.sql` as the sole pending

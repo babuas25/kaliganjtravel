@@ -13,7 +13,7 @@ async function findOffer(id: string) {
 }
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const offer = await findOffer((await params).id);
-  return { title: `${offer?.title ?? 'Announcement'} — Kaliganj Travels` };
+  return { title: `${offer?.title ?? 'Announcement'} — Kaliganj Tours & Travel` };
 }
 
 export default async function AnnouncementDetailPage({ params }: Props) {

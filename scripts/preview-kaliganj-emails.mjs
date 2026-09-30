@@ -28,11 +28,11 @@ const output = 'output/email-preview';
 fs.mkdirSync(output, { recursive: true });
 for (const [name, content] of cases) {
   assert.doesNotMatch(content.html + content.text, /shapon|shopon|undefined|\[object Object\]/i, name);
-  assert.ok(content.html.includes('#f68712') && content.html.includes('Kaliganj Travels'), name);
+  assert.ok(content.html.includes('#f68712') && content.html.includes('Kaliganj Tours &amp; Travel'), name);
   fs.writeFileSync(path.join(output, `${name}.html`), content.html);
 }
 const unsafe = t.welcomeEmail({ firstName: '<script>alert(1)</script>', dashboardUrl: url });
 assert.ok(unsafe.html.includes('&lt;script&gt;') && !unsafe.html.includes('<script>'));
 const links = [...cases.map(([name]) => name), 'booking', 'issued'];
-fs.writeFileSync(path.join(output, 'index.html'), `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kaliganj email previews</title><style>body{font:16px Arial;background:#f7f5f2;color:#262626;max-width:900px;margin:40px auto;padding:20px}a{display:inline-block;padding:14px;margin:5px;border:1px solid #ddd;color:#ad4f08;background:white}h1{border-top:6px solid #f68712;padding-top:20px}</style><h1>Kaliganj Travels · Email previews</h1><p>Demo data only. No emails sent.</p>${links.map(name => `<a href="${name}.html">${name}</a>`).join('')}<a href="../itinerary-offer-preview.html">Flight offer</a><a href="../pdf/kaliganj-ticket-preview.pdf">Issued ticket PDF</a></html>`);
+fs.writeFileSync(path.join(output, 'index.html'), `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kaliganj email previews</title><style>body{font:16px Arial;background:#f7f5f2;color:#262626;max-width:900px;margin:40px auto;padding:20px}a{display:inline-block;padding:14px;margin:5px;border:1px solid #ddd;color:#ad4f08;background:white}h1{border-top:6px solid #f68712;padding-top:20px}</style><h1>Kaliganj Tours &amp; Travel · Email previews</h1><p>Demo data only. No emails sent.</p>${links.map(name => `<a href="${name}.html">${name}</a>`).join('')}<a href="../itinerary-offer-preview.html">Flight offer</a><a href="../pdf/kaliganj-ticket-preview.pdf">Issued ticket PDF</a></html>`);
 console.log(`Rendered and checked ${cases.length} notification variants in ${output}.`);

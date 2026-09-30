@@ -85,7 +85,7 @@ function BankAccountSelect({
 }) {
   return (
     <label className={LABEL}>
-      <RequiredLabel>Kaliganj Travels A/C</RequiredLabel>
+      <RequiredLabel>Kaliganj Tours & Travel A/C</RequiredLabel>
       <select
         name="companyBankAccountId"
         required
@@ -283,7 +283,7 @@ export default function WalletDepositRequestForm({
               <label className={LABEL}>
                 <RequiredLabel>Branch Name</RequiredLabel>
                 <select name="branchId" required defaultValue="" className={CONTROL}>
-                  <option value="" disabled>Select Kaliganj Travels branch</option>
+                  <option value="" disabled>Select Kaliganj Tours & Travel branch</option>
                   {options.branches.map((branch) => (
                     <option key={branch.id} value={branch.id}>
                       {branch.name}{branch.address ? ` — ${branch.address}` : ''}

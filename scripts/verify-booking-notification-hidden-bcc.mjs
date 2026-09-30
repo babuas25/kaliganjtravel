@@ -102,7 +102,7 @@ const message = {
 };
 await module.exports.sendEmail(message);
 assert.equal(sent.at(-1).bcc, undefined, 'No configured archive means no BCC');
-assert.equal(sent.at(-1).from.name, 'Kaliganj Travels');
+assert.equal(sent.at(-1).from.name, 'Kaliganj Tours & Travel');
 assert.equal(transports[0].auth.pass, 'synthetic-password');
 env.SYSTEM_EMAIL_BCC = '  Archive@example.test  ';
 await module.exports.sendEmail(message);

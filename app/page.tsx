@@ -104,7 +104,7 @@ export default async function Home() {
                 should be above the fold there. */}
             <div className="hidden max-w-2xl space-y-4 sm:block">
               <p className="inline-flex items-center gap-2 rounded-full bg-brand-orange/20 px-4 py-2 text-sm font-semibold uppercase tracking-[0.3em] text-white">
-                Kaliganj Travels · Kaligonj, Jhenaidah
+                Kaliganj Tours & Travel · Kaligonj, Jhenaidah
               </p>
               <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
                 Your journey starts with Kaliganj

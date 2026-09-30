@@ -510,7 +510,7 @@ function LoadingState({
         <div className="w-full max-w-[440px] overflow-hidden rounded-3xl border border-white bg-white shadow-[0_20px_70px_-24px_rgba(8,38,76,0.25)]">
           <div className="px-5 pt-5 sm:px-7 sm:pt-6">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-navy-950/60">Kaliganj Travels</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-navy-950/60">Kaliganj Tours & Travel</span>
               <span className="rounded-full bg-navy-50 px-3 py-1 text-[11px] font-medium text-navy-950/70">{tripLabel}</span>
             </div>
             <h2 className="mt-4 text-[23px] font-semibold leading-tight tracking-tight text-navy-950 sm:text-[26px]">Your journey is taking shape</h2>

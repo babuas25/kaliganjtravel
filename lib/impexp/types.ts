@@ -39,7 +39,7 @@ export type NormalizedBookingImport = {
   supplierReference: string;
   originalReference: string | null;
   orderStatus: string;
-  /** The public seven-value Kaliganj Travels lifecycle resolved from the supplier. */
+  /** The public seven-value Kaliganj Tours & Travel lifecycle resolved from the supplier. */
   lifecycleStatus: BookingStatus;
   /** The five-value physical database state used to represent that lifecycle. */
   storedStatus: StoredBookingStatus;

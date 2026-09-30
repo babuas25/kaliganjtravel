@@ -67,7 +67,7 @@ export default function DashboardSidebar({
         >
           {/* Wraps rather than nowrap: the full name is wider than the rail. */}
           <p className="text-base font-bold leading-tight">
-            Kaliganj Travels
+            Kaliganj Tours & Travel
           </p>
           <p className="whitespace-nowrap text-xs text-black/75">
             {ROLE_LABELS[role]}

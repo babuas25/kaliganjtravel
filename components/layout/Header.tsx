@@ -50,7 +50,7 @@ export default function Header({ logo, hiddenNavSegments, showContactBar = false
       )}
       <header className="sticky top-0 z-40 border-b border-navy-200/70 bg-white/95 shadow-[0_4px_24px_-16px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         <div className="mx-auto flex min-h-20 max-w-7xl items-center justify-between gap-3 px-4 sm:min-h-24 sm:gap-6 sm:px-6 lg:px-8">
-          <Link href="/" aria-label="Kaliganj Travels home" className={`flex shrink-0 items-center gap-3 rounded-lg ${focusRing}`}>
+          <Link href="/" aria-label="Kaliganj Tours & Travel home" className={`flex shrink-0 items-center gap-3 rounded-lg ${focusRing}`}>
             <SiteLogoMark logo={logo} className="h-14 w-20 rounded-md sm:h-16 sm:w-24">KT</SiteLogoMark>
             <span className="hidden border-l border-navy-200 pl-4 lg:block">
               <span className="block text-xl font-bold leading-tight tracking-tight text-navy-950">Kaliganj</span>
@@ -98,7 +98,7 @@ export default function Header({ logo, hiddenNavSegments, showContactBar = false
               <SheetContent side="right" aria-describedby={undefined} className="w-80 max-w-[90vw] overflow-y-auto border-navy-200 bg-white p-0 text-navy-950">
                 <SheetHeader className="border-b border-navy-100 px-5 py-6 text-left">
                   <SiteLogoMark logo={logo} className="h-14 w-24 rounded-md">KT</SiteLogoMark>
-                  <SheetTitle className="text-lg font-bold">Kaliganj Travels</SheetTitle>
+                  <SheetTitle className="text-lg font-bold">Kaliganj Tours & Travel</SheetTitle>
                 </SheetHeader>
                 <nav aria-label="Mobile travel navigation" className="space-y-1 p-4">
                   {navigation.map((item) => (

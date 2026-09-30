@@ -303,7 +303,7 @@ function QuoteForm({
         {detail.action === 'void' && (
           <label className="text-[11px] font-semibold text-neutral-600">Airline VOID fee<input value={voidFee} onChange={(event) => setVoidFee(event.target.value)} inputMode="decimal" className={`${fieldClass} mt-1`} /></label>
         )}
-        <label className="text-[11px] font-semibold text-neutral-600">Kaliganj Travels Service Fee<input value={serviceFee} onChange={(event) => setServiceFee(event.target.value)} inputMode="decimal" className={`${fieldClass} mt-1`} /></label>
+        <label className="text-[11px] font-semibold text-neutral-600">Kaliganj Tours & Travel Service Fee<input value={serviceFee} onChange={(event) => setServiceFee(event.target.value)} inputMode="decimal" className={`${fieldClass} mt-1`} /></label>
       </div>
       {detail.action === 'reissue' && (
         <div className="mt-3 rounded-md bg-navy-50 p-3">

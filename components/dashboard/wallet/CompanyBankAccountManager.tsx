@@ -324,7 +324,7 @@ export default function CompanyBankAccountManager() {
                 maxLength={150}
                 value={draft.accountName}
                 onChange={(event) => update('accountName', event.target.value)}
-                placeholder="Kaliganj Travels"
+                placeholder="Kaliganj Tours & Travel"
                 className={CONTROL}
               />
             </label>

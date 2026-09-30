@@ -9,7 +9,7 @@ import { readFlightSearchUsageReport } from '@/lib/db/flight-search-usage';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Flight Search Control — Kaliganj Travels',
+  title: 'Flight Search Control — Kaliganj Tours & Travel',
 };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

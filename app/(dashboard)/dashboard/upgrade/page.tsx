@@ -9,7 +9,7 @@ import { canRequestUpgrade } from '@/lib/roles';
 import type { UpgradeValues } from '@/lib/upgrade';
 
 export const metadata: Metadata = {
-  title: 'Upgrade to Business — Kaliganj Travels',
+  title: 'Upgrade to Business — Kaliganj Tours & Travel',
 };
 
 /** Fixed locale and zone: the server and the client must render the same string. */

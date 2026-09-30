@@ -183,7 +183,7 @@ for (const expected of [
   'Validating carrier',
   'System generated document',
   'Open journey details',
-  'Kaliganj Travels',
+  'Kaliganj Tours &amp; Travel',
   'https://wa.me/8801795271171',
   'WhatsApp +880 1795-271171',
   bookingUrl,
@@ -426,7 +426,7 @@ assert.ok(!missingAirline.html.includes('RESERVATION-ONLY'));
 assert.ok(!missingAirline.text.includes('RESERVATION-ONLY'));
 
 const companyBooking = { ...booking, headerContact: {
-  name: 'Kaliganj Travels', licenseNo: '', mobile: '+880 1795-271171',
+  name: 'Kaliganj Tours & Travel', licenseNo: '', mobile: '+880 1795-271171',
   email: 'support@kaliganjtravel.com',
   address: '1st Floor, Janata Super Market, Kaligonj, Jhenaidah, Bangladesh',
   logoUrl: '/brand/kaliganj-logo.png',

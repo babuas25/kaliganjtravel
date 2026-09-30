@@ -8,7 +8,7 @@ import { isTriploverConfigured } from '@/lib/triplover/config';
 import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
 
 export const metadata: Metadata = {
-  title: 'Supplier Control — Kaliganj Travels',
+  title: 'Supplier Control — Kaliganj Tours & Travel',
 };
 
 export default async function SupplierControlPage() {

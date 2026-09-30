@@ -59,7 +59,7 @@ function layout(input: {
       <tr><td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e5e5e5;border-radius:4px;overflow:hidden">
           <tr><td style="height:8px;background:#f68712;font-size:0;line-height:0">&nbsp;</td></tr>
-          <tr><td style="background:#262626;padding:24px 32px;color:#ffffff;font-size:22px;font-weight:700">Kaliganj Travels<div style="margin-top:8px;color:#f0e8df;font-size:10px;font-weight:400;letter-spacing:2px">YOUR JOURNEY, OUR LOCAL KNOW-HOW</div></td></tr>
+          <tr><td style="background:#262626;padding:24px 32px;color:#ffffff;font-size:22px;font-weight:700">Kaliganj Tours &amp; Travel<div style="margin-top:8px;color:#f0e8df;font-size:10px;font-weight:400;letter-spacing:2px">YOUR JOURNEY, OUR LOCAL KNOW-HOW</div></td></tr>
           <tr><td style="padding:34px 32px">
             <div style="color:#ad4f08;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase">${eyebrow}</div>
             <h1 style="margin:10px 0 16px;font-size:26px;line-height:1.25;color:#262626">${title}</h1>
@@ -82,12 +82,12 @@ export function invitationEmail(input: {
   invitationUrl: string;
   roleLabel: string;
 }): RenderedEmail {
-  const subject = 'Your invitation to join Kaliganj Travels';
-  const intro = `Your place at Kaliganj Travels is ready with ${input.roleLabel} access. Use the invitation below to finish setting up your account.`;
+  const subject = 'Your invitation to join Kaliganj Tours & Travel';
+  const intro = `Your place at Kaliganj Tours & Travel is ready with ${input.roleLabel} access. Use the invitation below to finish setting up your account.`;
   return {
     subject,
     html: layout({
-      preheader: 'Accept your secure Kaliganj Travels account invitation.',
+      preheader: 'Accept your secure Kaliganj Tours & Travel account invitation.',
       eyebrow: 'Account invitation',
       title: 'Your place is ready',
       intro,
@@ -104,15 +104,15 @@ export function accountCreatedEmail(input: {
   signInUrl: string;
   firstName: string;
 }): RenderedEmail {
-  const subject = 'Your Kaliganj Travels account is ready';
+  const subject = 'Your Kaliganj Tours & Travel account is ready';
   const greeting = input.firstName ? `${input.firstName}, your` : 'Your';
   const intro = `${greeting} account is ready. Sign in with the credentials provided to you by your administrator, then change your password from your account settings.`;
   return {
     subject,
     html: layout({
-      preheader: 'Your Kaliganj Travels account is ready.',
+      preheader: 'Your Kaliganj Tours & Travel account is ready.',
       eyebrow: 'Account created',
-      title: 'Your journey with Kaliganj Travels starts here',
+      title: 'Your journey with Kaliganj Tours & Travel starts here',
       intro,
       buttonLabel: 'Sign in',
       buttonUrl: input.signInUrl,
@@ -127,15 +127,15 @@ export function welcomeEmail(input: {
   dashboardUrl: string;
   firstName: string;
 }): RenderedEmail {
-  const subject = 'Your journey with Kaliganj Travels starts here';
+  const subject = 'Your journey with Kaliganj Tours & Travel starts here';
   const greeting = input.firstName ? `Welcome, ${input.firstName}.` : 'Welcome.';
   const intro = `${greeting} You can now explore flights and keep your bookings together in your dashboard.`;
   return {
     subject,
     html: layout({
-      preheader: 'Your Kaliganj Travels account is ready.',
+      preheader: 'Your Kaliganj Tours & Travel account is ready.',
       eyebrow: 'Registration complete',
-      title: 'Your journey with Kaliganj Travels starts here',
+      title: 'Your journey with Kaliganj Tours & Travel starts here',
       intro,
       buttonLabel: 'Open dashboard',
       buttonUrl: input.dashboardUrl,
@@ -152,7 +152,7 @@ export function roleChangedEmail(input: {
   previousRoleLabel: string;
   nextRoleLabel: string;
 }): RenderedEmail {
-  const subject = 'Your Kaliganj Travels account role has been updated';
+  const subject = 'Your Kaliganj Tours & Travel account role has been updated';
   const greeting = input.firstName ? `${input.firstName}, your` : 'Your';
   const intro = `${greeting} account role was changed from ${input.previousRoleLabel} to ${input.nextRoleLabel}. Your dashboard access now reflects your updated responsibilities.`;
   return {
@@ -332,9 +332,9 @@ const AUTOMATED_EMAIL_FOOTER_TEXT = `Questions about your journey? Talk to the K
 Email: support@kaliganjtravel.com
 Customer Care: +880 1795-271171
 
-From your first booking to your next destination, thank you for travelling with Kaliganj Travels.
+From your first booking to your next destination, thank you for travelling with Kaliganj Tours & Travel.
 
-Kaliganj Travels
+Kaliganj Tours & Travel
 1st Floor, Janata Super Market
 Kaligonj, Jhenaidah
 Bangladesh
@@ -352,8 +352,8 @@ function automatedEmailFooterHtml(note?: string): string {
     ${noteHtml}
     <p style="margin:0 0 12px"><strong style="color:#262626">Let’s plan the next step.</strong> Our Kaliganj team can help with your booking and travel questions.</p>
     <p style="margin:0 0 16px"><strong>Email:</strong> <a href="mailto:support@kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">support@kaliganjtravel.com</a><br><strong>Customer Care:</strong> <a href="tel:+8801795271171" style="color:#ad4f08;text-decoration:none">+880 1795-271171</a></p>
-    <p style="margin:0 0 16px">Your next destination starts here. Thank you for travelling with <strong style="color:#262626">Kaliganj Travels</strong>.</p>
-    <p style="margin:0 0 16px"><strong style="color:#262626">Kaliganj Travels</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</p>
+    <p style="margin:0 0 16px">Your next destination starts here. Thank you for travelling with <strong style="color:#262626">Kaliganj Tours &amp; Travel</strong>.</p>
+    <p style="margin:0 0 16px"><strong style="color:#262626">Kaliganj Tours &amp; Travel</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</p>
     <p style="margin:0"><strong style="color:#262626">Keep in touch</strong><br><a href="https://www.facebook.com/KaligonjTourTravel/" style="color:#ad4f08;text-decoration:none">Facebook</a> &nbsp;·&nbsp; <a href="https://wa.me/8801795271171" style="color:#ad4f08;text-decoration:none">WhatsApp +880 1795-271171</a> &nbsp;·&nbsp; <a href="https://kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">kaliganjtravel.com</a></p>
   </td></tr>`;
 }
@@ -432,7 +432,7 @@ export function pendingTicketAlertEmail(input: {
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e5e5e5;border-radius:4px;overflow:hidden">
           <tr><td style="height:6px;background:#f68712;font-size:0;line-height:0">&nbsp;</td></tr>
           <tr><td style="background:#262626;padding:24px 32px;color:#ffffff">
-            <div style="font-size:20px;font-weight:700">Kaliganj Travels</div>
+            <div style="font-size:20px;font-weight:700">Kaliganj Tours &amp; Travel</div>
             <div style="margin-top:5px;color:#f0e8df;font-size:12px">KALIGANJ OPERATIONS / TICKETING</div>
           </td></tr>
           <tr><td style="padding:32px">

@@ -55,7 +55,7 @@ function exportName(extension: string, agencyCode: string) {
 async function excelResponse(rows: IssuedTicketRow[], agencyCode: string) {
   const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Kaliganj Travels';
+  workbook.creator = 'Kaliganj Tours & Travel';
   workbook.created = new Date();
   const sheet = workbook.addWorksheet('Sales Report', {
     views: [{ state: 'frozen', ySplit: 1 }],
@@ -113,7 +113,7 @@ async function pdfBuffer(rows: IssuedTicketRow[]): Promise<Buffer> {
     document.on('error', reject);
 
     document.font('Helvetica-Bold').fontSize(15).fillColor('#061a4d')
-      .text('Kaliganj Travels — Sales Report');
+      .text('Kaliganj Tours & Travel — Sales Report');
     document.font('Helvetica').fontSize(8).fillColor('#555555')
       .text(`Generated ${new Date().toLocaleString('en-GB')} • ${rows.length} tickets`);
     document.moveDown(0.8);

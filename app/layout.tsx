@@ -12,9 +12,9 @@ import { authLocalization } from '@/lib/clerk-appearance';
 
 const inter = Inter({ subsets: ['latin'] });
 
-const TITLE = 'Kaliganj Travels — Domestic & International Flights';
+const TITLE = 'Kaliganj Tours & Travel — Domestic & International Flights';
 const DESCRIPTION =
-  'Book domestic and international flights with Kaliganj Travels, with dedicated support for your travel plans.';
+  'Book domestic and international flights with Kaliganj Tours & Travel, with dedicated support for your travel plans.';
 
 // Dynamic only because of the favicon: the uploaded logo doubles as the tab
 // icon, and Next has to know its URL at render time. Falls back to the

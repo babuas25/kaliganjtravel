@@ -424,7 +424,7 @@ export default function WalletDashboard({
               <div>
                 <h2 className="font-bold text-navy-950">Partner Bank Details</h2>
                 <p className="mt-0.5 text-xs text-neutral-500">
-                  Active Kaliganj Travels accounts available for deposits and transfers.
+                  Active Kaliganj Tours & Travel accounts available for deposits and transfers.
                 </p>
               </div>
             </div>

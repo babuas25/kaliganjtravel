@@ -6,7 +6,7 @@ import { getDashboardSession } from '@/lib/dashboard/session';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Booking Decisions — Kaliganj Travels',
+  title: 'Booking Decisions — Kaliganj Tours & Travel',
 };
 
 /** Compatibility redirect: decisions now live on each booking detail page. */

@@ -72,9 +72,9 @@ const SUPPORT_FOOTER_TEXT = `Questions about your journey? Talk to the Kaliganj 
 Email: support@kaliganjtravel.com
 Customer Care: +880 1795-271171
 
-From your first booking to your next destination, thank you for travelling with Kaliganj Travels.
+From your first booking to your next destination, thank you for travelling with Kaliganj Tours & Travel.
 
-Kaliganj Travels
+Kaliganj Tours & Travel
 1st Floor, Janata Super Market
 Kaligonj, Jhenaidah
 Bangladesh
@@ -179,7 +179,7 @@ function initials(name: string): string {
 
 function headerLogo(booking: PublicBooking): string {
   const contact = booking.headerContact;
-  const logoUrl = contact.name === 'Kaliganj Travels' &&
+  const logoUrl = ['Kaliganj Tours & Travel', 'Kaliganj Travels'].includes(contact.name) &&
     (!contact.logoUrl || contact.logoUrl === '/brand/kaliganj-logo.png')
     ? 'cid:kaliganj-logo' : contact.logoUrl;
   if (logoUrl) {
@@ -384,8 +384,8 @@ function supportFooter(): string {
   return `<tr><td style="padding:22px 24px;border-top:1px solid #e2e8f0;color:#475569;font-size:12px;line-height:1.65">
     <div style="margin:0 0 11px"><strong style="color:#172b45">Let’s plan the next step.</strong> Our Kaliganj team can help with your booking and travel questions.</div>
     <div style="margin:0 0 14px"><strong>Email:</strong> <a href="mailto:support@kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">support@kaliganjtravel.com</a><br><strong>Customer Care:</strong> <a href="tel:+8801795271171" style="color:#ad4f08;text-decoration:none">+880 1795-271171</a></div>
-    <div style="margin:0 0 14px">Your next destination starts here. Thank you for travelling with <strong style="color:#172b45">Kaliganj Travels</strong>.</div>
-    <div style="margin:0 0 14px"><strong style="color:#172b45">Kaliganj Travels</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</div>
+    <div style="margin:0 0 14px">Your next destination starts here. Thank you for travelling with <strong style="color:#172b45">Kaliganj Tours &amp; Travel</strong>.</div>
+    <div style="margin:0 0 14px"><strong style="color:#172b45">Kaliganj Tours &amp; Travel</strong><br>1st Floor, Janata Super Market<br>Kaligonj, Jhenaidah<br>Bangladesh</div>
     <div><a href="https://www.facebook.com/KaligonjTourTravel/" style="color:#ad4f08;text-decoration:none">Facebook</a> &nbsp;·&nbsp; <a href="https://wa.me/8801795271171" style="color:#ad4f08;text-decoration:none">WhatsApp +880 1795-271171</a> &nbsp;·&nbsp; <a href="https://kaliganjtravel.com" style="color:#ad4f08;text-decoration:none">kaliganjtravel.com</a></div>
   </td></tr>`;
 }
@@ -634,7 +634,7 @@ export function bookingStatusEmail(
       subjectPrefix: 'Booking unconfirmed',
       preheader: 'The airline confirmation could not be verified.',
       subtitle: 'Let us check your airline confirmation.',
-      message: 'The airline confirmation could not be verified. Please contact Kaliganj Travels before payment or travel.',
+      message: 'The airline confirmation could not be verified. Please contact Kaliganj Tours & Travel before payment or travel.',
       activityLabel: 'Booked At',
       passengerMode: 'identity',
       showTicketingDeadline: false,

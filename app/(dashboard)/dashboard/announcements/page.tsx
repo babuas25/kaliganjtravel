@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ArrowRight, Megaphone, Tag } from 'lucide-react';
 import { getPromotionalPopup } from '@/lib/db/promotional-popup';
 
-export const metadata: Metadata = { title: 'Announcements & Offers — Kaliganj Travels' };
+export const metadata: Metadata = { title: 'Announcements & Offers — Kaliganj Tours & Travel' };
 export const dynamic = 'force-dynamic';
 
 export default async function AnnouncementsPage() {

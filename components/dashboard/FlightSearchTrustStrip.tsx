@@ -15,7 +15,7 @@ type TrustItem = {
 const trustItems: TrustItem[] = [
   {
     title: 'Specialist Support',
-    description: 'Kaliganj Travels experts help with every request.',
+    description: 'Kaliganj Tours & Travel experts help with every request.',
     icon: ShieldCheck,
   },
   {
@@ -37,7 +37,7 @@ const trustItems: TrustItem[] = [
 
 export default function FlightSearchTrustStrip() {
   return (
-    <section aria-label="Why book with Kaliganj Travels">
+    <section aria-label="Why book with Kaliganj Tours & Travel">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {trustItems.map(({ title, description, icon: Icon }) => (
           <article

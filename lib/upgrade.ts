@@ -81,7 +81,7 @@ export const UPGRADE_SECTIONS: readonly UpgradeSection[] = [
         name: 'agencyName',
         label: 'Agency Name',
         type: 'text',
-        placeholder: 'Kaliganj Travels',
+        placeholder: 'Kaliganj Tours & Travel',
       },
       {
         name: 'businessMobile',

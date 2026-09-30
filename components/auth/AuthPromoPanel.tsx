@@ -4,7 +4,7 @@ import { Headphones, RefreshCw, Tickets } from 'lucide-react';
 const perks = [
   { icon: Tickets, title: 'Your bookings, together', text: 'Keep your flight details in one place.' },
   { icon: RefreshCw, title: 'Plans can change', text: 'Get help with reissues and refunds.' },
-  { icon: Headphones, title: 'A team you can reach', text: 'Travel support from Kaliganj Travels.' },
+  { icon: Headphones, title: 'A team you can reach', text: 'Travel support from Kaliganj Tours & Travel.' },
 ];
 
 export default function AuthPromoPanel() {

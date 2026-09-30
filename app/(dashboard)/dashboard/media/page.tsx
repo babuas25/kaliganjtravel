@@ -14,7 +14,7 @@ import { getFlightSearchBackground } from '@/lib/flight-search-background';
 import { canManageMedia } from '@/lib/roles';
 
 export const metadata: Metadata = {
-  title: 'Media & Banners — Kaliganj Travels',
+  title: 'Media & Banners — Kaliganj Tours & Travel',
 };
 
 export default async function MediaPage() {

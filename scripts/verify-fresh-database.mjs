@@ -107,13 +107,16 @@ try {
     phone: '+880 1795-271171', email: 'support@kaliganjtravel.com',
     address: '1st Floor, Janata Super Market, Kaligonj, Jhenaidah, Bangladesh',
   }]);
+  const companyNameMigration = fs.readFileSync('supabase/fresh-install/supabase/migrations/20260930010000_kaliganj_company_name.sql', 'utf8');
+  await db.exec(companyNameMigration);
+  await db.exec(companyNameMigration);
   await db.exec(`insert into booking_status_events(booking_id,to_lifecycle_status,stored_status_after,idempotency_key)
     values ('10000000-0000-4000-8000-000000000001','on-hold','on-hold','fresh-test-branded-event');`);
   const brandedHeader = (await db.query(`select outbox.event_snapshot->'bookingSnapshot'->'headerContact' as contact
     from booking_notification_outbox outbox join booking_status_events event on event.id=outbox.lifecycle_event_id
     where event.idempotency_key='fresh-test-branded-event'`)).rows[0].contact;
   assert.deepEqual(brandedHeader, {
-    name: 'Kaliganj Travels', licenseNo: '--', mobile: '+880 1795-271171',
+    name: 'Kaliganj Tours & Travel', licenseNo: '--', mobile: '+880 1795-271171',
     email: 'support@kaliganjtravel.com',
     address: '1st Floor, Janata Super Market, Kaligonj, Jhenaidah, Bangladesh', logoUrl: null,
   });
@@ -121,7 +124,7 @@ try {
   assert.deepEqual((await db.query(`select outbox.event_snapshot->'bookingSnapshot'->'headerContact' as contact
     from booking_notification_outbox outbox join booking_status_events event on event.id=outbox.lifecycle_event_id
     where event.idempotency_key='fresh-test-event-1'`)).rows[0].contact, header);
-  console.log('Forward company contact migration and new immutable snapshots passed.');
+  console.log('Forward company contact/name migrations and new immutable snapshots passed.');
   console.log(`Fresh install passed: ${tables.length} tables; no business data; RLS retained; existing schema rejected.`);
 } finally {
   await db.close();

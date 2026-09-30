@@ -24,14 +24,14 @@ export const FOOTER_PAGES = [
       'We simplify global travel with reliable air ticketing and personalized visa processing support.',
     sections: [
       {
-        title: 'Welcome to Kaliganj Travels',
+        title: 'Welcome to Kaliganj Tours & Travel',
         paragraphs: [
-          'At Kaliganj Travels, we simplify global travel to make your journeys seamless, stress-free, and memorable. We are a trusted travel agency specializing in end-to-end air ticketing solutions and comprehensive visa processing services tailored to meet your unique needs.',
+          'At Kaliganj Tours & Travel, we simplify global travel to make your journeys seamless, stress-free, and memorable. We are a trusted travel agency specializing in end-to-end air ticketing solutions and comprehensive visa processing services tailored to meet your unique needs.',
           'Whether you are planning a family vacation, an international business trip, or traveling for study or employment, our mission is to deliver fast, reliable, and cost-effective travel solutions. With deep industry expertise and access to extensive global airline networks, we manage your travel logistics so you can focus on your destination.',
         ],
       },
       {
-        title: 'Why Choose Kaliganj Travels?',
+        title: 'Why Choose Kaliganj Tours & Travel?',
         items: [
           {
             label: 'Seamless Air Ticketing',
@@ -50,7 +50,7 @@ export const FOOTER_PAGES = [
       {
         title: 'Your Journey Starts Here',
         paragraphs: [
-          'Your journey begins with the right partner. Let Kaliganj Travels handle the details and connect you to the world.',
+          'Your journey begins with the right partner. Let Kaliganj Tours & Travel handle the details and connect you to the world.',
         ],
       },
     ],
@@ -59,10 +59,10 @@ export const FOOTER_PAGES = [
     slug: 'careers',
     title: 'Careers',
     summary:
-      'Build a rewarding career in the global travel industry with Kaliganj Travels.',
+      'Build a rewarding career in the global travel industry with Kaliganj Tours & Travel.',
     sections: [
       {
-        title: 'Careers at Kaliganj Travels',
+        title: 'Careers at Kaliganj Tours & Travel',
         paragraphs: [
           'We are constantly growing and looking for passionate, client-focused individuals to help us deliver world-class air ticketing, visa consultancy, and travel management services.',
         ],
@@ -105,7 +105,7 @@ export const FOOTER_PAGES = [
         title: 'How to Apply',
         paragraphs: [
           'If you are passionate about travel and have strong communication or ticketing skills, we would love to hear from you.',
-          'Send your updated CV to support@kaliganjtravel.com or drop it off at Kaliganj Travels, 1st Floor, Janata Super Market, Kaligonj, Jhenaidah, Bangladesh.',
+          'Send your updated CV to support@kaliganjtravel.com or drop it off at Kaliganj Tours & Travel, 1st Floor, Janata Super Market, Kaligonj, Jhenaidah, Bangladesh.',
         ],
       },
     ],
@@ -119,7 +119,7 @@ export const FOOTER_PAGES = [
       {
         title: 'Welcome to Our Travel Blog',
         paragraphs: [
-          'Stay informed and prepare for your next global journey with practical advice and travel news from Kaliganj Travels.',
+          'Stay informed and prepare for your next global journey with practical advice and travel news from Kaliganj Tours & Travel.',
         ],
       },
       {
@@ -146,7 +146,7 @@ export const FOOTER_PAGES = [
       {
         title: 'Stay Updated',
         paragraphs: [
-          'Follow Kaliganj Travels for travel updates, airline policy changes, and destination guides, or contact our team for personalized travel advice.',
+          'Follow Kaliganj Tours & Travel for travel updates, airline policy changes, and destination guides, or contact our team for personalized travel advice.',
         ],
       },
     ],
@@ -175,7 +175,7 @@ export const FOOTER_PAGES = [
         ],
       },
       {
-        title: 'Why Partner With Kaliganj Travels?',
+        title: 'Why Partner With Kaliganj Tours & Travel?',
         items: [
           {
             label: 'Competitive B2B Rates',
@@ -243,7 +243,7 @@ export const FOOTER_PAGES = [
         title: 'Visa Processing Assistance',
         items: [
           {
-            label: 'Does Kaliganj Travels guarantee visa approval?',
+            label: 'Does Kaliganj Tours & Travel guarantee visa approval?',
             text: 'No. Approval or rejection is entirely at the discretion of the embassy or high commission. We prepare applications and documents carefully to support the best possible submission.',
           },
           {
@@ -716,7 +716,7 @@ export const FOOTER_PAGES = [
     slug: 'privacy-policy',
     title: 'Privacy Policy',
     summary:
-      'How Kaliganj Travels collects, uses, shares, and safeguards personal information.',
+      'How Kaliganj Tours & Travel collects, uses, shares, and safeguards personal information.',
     sections: [
       {
         title: '1. Information We Collect',
@@ -782,7 +782,7 @@ export const FOOTER_PAGES = [
       {
         title: '9. Contact Us',
         paragraphs: [
-          'For privacy questions or requests, contact Kaliganj Travels at support@kaliganjtravel.com or through our official phone and WhatsApp channels.',
+          'For privacy questions or requests, contact Kaliganj Tours & Travel at support@kaliganjtravel.com or through our official phone and WhatsApp channels.',
         ],
       },
     ],
@@ -834,7 +834,7 @@ export const FOOTER_PAGES = [
       {
         title: '6. Limitation of Liability',
         paragraphs: [
-          'Kaliganj Travels is not responsible for airline delays, schedule changes, cancellations, baggage loss, or disruptions caused by airlines, weather, natural disasters, government restrictions, or other events outside our control.',
+          'Kaliganj Tours & Travel is not responsible for airline delays, schedule changes, cancellations, baggage loss, or disruptions caused by airlines, weather, natural disasters, government restrictions, or other events outside our control.',
         ],
       },
       {

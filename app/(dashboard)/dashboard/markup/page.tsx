@@ -8,7 +8,7 @@ import { listMarkupRules } from '@/lib/db/markup-rules';
 import { isSupabaseConfigured } from '@/lib/supabase/server';
 
 export const metadata: Metadata = {
-  title: 'Fare Pricing Rules — Kaliganj Travels',
+  title: 'Fare Pricing Rules — Kaliganj Tours & Travel',
 };
 
 /**

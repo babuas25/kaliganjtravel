@@ -31,7 +31,7 @@ import {
 } from '@/lib/roles';
 
 export const metadata: Metadata = {
-  title: 'Users & Roles — Kaliganj Travels',
+  title: 'Users & Roles — Kaliganj Tours & Travel',
 };
 
 const PAGE_SIZE = 20;

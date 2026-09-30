@@ -50,7 +50,7 @@ function emailConfig(): EmailConfig {
   const password = process.env.SMTP_PASSWORD;
   const fromAddress = process.env.EMAIL_FROM_ADDRESS?.trim();
   const fromName =
-    process.env.EMAIL_FROM_NAME?.trim() || 'Kaliganj Travels';
+    process.env.EMAIL_FROM_NAME?.trim() || 'Kaliganj Tours & Travel';
   const replyTo = process.env.EMAIL_REPLY_TO?.trim();
   const archiveBcc = process.env.SYSTEM_EMAIL_BCC?.trim();
 

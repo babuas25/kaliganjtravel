@@ -45,7 +45,7 @@ assert.match(quickActions, /Quotation pending/);
 assert.match(quickActions, /Approved \/ Rejected \/ Expired/);
 assert.match(quickActions, /User Payable entitlement/);
 assert.match(quickActions, /Airline Refund Fee/);
-assert.match(quickActions, /Kaliganj Travels Service Fee/);
+assert.match(quickActions, /Kaliganj Tours & Travel Service Fee/);
 assert.match(quickActions, /Final Refund Amount/);
 assert.doesNotMatch(quickActions, /Supplier Payable/);
 assert.match(quickActions, /Customer confirmation deadline:/);
@@ -118,7 +118,7 @@ assert.match(workspace, /Supplier Gross Fare/);
 assert.match(workspace, /Supplier Payable/);
 assert.match(workspace, /Customer confirmation deadline:/);
 assert.match(workspace, /User Payable entitlement/);
-assert.match(workspace, /Kaliganj Travels Service Fee/);
+assert.match(workspace, /Kaliganj Tours & Travel Service Fee/);
 assert.match(workspace, /Final Refund Amount/);
 const quoteForm = workspace.slice(
   workspace.indexOf('function QuoteForm'),

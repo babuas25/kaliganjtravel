@@ -531,7 +531,7 @@ function normalizeCurrentSupplierBooking(
   const itinerary = storedItinerary(response.itinerary || offer.itinerary);
   if (!itinerary) {
     throw new Error(
-      "The supplier booking response has no Kaliganj Travels itinerary snapshot.",
+      "The supplier booking response has no Kaliganj Tours & Travel itinerary snapshot.",
     );
   }
   const fares = fareSnapshots(response.fares || offer.fares);

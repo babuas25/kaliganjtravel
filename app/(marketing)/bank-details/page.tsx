@@ -14,7 +14,7 @@ import { listPublicCompanyBankAccounts } from '@/lib/wallet/payment-options.serv
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Bank Details | Kaliganj Travels',
+  title: 'Bank Details | Kaliganj Tours & Travel',
   description: 'Bank account details for Kaliganj Tour and Travel, including account numbers, branches, routing numbers and SWIFT codes.',
 };
 

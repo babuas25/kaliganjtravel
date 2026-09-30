@@ -1,7 +1,7 @@
 /** Public brand details verified at https://kaliganjtravel.com/ on 2026-09-11.
  * Account login and outbound mail credentials are configured separately.
  */
-export const SITE_NAME = 'Kaliganj Travels';
+export const SITE_NAME = 'Kaliganj Tours & Travel';
 export const SITE_WEBSITE = 'https://kaliganjtravel.com';
 export const SITE_PHONE = '+880 1795-271171';
 export const SITE_PHONE_HREF = 'tel:+8801795271171';

@@ -14,7 +14,7 @@ import { readBookingLifecycleMetrics } from '@/lib/db/booking-lifecycle-metrics'
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'System Reports — Kaliganj Travels',
+  title: 'System Reports — Kaliganj Tours & Travel',
 };
 
 /** Super Admin-only operational reporting, kept separate from daily bookings. */

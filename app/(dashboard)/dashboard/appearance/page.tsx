@@ -7,7 +7,7 @@ import { getDashboardSession } from '@/lib/dashboard/session';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
 
 export const metadata: Metadata = {
-  title: 'Appearance — Kaliganj Travels',
+  title: 'Appearance — Kaliganj Tours & Travel',
 };
 
 /**

@@ -1,4 +1,19 @@
-# Kaliganj Travels rebranding
+# Kaliganj Tours & Travel rebranding
+
+On 30 September 2026, the owner changed the display name from **Kaliganj Travels**
+to **Kaliganj Tours & Travel**. Ticket headers, runtime page copy, metadata,
+reports, email templates and the configured local SMTP sender name use this name.
+The forward company-name migration updates future notification snapshots;
+historical snapshots and the installed baseline remain unchanged. The notes below
+record the original September 11 setup.
+
+The hosted `company_settings` row was updated with a guard on the previous name
+and read back as `Kaliganj Tours & Travel`. Forward migration
+`20260930010000_kaliganj_company_name.sql` was applied on 30 September 2026.
+Local and remote history now match all 16 migrations; a post-apply dry run
+reported no pending migrations. TypeScript, branding, email/PDF rendering,
+notification sender, ticket-management labels and disposable database checks
+passed. Application deployment is managed separately through Git branch pushes.
 
 Completed locally and in the new Supabase company settings on 11 September 2026. The application has not been deployed by this change.
 

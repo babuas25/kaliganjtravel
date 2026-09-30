@@ -389,7 +389,7 @@ export async function POST(request: Request) {
       findDepositReceiver(input.receivedByUserId),
     ]);
     if (!branch) {
-      return walletFail(400, 'INVALID_BRANCH', 'Choose a valid Kaliganj Travels branch.');
+      return walletFail(400, 'INVALID_BRANCH', 'Choose a valid Kaliganj Tours & Travel branch.');
     }
     if (!receiver) {
       return walletFail(400, 'INVALID_RECEIVER', 'Choose an eligible cash receiver.');
@@ -404,7 +404,7 @@ export async function POST(request: Request) {
       return walletFail(
         400,
         'INVALID_COMPANY_ACCOUNT',
-        'Choose a valid Kaliganj Travels bank account.'
+        'Choose a valid Kaliganj Tours & Travel bank account.'
       );
     }
     if (input.method === 'bank_transfer') {
@@ -445,7 +445,7 @@ export async function POST(request: Request) {
       return walletFail(
         400,
         'INVALID_MFS_ACCOUNT',
-        'Choose an active Kaliganj Travels MFS payment account.'
+        'Choose an active Kaliganj Tours & Travel MFS payment account.'
       );
     }
   }

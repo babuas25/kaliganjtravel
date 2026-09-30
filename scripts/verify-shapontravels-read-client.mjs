@@ -62,6 +62,9 @@ async function tokenIsSharedAndCached() {
       return json({ access_token: 'stm_fixture', token_type: 'Bearer', expires_in: 1800 });
     }
     assert.equal(init.headers.authorization, 'Bearer stm_fixture');
+    if (url.pathname === '/api/Airlines') {
+      return json({ items: [{ code: 'BG', name: 'Biman Bangladesh Airlines' }], total: 1 });
+    }
     return json({ item1: { ok: true }, item2: { isSuccess: true } });
   });
   await Promise.all([
@@ -69,11 +72,17 @@ async function tokenIsSharedAndCached() {
     client.shapontravelsRead('FareRules', { segmentCodeRefs: [] }),
   ]);
   await client.shapontravelsRead('Reprice', {});
+  const directory = await client.shapontravelsRead('Airlines');
+  assert.deepEqual(directory, { items: [{ code: 'BG', name: 'Biman Bangladesh Airlines' }], total: 1 });
   assert.equal(calls.filter((call) => call.path === '/auth/token').length, 1);
   assert.deepEqual(
     calls.filter((call) => call.path !== '/auth/token').map((call) => call.path).sort(),
-    ['/api/FareRules', '/api/Reprice', '/api/Search']
+    ['/api/Airlines', '/api/FareRules', '/api/Reprice', '/api/Search']
   );
+  const airlinesCall = calls.find((call) => call.path === '/api/Airlines');
+  assert.equal(airlinesCall.init.method, 'GET');
+  assert.equal(airlinesCall.init.body, undefined);
+  assert.equal(airlinesCall.init.headers.authorization, 'Bearer stm_fixture');
 }
 
 async function unauthorizedReadRenewsOnce() {

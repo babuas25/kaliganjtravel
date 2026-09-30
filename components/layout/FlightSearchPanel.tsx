@@ -388,6 +388,11 @@ export default function FlightSearchPanel({
       return;
     }
 
+    if (preferredAirlines.length > 8) {
+      setError('Select up to 8 preferred airlines before searching.');
+      return;
+    }
+
     const childrenAges = travelers.childrenAges.slice(0, travelers.children);
     if (childrenAges.length !== travelers.children || childrenAges.some((age) => !age)) {
       setError('Add an age for every child.');

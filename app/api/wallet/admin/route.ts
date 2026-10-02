@@ -24,6 +24,11 @@ type WalletOwnerUser = {
   last_name: string | null;
 };
 
+type WalletOwnerAgency = {
+  agency_code: string;
+  owner_user_id: string | null;
+};
+
 export async function GET() {
   const session = await getDashboardSession();
   if (!session) return walletFail(401, 'SIGN_IN_REQUIRED', 'Please sign in.');
@@ -34,14 +39,41 @@ export async function GET() {
   if (!supabase) return walletFail(503, 'STORAGE_ERROR', 'Wallet storage is unavailable.');
   let wallets;
   let agencies;
+  let agencyOwnerIds: Map<string, string>;
   let users: Map<string, WalletOwnerUser>;
   try {
     [wallets, agencies] = await Promise.all([listWallets(), listAgencies()]);
-    const userIds = Array.from(
+    const agencyCodes = Array.from(
       new Set(
         wallets
-          .filter((wallet) => wallet.ownerType === 'user')
+          .filter((wallet) => wallet.ownerType === 'agency')
           .map((wallet) => wallet.ownerKey)
+      )
+    );
+    const agencyOwnersResult = agencyCodes.length
+      ? await supabase
+          .from('agencies')
+          .select('agency_code, owner_user_id')
+          .in('agency_code', agencyCodes)
+      : { data: [] as WalletOwnerAgency[], error: null };
+    if (agencyOwnersResult.error) throw new Error('Wallet agency details could not be loaded.');
+    // An agency shares one wallet. Search metadata belongs to its canonical
+    // owner, rather than whichever partner or sub user last used the wallet.
+    agencyOwnerIds = new Map(
+      ((agencyOwnersResult.data ?? []) as WalletOwnerAgency[])
+        .filter((agency): agency is WalletOwnerAgency & { owner_user_id: string } =>
+          Boolean(agency.owner_user_id)
+        )
+        .map((agency) => [agency.agency_code, agency.owner_user_id])
+    );
+    const userIds = Array.from(
+      new Set(
+        [
+          ...wallets
+            .filter((wallet) => wallet.ownerType === 'user')
+            .map((wallet) => wallet.ownerKey),
+          ...Array.from(agencyOwnerIds.values()),
+        ]
       )
     );
     const usersResult = userIds.length
@@ -63,7 +95,10 @@ export async function GET() {
 
   return walletOk({
     wallets: wallets.map((wallet) => {
-      const user = wallet.ownerType === 'user' ? users.get(wallet.ownerKey) : undefined;
+      const ownerUserId = wallet.ownerType === 'agency'
+        ? agencyOwnerIds.get(wallet.ownerKey)
+        : wallet.ownerKey;
+      const user = ownerUserId ? users.get(ownerUserId) : undefined;
       const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim();
       return {
         ...wallet,

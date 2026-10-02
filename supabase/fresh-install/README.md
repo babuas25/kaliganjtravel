@@ -4,6 +4,16 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**B2B wallet discovery, 2026-10-02:** applied
+`20261002000000_agency_wallet_provisioning.sql` as the sole pending migration.
+Existing agencies were missing three BDT wallets, including `ST-B2B924493`;
+all three now have zero balances. A trigger provisions new agencies immediately.
+Hosted snapshots confirmed existing wallet/account rows and ledger, reservation,
+deposit and adjustment counts unchanged. The follow-up dry run has no pending
+migrations. Behavioral regression covers canonical owner email in the wallet
+picker, service-role agency insertion, funded/frozen account preservation,
+unchanged grants and repeat migration: `npm run verify:wallet-discovery`.
+
 **Company display name, 2026-09-30:** applied
 `20260930010000_kaliganj_company_name.sql` as the sole pending migration.
 The company name had already been updated, so the guarded update made no further

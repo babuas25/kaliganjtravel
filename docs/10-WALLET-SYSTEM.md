@@ -177,7 +177,15 @@ type WalletAccountSummary = {
 
 ### Account Creation
 
-Accounts are created on-demand via the `wallet_ensure_account()` function:
+Agency BDT wallets are created automatically when the agency row is inserted,
+so Accounts can select a new B2B partner before the partner visits their wallet
+page. The forward migration
+`supabase/fresh-install/supabase/migrations/20261002000000_agency_wallet_provisioning.sql`
+also creates missing accounts for existing agencies. It preserves existing
+account IDs, balances, frozen status and ledger entries. Customer accounts
+continue to be created on demand.
+
+Both paths use the `wallet_ensure_account()` function:
 
 ```sql
 create or replace function public.wallet_ensure_account(
@@ -193,6 +201,10 @@ This function:
 2. Creates the wallet row if it doesn't exist (upsert on unique constraint)
 3. Creates the currency account if it doesn't exist (upsert on wallet_id + currency)
 4. Returns the account row
+
+The Accounts wallet picker searches agency name, canonical agency owner's email
+and agency code. Owner email is resolved through `agencies.owner_user_id`; sub
+users continue to share the same agency wallet.
 
 ### Implementation Reference
 

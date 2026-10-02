@@ -322,7 +322,11 @@ function financialRoleLabel(role: string | undefined) {
 }
 
 function walletOwnerDetail(wallet: WalletRow) {
-  if (wallet.ownerType === 'agency') return `ID: ${wallet.ownerKey}`;
+  if (wallet.ownerType === 'agency') {
+    return wallet.ownerEmail
+      ? `ID: ${wallet.ownerKey} · ${wallet.ownerEmail}`
+      : `ID: ${wallet.ownerKey}`;
+  }
   return wallet.ownerEmail && wallet.ownerEmail !== wallet.ownerName
     ? wallet.ownerEmail
     : 'B2C customer';

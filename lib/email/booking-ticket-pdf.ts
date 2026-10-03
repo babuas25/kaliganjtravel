@@ -1,6 +1,7 @@
 import 'server-only';
 
-import { airlinePnrs as validAirlinePnrs } from '@/lib/flights/airline-pnr';
+import { PASSENGER_NOTICE_TITLE, PASSENGER_NOTICES } from '@/lib/flights/passenger-notice';
+import { ticketPrintReferences } from '@/lib/flights/ticket-print';
 
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
@@ -114,15 +115,6 @@ function timeOf(value: string): string {
   return match ? `${match[1]}:${match[2]}` : '--:--';
 }
 
-function countryLabel(value: string | undefined): string {
-  if (!value) return '--';
-  try {
-    return new Intl.DisplayNames(['en'], { type: 'region' }).of(value.toUpperCase()) ?? value;
-  } catch {
-    return value;
-  }
-}
-
 function tripLabel(booking: PublicBooking): string {
   const legs = booking.itinerary?.legs ?? [];
   const scope = booking.passportRequired ? 'International' : 'Domestic';
@@ -166,7 +158,7 @@ export async function confirmedBookingTicketPdf(input: {
     const ticketsAlign =
       booking.ticketNumbers.length > 0 &&
       booking.ticketNumbers.length === travellers.length;
-    const pnr = validAirlinePnrs(booking.airlinesPnr).join(', ') || 'Not available';
+    const references = ticketPrintReferences(booking);
     const document = new PDFDocument({
       size: 'A4',
       margin: 29,
@@ -279,25 +271,32 @@ export async function confirmedBookingTicketPdf(input: {
     y += 123;
 
     const summaries = [
-      ['Airline PNR', pnr],
+      ['Airline PNR', references.airlinePnr],
+      ['Reservation PNR', references.reservationPnr],
       ['Trip', tripLabel(booking)],
       ['Issued At', formatActivity(booking.issuedAt)],
       ['Payment', PAYMENT_LABELS[booking.paymentState]],
     ];
-    const cellWidth = width / summaries.length;
+    const summaryWidths = [0.15, 0.18, 0.26, 0.22, 0.19].map((ratio) => width * ratio);
+    document.font('Helvetica-Bold').fontSize(9.5);
+    const summaryHeight = Math.max(44, ...summaries.map(([, value], index) =>
+      23 + document.heightOfString(value, { width: summaryWidths[index] - 18, lineGap: 1 }) + 8
+    ));
+    let summaryX = left;
     summaries.forEach(([label, value], index) => {
-      const x = left + index * cellWidth;
-      document.rect(x, y, cellWidth, 44).fillAndStroke(COLORS.bluePale, COLORS.blueBorder);
+      const cellWidth = summaryWidths[index];
+      document.rect(summaryX, y, cellWidth, summaryHeight).fillAndStroke(COLORS.bluePale, COLORS.blueBorder);
       document.font('Helvetica-Bold').fontSize(6.5).fillColor(COLORS.navyMuted)
-        .text(label.toUpperCase(), x + 9, y + 9, { width: cellWidth - 18 });
+        .text(label.toUpperCase(), summaryX + 9, y + 9, { width: cellWidth - 18 });
       document.font('Helvetica-Bold').fontSize(9.5).fillColor(COLORS.navy)
-        .text(value, x + 9, y + 23, { width: cellWidth - 18, height: 15, ellipsis: true });
+        .text(value, summaryX + 9, y + 23, { width: cellWidth - 18, lineGap: 1 });
+      summaryX += cellWidth;
     });
-    y += 57;
+    y += summaryHeight + 13;
 
     sectionTitle('Passenger & Ticket Details', 'users', false);
-    const passengerWidths = [width * 0.45, width * 0.11, width * 0.1, width * 0.16, width * 0.18];
-    const passengerHeaders = ['Passenger', 'Type', 'Gender', 'Date of Birth', 'Ticket Number'];
+    const passengerWidths = [width * 0.53, width * 0.13, width * 0.12, width * 0.22];
+    const passengerHeaders = ['Passenger', 'Type', 'Gender', 'Ticket Number'];
     let x = left;
     document.roundedRect(left, y, width, 23, 0).fill(COLORS.navyPale);
     passengerHeaders.forEach((header, index) => {
@@ -313,7 +312,9 @@ export async function confirmedBookingTicketPdf(input: {
       y += 30;
     } else {
       travellers.forEach((traveller, index) => {
-        ensureSpace(54);
+        const showPassport = booking.passportRequired || Boolean(traveller.passportNumber?.trim());
+        const passengerHeight = showPassport ? 51 : 30;
+        ensureSpace(passengerHeight + 3);
         const name = [traveller.title, traveller.firstName, traveller.lastName]
           .filter(Boolean).join(' ').toUpperCase();
         const ticket = ticketsAlign ? booking.ticketNumbers[index] : 'Not available';
@@ -321,13 +322,12 @@ export async function confirmedBookingTicketPdf(input: {
           name,
           PASSENGER_LABELS[traveller.passengerType],
           traveller.gender,
-          formatDate(traveller.dateOfBirth),
           ticket,
         ];
         x = left;
-        document.rect(left, y, width, 51).stroke(COLORS.line);
+        document.rect(left, y, width, passengerHeight).stroke(COLORS.line);
         values.forEach((value, valueIndex) => {
-          const emphasized = valueIndex === 0 || valueIndex === 1 || valueIndex === 4;
+          const emphasized = valueIndex === 0 || valueIndex === 1 || valueIndex === 3;
           document.font(emphasized ? 'Helvetica-Bold' : 'Helvetica')
             .fontSize(valueIndex === 0 ? 8.5 : 7.8)
             .fillColor(emphasized ? COLORS.navy : COLORS.neutral)
@@ -335,27 +335,19 @@ export async function confirmedBookingTicketPdf(input: {
               width: passengerWidths[valueIndex] - 14,
               height: 16,
               ellipsis: true,
-              align: valueIndex === 4 ? 'right' : 'left',
+              align: valueIndex === 3 ? 'right' : 'left',
             });
           x += passengerWidths[valueIndex];
         });
-        const identityParts = [
-          `NATIONALITY ${countryLabel(traveller.nationality).toUpperCase()}`,
-          ...(booking.passportRequired
-            ? [
-                `PASSPORT ${(traveller.passportNumber || '--').toUpperCase()}`,
-                `ISSUED BY ${countryLabel(traveller.issuingCountry).toUpperCase()}`,
-                `EXPIRY ${formatDate(traveller.passportExpiry).toUpperCase()}`,
-              ]
-            : []),
-        ];
-        document.font('Helvetica').fontSize(6.6).fillColor(COLORS.neutral)
-          .text(identityParts.join('    '), left + 7, y + 28, {
-            width: passengerWidths[0] - 14,
-            height: 18,
-            ellipsis: true,
-          });
-        y += 51;
+        if (showPassport) {
+          document.font('Helvetica').fontSize(6.6).fillColor(COLORS.neutral)
+            .text(`PASSPORT ${(traveller.passportNumber?.trim() || '--').toUpperCase()}`, left + 7, y + 28, {
+              width: passengerWidths[0] - 14,
+              height: 18,
+              ellipsis: true,
+            });
+        }
+        y += passengerHeight;
       });
     }
     y += 11;
@@ -511,6 +503,42 @@ export async function confirmedBookingTicketPdf(input: {
     document.font('Helvetica').fontSize(6.8).fillColor(COLORS.neutral)
       .text(fareNotes.join('     '), left, y, { width, height: 18, ellipsis: true });
     y += 21;
+
+    const noticePadding = 9;
+    const noticeTextWidth = width - noticePadding * 2;
+    const noticeTitleHeight = 23;
+    const noticeGap = 7;
+    const noticeRows = PASSENGER_NOTICES.map((notice) => {
+      document.font('Helvetica-Bold').fontSize(8);
+      const titleHeight = document.heightOfString(`${notice.title}:`, {
+        width: noticeTextWidth,
+        lineGap: 1,
+      });
+      document.font('Helvetica').fontSize(7.5);
+      const textHeight = document.heightOfString(notice.text, {
+        width: noticeTextWidth,
+        lineGap: 1,
+      });
+      return { ...notice, titleHeight, textHeight };
+    });
+    const noticeHeight = noticeTitleHeight + noticePadding * 2 +
+      noticeRows.reduce((height, row) => height + row.titleHeight + 3 + row.textHeight, 0) +
+      noticeGap * (noticeRows.length - 1);
+    ensureSpace(noticeHeight + 8 + 34);
+    document.rect(left, y, width, noticeHeight).stroke(COLORS.line);
+    document.rect(left, y, width, noticeTitleHeight).fillAndStroke('#dce3fa', COLORS.line);
+    document.font('Helvetica-Bold').fontSize(8.5).fillColor(COLORS.navy)
+      .text(PASSENGER_NOTICE_TITLE, left + noticePadding, y + 7, { width: noticeTextWidth });
+    let noticeY = y + noticeTitleHeight + noticePadding;
+    noticeRows.forEach((notice) => {
+      document.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.navy)
+        .text(`${notice.title}:`, left + noticePadding, noticeY, { width: noticeTextWidth, lineGap: 1 });
+      noticeY += notice.titleHeight + 3;
+      document.font('Helvetica').fontSize(7.5).fillColor(COLORS.neutral)
+        .text(notice.text, left + noticePadding, noticeY, { width: noticeTextWidth, lineGap: 1 });
+      noticeY += notice.textHeight + noticeGap;
+    });
+    y += noticeHeight + 8;
 
     ensureSpace(34);
     document.rect(left, y, width, 30).fill(COLORS.navyPale);

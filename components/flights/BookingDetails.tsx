@@ -32,6 +32,11 @@ import {
 } from '@/lib/flights/booking';
 import { BOOKING_STATUS_LABELS } from '@/lib/flights/booking-status';
 import { countryName } from '@/lib/flights/countries';
+import { ticketPrintReferences } from '@/lib/flights/ticket-print';
+import {
+  PASSENGER_NOTICE_TITLE,
+  PASSENGER_NOTICES,
+} from '@/lib/flights/passenger-notice';
 import {
   ticketManagementRequestHref,
   ticketManagementRequestLabel,
@@ -323,16 +328,18 @@ function Section({
 function HeadCell({
   children,
   align = 'left',
+  className = '',
 }: {
   children: ReactNode;
   align?: 'left' | 'right';
+  className?: string;
 }) {
   return (
     <th
       scope="col"
       className={`whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-navy-950/50 ${
         align === 'right' ? 'text-right' : 'text-left'
-      }`}
+      } ${className}`}
     >
       {children}
     </th>
@@ -382,7 +389,15 @@ function Field({
   );
 }
 
-function HeaderLogo({ name, url }: { name: string; url: string | null }) {
+function HeaderLogo({
+  name,
+  url,
+  className = '',
+}: {
+  name: string;
+  url: string | null;
+  className?: string;
+}) {
   const [failed, setFailed] = useState(false);
   const initials = name
     .split(/\s+/)
@@ -392,7 +407,7 @@ function HeaderLogo({ name, url }: { name: string; url: string | null }) {
     .toUpperCase();
 
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white ring-1 ring-navy-950/10">
+    <div className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white ring-1 ring-navy-950/10 ${className}`}>
       {url && !failed ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -437,6 +452,7 @@ function DocumentHeader({
             ? ['Processing since', booking.processingSince]
             : ['Booked at', booking.bookedAt];
   const trip = tripSummary(booking);
+  const printReferences = ticketPrintReferences(booking);
 
   const copyReference = async () => {
     if (!booking.publicRef) return;
@@ -452,7 +468,14 @@ function DocumentHeader({
   return (
     <header className={styles.header}>
       <div className={styles.printHeader}>
-        <h1>{ticketed ? 'E - Ticket' : 'Booking Confirmation'}</h1>
+        <div className={styles.printTitle}>
+          <HeaderLogo
+            name={booking.headerContact.name}
+            url={booking.headerContact.logoUrl}
+            className={styles.printAgencyLogo}
+          />
+          <h1>{ticketed ? 'E - Ticket' : 'Booking Confirmation'}</h1>
+        </div>
         <div className={styles.printMasthead}>
           <div>
             <p className={styles.printAgencyName}>{booking.headerContact.name}</p>
@@ -470,7 +493,8 @@ function DocumentHeader({
           </div>
         </div>
         <div className={styles.printReservation}>
-          <p><strong>Airline PNR: {validAirlinePnrs(booking.airlinesPnr).join(', ') || 'Not available'}</strong></p>
+          <p><strong>Airline PNR: {printReferences.airlinePnr}</strong></p>
+          <p className={styles.printReservationPnr}><strong>Reservation PNR: {printReferences.reservationPnr}</strong></p>
           <p className={styles.printStatus} style={{ backgroundColor: STATUS_BADGE_COLORS[booking.status] }}>
             {BOOKING_STATUS_LABELS[booking.status]}
           </p>
@@ -724,10 +748,15 @@ function SegmentBlock({
         <thead>
           <tr>
             <th colSpan={6} className={styles.printFlightName}>
-              {segment.airline || segment.airlineCode} | Flight No: {segment.airlineCode}{segment.flightNumber}
-              {segment.aircraft ? ` | Aircraft: ${segment.aircraft}` : ''}
-              {total > 1 ? ` | Flight ${position} of ${total}` : ''}
-              {operatingCarrierLabel(segment) && <span className={styles.printOperatingCarrier}>{operatingCarrierLabel(segment)}</span>}
+              <div className={styles.printFlightCarrier}>
+                <AirlineLogo airlineCode={segment.airlineCode} size={28} />
+                <div>
+                  {segment.airline || segment.airlineCode} | Flight No: {segment.airlineCode}{segment.flightNumber}
+                  {segment.aircraft ? ` | Aircraft: ${segment.aircraft}` : ''}
+                  {total > 1 ? ` | Flight ${position} of ${total}` : ''}
+                  {operatingCarrierLabel(segment) && <span className={styles.printOperatingCarrier}>{operatingCarrierLabel(segment)}</span>}
+                </div>
+              </div>
             </th>
           </tr>
           <tr>
@@ -1046,7 +1075,7 @@ export default function BookingDetails({
                       <HeadCell>Passenger</HeadCell>
                       <HeadCell>Type</HeadCell>
                       <HeadCell>Gender</HeadCell>
-                      <HeadCell>Date of birth</HeadCell>
+                      <HeadCell className={styles.screenOnly}>Date of birth</HeadCell>
                       {ticketsAlign && <HeadCell align="right">Ticket number</HeadCell>}
                     </tr>
                   </thead>
@@ -1083,6 +1112,9 @@ export default function BookingDetails({
                             ] as [string, string][])
                           : []),
                       ];
+                      const showPrintedIdentity = passportRequired ||
+                        Boolean(traveller.passportNumber?.trim()) ||
+                        (!ticketsAlign && booking.ticketNumbers.length > 0);
 
                       return (
                         <Fragment key={`${traveller.passengerType}-${index}`}>
@@ -1110,7 +1142,7 @@ export default function BookingDetails({
                             <td className="whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600">
                               {traveller.gender}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600">
+                            <td className={`${styles.screenOnly} whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600`}>
                               {formatDate(traveller.dateOfBirth)}
                             </td>
                             {ticketsAlign && (
@@ -1119,16 +1151,18 @@ export default function BookingDetails({
                               </td>
                             )}
                           </tr>
-                          <tr className={styles.printIdentityRow} data-print-passenger-index={index}>
-                            <td colSpan={ticketsAlign ? 5 : 4}>
-                              {identity.map(([label, value]) => (
-                                <Fact key={label} label={label} value={value} />
-                              ))}
-                              {!ticketsAlign && booking.ticketNumbers.length > 0 && (
-                                <span>Ticket number: passenger assignment unavailable</span>
-                              )}
-                            </td>
-                          </tr>
+                          {showPrintedIdentity && (
+                            <tr className={styles.printIdentityRow} data-print-passenger-index={index}>
+                              <td colSpan={ticketsAlign ? 4 : 3}>
+                                {(passportRequired || traveller.passportNumber?.trim()) && (
+                                  <Fact label="Passport" value={traveller.passportNumber?.trim() || '--'} />
+                                )}
+                                {!ticketsAlign && booking.ticketNumbers.length > 0 && (
+                                  <span>Ticket number: passenger assignment unavailable</span>
+                                )}
+                              </td>
+                            </tr>
+                          )}
                         </Fragment>
                       );
                     })}
@@ -1287,6 +1321,19 @@ export default function BookingDetails({
             </p>
           </Section>
           </div>
+
+          <section className={styles.printPassengerNotice}>
+            <h2>{PASSENGER_NOTICE_TITLE}</h2>
+            <div>
+              {PASSENGER_NOTICES.map((notice) => (
+                <p key={notice.title}>
+                  <strong>{notice.title}:</strong>
+                  <br />
+                  {notice.text}
+                </p>
+              ))}
+            </div>
+          </section>
 
           <footer
             className={`flex flex-col gap-1 border-t bg-neutral-50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-5 ${HAIRLINE}`}

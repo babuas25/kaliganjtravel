@@ -1,5 +1,5 @@
 /* Screen presentation stays independent of the compact downloaded copy. */
-.printHeader, .printSegment, .printIdentityRow, .printUnassignedTickets { display: none; }
+.printHeader, .printSegment, .printIdentityRow, .printUnassignedTickets, .printPassengerNotice { display: none; }
 .license { margin-top: 3px; font-size: 12px; color: #64748b; }
 @media screen, print {
   .ticket { border-radius: 0; box-shadow: 0 6px 28px #172b4510; color: #172b45; }
@@ -79,41 +79,44 @@
 
 /* A simple, table-based A4 copy for physical print and Save as PDF. */
 @media print {
-  .ticket { color: #111; font-family: Arial, Helvetica, sans-serif; font-size: 11px; line-height: 1.4; box-shadow: none; }
+  .ticket { color: #111; font-family: Arial, Helvetica, sans-serif; font-size: 10px; line-height: 1.3; box-shadow: none; }
   .ticket .masthead, .ticket .summary, .ticket .screenOnly { display: none; }
-  .printHeader { display: block; margin-bottom: 10px; }
-  .printHeader h1 { margin: 0 0 16px; text-align: center; font-size: 22px; font-weight: 700; }
-  .printMasthead { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 20px; align-items: end; margin-bottom: 10px; }
+  .printHeader { display: block; margin-bottom: 8px; }
+  .printTitle { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 12px; align-items: start; margin-bottom: 4px; }
+  .printHeader h1 { margin: 0; padding-top: 4px; text-align: center; font-size: 22px; font-weight: 700; }
+  .printHeader .printAgencyLogo { width: 64px; height: 64px; box-shadow: none; }
+  .printAgencyLogo img { padding: 0; }
+  .printMasthead { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 20px; align-items: end; margin-bottom: 8px; }
   .printMasthead p { margin: 0; overflow-wrap: anywhere; }
   .printAgencyName { font-size: 18px; font-weight: 700; }
   .printContact { text-align: right; }
-  .printReservation { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, auto); border: 1px solid #bdbdbd; }
-  .printReservation p { margin: 0; padding: 7px; overflow-wrap: anywhere; }
+  .printReservation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(110px, auto); border: 1px solid #bdbdbd; }
+  .printReservation p { margin: 0; padding: 5px 6px; overflow-wrap: anywhere; }
+  .printReservationPnr { border-left: 1px solid #bdbdbd; }
   .printStatus { display: flex; align-items: center; justify-content: center; min-width: 130px; color: #111; font-weight: 700; text-transform: uppercase; }
-  .printMetadata { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; padding: 5px 7px; border: 1px solid #bdbdbd; border-top: 0; }
+  .printMetadata { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; padding: 4px 6px; border: 1px solid #bdbdbd; border-top: 0; }
   .printMetadata p { margin: 0; }
   .printStatusMessage { margin-top: 5px; }
-  .ticket .section { margin: 0 0 10px; padding: 0; border: 0; }
-  .ticket .section > div:first-child:has(h2) { margin: 0; padding: 5px 7px; gap: 0; background: #dce3fa; border: 1px solid #bdbdbd; break-after: avoid; }
+  .ticket .section { margin: 0 0 8px; padding: 0; border: 0; }
+  .ticket .section > div:first-child:has(h2) { margin: 0; padding: 3px 6px; gap: 0; background: #dce3fa; border: 1px solid #bdbdbd; break-after: avoid; }
   .ticket .section > div:first-child > svg { display: none; }
-  .ticket .section h2 { color: #111; font-size: 14px; font-weight: 700; }
+  .ticket .section h2 { color: #111; font-size: 13px; font-weight: 700; }
   .ticket .section > div { overflow: visible; box-shadow: none; }
   .ticket .section table { min-width: 0; width: 100%; border-collapse: collapse; }
-  .ticket .section th, .ticket .section td { padding: 5px 6px; border: 1px solid #bdbdbd; color: #111; font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+  .ticket .section th, .ticket .section td { padding: 3px 5px; border: 1px solid #bdbdbd; color: #111; font-size: 10px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
   .ticket .section th { background: #eee; font-weight: 700; text-transform: none; letter-spacing: 0; }
   .ticket .section td p { color: #111; font-size: 11px; }
   .ticket .section td p + p { font-size: 10px; line-height: 1.4; }
   .ticket .section span { white-space: normal; }
   .ticket .section td span { color: inherit; }
   .ticket .passengers { table-layout: fixed; }
-  .ticket .passengers th:first-child { width: 64%; }
-  .ticket .passengers:has(th:nth-child(5)) th:first-child { width: 44%; }
+  .ticket .passengers th:first-child { width: 80%; }
+  .ticket .passengers:has(th:nth-child(5)) th:first-child { width: 60%; }
   .ticket .passengers th:nth-child(2), .ticket .passengers th:nth-child(3) { width: 10%; }
-  .ticket .passengers th:nth-child(4) { width: 16%; }
   .ticket .passengers th:nth-child(5) { width: 20%; }
   .ticket .passengers tr:has(+ .printIdentityRow) { break-after: avoid; }
   .ticket .printIdentityRow { display: table-row; }
-  .ticket .printIdentityRow td { padding: 3px 6px; font-size: 10px; }
+  .ticket .printIdentityRow td { padding: 2px 5px; font-size: 9px; }
   .ticket .printIdentityRow td > span { margin-right: 12px; }
   .ticket .printUnassignedTickets { display: block; padding: 5px 6px; border: 1px solid #bdbdbd; border-top: 0; font-size: 10px; overflow-wrap: anywhere; }
   .ticket .printUnassignedTickets p { margin: 0; }
@@ -121,18 +124,25 @@
   .ticket .section thead { display: table-header-group; }
   .ticket .section tr, .header, .printSegment, .ticket > footer { break-inside: avoid; }
   .ticket .flight { overflow: visible; box-shadow: none; border: 0; }
-  .ticket .legHeading { margin: 9px 0 0; padding: 5px 7px; background: #eee; border: 1px solid #bdbdbd; break-after: avoid; }
-  .ticket .legHeading h3, .ticket .legHeading h3 span { color: #111; font-size: 12px; }
+  .ticket .legHeading { margin: 7px 0 0; padding: 3px 6px; background: #eee; border: 1px solid #bdbdbd; break-after: avoid; }
+  .ticket .legHeading h3, .ticket .legHeading h3 span { color: #111; font-size: 11px; }
   .ticket .legHeading h3 > span:first-child:not(:last-child) { background: transparent; padding: 0; font-size: 10px; }
   .ticket .legHeading p { color: #333; font-size: 10px; }
   .ticket .printSegment { display: table; table-layout: fixed; }
   .ticket .printSegment td { vertical-align: middle; }
-  .ticket .printSegment .printFlightName { padding: 6px 4px; background: white; border: 0; text-align: left; }
+  .ticket .printSegment .printFlightName { padding: 4px; background: white; border: 0; text-align: left; }
+  .printFlightCarrier { display: flex; align-items: center; gap: 8px; }
+  .printFlightCarrier > div { min-width: 0; }
   .printAirport, .printBaggage, .printOperatingCarrier { display: block; }
-  .printAirport { margin-top: 2px; font-size: 10px; }
+  .printAirport { margin-top: 2px; font-size: 9px; }
   .ticket .total { background: #eee; border-color: #bdbdbd; }
   .ticket .total td:last-child { color: #111; font-size: 12px; letter-spacing: 0; }
-  .ticket > footer { flex-direction: row; padding: 6px 0; gap: 4px 16px; background: white; border-color: #bdbdbd; }
+  .printPassengerNotice { display: block; margin: 0 0 8px; border: 1px solid #bdbdbd; break-inside: avoid; }
+  .printPassengerNotice h2 { margin: 0; padding: 3px 6px; background: #dce3fa; border-bottom: 1px solid #bdbdbd; color: #111; font-size: 13px; font-weight: 700; }
+  .printPassengerNotice > div { padding: 5px 6px; }
+  .printPassengerNotice p { margin: 0 0 5px; color: #111; font-size: 10px; line-height: 1.3; }
+  .printPassengerNotice p:last-child { margin-bottom: 0; }
+  .ticket > footer { flex-direction: row; padding: 5px 0; gap: 4px 16px; background: white; border-color: #bdbdbd; }
   .ticket > footer p { color: #333; font-size: 10px; }
   .ticket > footer svg { display: none; }
 }

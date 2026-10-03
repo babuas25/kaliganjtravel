@@ -146,6 +146,7 @@ function lifecycleTimestamp(
   row: BookingDashboardListDbRow,
   status: BookingStatus
 ): string | null {
+  if (row.lifecycle_at !== undefined) return row.lifecycle_at;
   if (status === 'in-progress') return row.operation_started_at;
   if (status === 'confirmed') return row.issued_at;
   if (status === 'expired') return row.ticketing_deadline_at ?? row.last_lifecycle_event_at ?? null;

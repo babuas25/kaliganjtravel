@@ -22,6 +22,7 @@ const issueRoute = source('app/api/flights/booking/issue/route.ts');
 const permissions = source('lib/wallet/permissions.ts');
 const walletDb = source('lib/db/wallet.ts');
 const importUi = source('components/dashboard/impexp/ImpExpPage.tsx');
+const supplierImportUi = source('components/dashboard/impexp/SupplierApiImportForm.tsx');
 const bookingActions = source('components/flights/BookingActions.tsx');
 const bookingPage = source('app/(dashboard)/dashboard/bookings/[reference]/page.tsx');
 const bookingDb = source('lib/db/flight-bookings.ts');
@@ -88,11 +89,27 @@ const checks = [
   () => assert.ok(syncFunction.includes("v_new_status := 'in-progress'"), 'Held supplier Sync must preserve In Progress'),
   () => assert.ok(syncFunction.includes("'sellingPrice', v_booking.user_payable_amount::numeric / 100"), 'Sync must preserve User Payable'),
   () => assert.ok(syncFunction.includes("'supplierTotalPrice', v_supplier_gross_major"), 'Sync must update supplier gross separately'),
-  () => assert.ok(issueRoute.includes("booking.supplier !== 'triplover'"), 'Normal supplier Issue Ticket must remain blocked for imports'),
+  () => includesAll(issueRoute, [
+    "booking.import_source === 'MANUAL' ||",
+    "!['triplover', 'shapontravels'].includes(booking.supplier)",
+    "'EXTERNAL_SUPPLIER_BOOKING'",
+    'Manual bookings are issued only through the Manual Booking workflow.',
+    "if (booking.supplier === 'shapontravels' &&",
+    "(booking.status !== 'on-hold' || booking.direct_ticketing ||\n       booking.import_source !== null)",
+    "'BOOKING_NOT_ISSUABLE'",
+  ], 'normal supplier issue allowlist and imported/manual ticketing safety'),
   () => includesAll(confirmRoute, ['canAccessImportedBookingIssue', 'walletOwnerForBooking', 'beginImportedBookingIssue'], 'server-side owner or Super Admin Issue Now authorization'),
   () => includesAll(syncRoute, ['canAccessImpExp', 'syncImportedBooking', 'walletCharged: false'], 'operations-only non-financial Sync API'),
   () => assert.ok(!importRoute.includes('ensureSessionWallet') && importRoute.includes('assignedToUserId'), 'Import must never fall back to operator wallet'),
-  () => includesAll(importUi, ['Owner (required)', 'Supplier Gross Amount', 'User Payable Amount (required)'], 'required import UI'),
+  () => {
+    includesAll(importUi, ['<SupplierApiImportForm'], 'supplier import workflow');
+    includesAll(supplierImportUi, [
+      '<Field label="Booking Owner" required>',
+      'disabled={retrieving || !validReference || !assignedToUserId}',
+      'label="Supplier Gross"',
+      'label="User Payable · Read only"',
+    ], 'required owner and imported pricing UI');
+  },
   () => includesAll(bookingActions, ['/api/impexp/confirm-booking', '/api/impexp/sync-booking', 'Issue Now'], 'imported booking actions'),
   () => includesAll(chromeRuntime, ['@sparticuz/chromium-min', 'CHROMIUM_PACK_URL', 'SERVERLESS_CHROMIUM_VERSION = "143.0.4"', 'pack.${architecture}.tar'], 'Hobby-compatible remote Chromium runtime'),
   () => assert.equal(packageJson.dependencies['@sparticuz/chromium-min'], '143.0.4', 'Chromium-min and remote pack versions must remain pinned together'),

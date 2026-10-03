@@ -32,6 +32,10 @@ function loadTypeScript(path, dependencies = {}) {
 
 const permissions = loadTypeScript('lib/wallet/permissions.ts', {
   '@/lib/impexp/booking-source': { isExternalBookingSource: () => false },
+  '@/lib/shapontravels/current-status-projection': loadTypeScript('lib/shapontravels/current-status-projection.ts', {
+    './booking-status': loadTypeScript('lib/shapontravels/booking-status.ts'),
+    '@/lib/flights/booking-status': loadTypeScript('lib/flights/booking-status.ts'),
+  }),
 });
 const http = loadTypeScript('lib/wallet/http.ts', {
   'next/server': { NextResponse: {

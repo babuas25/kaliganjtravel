@@ -29,6 +29,11 @@ import {
   type ReactNode,
 } from 'react';
 import type { BookingStatus } from '@/lib/flights/booking-status';
+import {
+  formatShapontravelsBookingStatus,
+  type ShapontravelsStatusCheck,
+  type ShapontravelsStatusMessage,
+} from '@/lib/shapontravels/booking-status-message';
 import type { LocalTimeLimitContext } from '@/lib/booking-lifecycle/local-time-limit';
 import type { TicketManagementAction } from '@/lib/ticket-management/types';
 import PostTicketActionsPreview, {
@@ -327,6 +332,10 @@ export default function BookingActions({
   const [importedVerification, setImportedVerification] =
     useState<ImportedTicketVerification | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [shaponStatusMessage, setShaponStatusMessage] = useState<{
+    bookingReference: string;
+    presentation: ShapontravelsStatusMessage;
+  } | null>(null);
   useEffect(() => {
     onSupplierActionBusyChange?.(issuing || cancelling || refreshing || completingImported);
   }, [issuing, cancelling, refreshing, completingImported, onSupplierActionBusyChange]);
@@ -707,12 +716,9 @@ export default function BookingActions({
       );
       const body = (await response.json()) as {
         success?: boolean;
-        data?: {
+        data?: ShapontravelsStatusCheck & {
           ticketingDeadlineAt?: string | null;
           complete?: boolean;
-          result?: 'verified' | 'pending' | 'not_found';
-          supplierStatus?: string | null;
-          supplierPublicRef?: string | null;
           supplierTicket?: {
             result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
             ticketCount?: number;
@@ -746,25 +752,28 @@ export default function BookingActions({
               : ticketFinding
                 ? ' Supplier ticket evidence could not be verified; staff must investigate.'
                 : '';
-        setMessage(
-          allowShaponStatusCheck
-            ? body.data?.result === 'verified'
-              ? `Supplier reports ${body.data.supplierStatus ?? 'a booking'} (${body.data.supplierPublicRef}). This read did not change the local booking status.${ticketMessage}`
-              : body.data?.result === 'pending'
-                ? 'The supplier is still processing this booking. This read did not change the local booking status.'
-                : 'The supplier lookup found no booking. This is inconclusive; staff must investigate before changing the local status.'
-          : allowImportedSync
+        if (allowShaponStatusCheck) {
+          setShaponStatusMessage({
+            bookingReference,
+            presentation: formatShapontravelsBookingStatus(body.data),
+          });
+          setMessage(ticketMessage.trim() || null);
+        } else {
+          setMessage(allowImportedSync
             ? importedOutcomeMessage(body.verification)
-            : 'Ticket details refreshed from AirTicketingDetails.'
-        );
+            : 'Ticket details refreshed from AirTicketingDetails.');
+        }
       }
       // An automatic refresh owns a timed retry sequence. Refreshing the
       // Server Component here can clean up that effect after its first call,
       // silently cancelling the remaining attempts. The effect refreshes the
       // page once after it finds a deadline or exhausts the complete window.
       if (
-        !automatic && !allowShaponStatusCheck &&
-        body.verification?.validation.authoritativeFor !== 'ticketed'
+        !automatic && (
+          allowShaponStatusCheck
+            ? body.data?.projectionUpdated === true
+            : body.verification?.validation.authoritativeFor !== 'ticketed'
+        )
       ) {
         router.refresh();
       }
@@ -1448,6 +1457,15 @@ export default function BookingActions({
                 ? allowImportedSync ? 'Syncing…' : allowShaponStatusCheck ? 'Checking…' : 'Refreshing…'
                 : allowImportedSync ? 'Sync Imported Booking' : allowShaponStatusCheck ? 'Verify Supplier Status' : 'Refresh Ticket Details'}
             </button>
+            {allowShaponStatusCheck &&
+              shaponStatusMessage?.bookingReference === bookingReference && (
+              <div role="status" className="space-y-1 rounded-md bg-white/20 p-3 text-xs leading-relaxed text-black">
+                <p className="font-semibold">{shaponStatusMessage.presentation.headline}</p>
+                {shaponStatusMessage.presentation.details.map((detail) => (
+                  <p key={detail}>{detail}</p>
+                ))}
+              </div>
+            )}
             {paymentState === 'captured' &&
               importedVerification?.validation.authoritativeFor === 'ticketed' && (
               <button

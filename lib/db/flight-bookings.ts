@@ -70,6 +70,8 @@ export type BookingRow = {
   status: StoredBookingStatus;
   /** Present on authoritative lifecycle-view rows. */
   lifecycle_status?: import('@/lib/flights/booking-status').BookingStatus;
+  /** Receipt-bound API current status, separate from the original booking row. */
+  shapon_current_status?: unknown;
   /** Latest audit event for list display fallbacks; populated by listBookings. */
   last_lifecycle_event_at?: string | null;
   operation_kind: 'ticketing' | 'cancellation' | 'reconciliation' | null;
@@ -194,6 +196,8 @@ export type BookingDashboardListDbRow = {
   cancelled_at: string | null;
   ticketing_deadline_at: string | null;
   last_lifecycle_event_at: string | null;
+  /** Same authoritative timestamp used by the database's lifecycle-date sort. */
+  lifecycle_at?: string | null;
   supplier_reference: string | null;
   airline_pnr: string;
   pnr: string;
@@ -998,6 +1002,7 @@ const DASHBOARD_LIST_BASE_COLUMNS = [
   'cancelled_at',
   'ticketing_deadline_at',
   'last_lifecycle_event_at',
+  'lifecycle_at',
   'supplier_reference',
   'airline_pnr',
   'pnr',
@@ -1303,6 +1308,11 @@ export async function readBookingByPublicRefForSuperAdmin(
     if (throwOnReadError) throw new BookingReadUnavailableError();
     return null;
   }
+
+  // Normal bookings use the same projection as lists and customer details.
+  // The raw reader below remains only for retained pre-lifecycle history.
+  const current = await readBookingByPublicRef(publicRef, { kind: 'all' }, throwOnReadError);
+  if (current) return current;
 
   const { data, error } = await supabase
     .from('flight_bookings')

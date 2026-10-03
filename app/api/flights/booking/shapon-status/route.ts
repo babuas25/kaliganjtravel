@@ -6,6 +6,7 @@ import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { shapontravelsReadBooking, shapontravelsReadTicket } from '@/lib/shapontravels/client';
 import { verifyShapontravelsBookingStatus } from '@/lib/shapontravels/booking-status';
+import { recordShapontravelsCurrentStatus } from '@/lib/shapontravels/current-status-store';
 import { parseShapontravelsTicketReceipt, shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
 import { walletFail, walletOk } from '@/lib/wallet/http';
 
@@ -17,7 +18,7 @@ const schema = z.object({
   bookingReference: z.string().regex(/^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/),
 });
 
-/** Staff-only supplier verification. No local booking or wallet state changes. */
+/** Staff-only verification; stores display evidence without financial writes. */
 export async function POST(request: Request) {
   const session = await getDashboardSession();
   if (!session) return walletFail(401, 'SIGN_IN_REQUIRED', 'Please sign in.');
@@ -53,8 +54,9 @@ export async function POST(request: Request) {
   }
 
   try {
+    const requestStartedAt = new Date().toISOString();
     const read = await shapontravelsReadBooking({ bookingId: booking.booking_code_ref });
-    const status = verifyShapontravelsBookingStatus(read, {
+    const expected = {
       uniqueTransId: refs.uniqueTransId,
       itemCodeRef: refs.itemCodeRef,
       priceCodeRef: refs.priceCodeRef,
@@ -62,7 +64,8 @@ export async function POST(request: Request) {
       bookingRefNumber: booking.booking_ref_number,
       pnr: booking.pnr,
       supplierPublicRef,
-    });
+    };
+    const status = verifyShapontravelsBookingStatus(read, expected);
     if (status.result === 'mismatch' || status.result === 'unverified') {
       console.error('[shapontravels] booking status identity unverified', {
         bookingId: booking.id, result: status.result,
@@ -70,6 +73,9 @@ export async function POST(request: Request) {
       return walletFail(409, 'SUPPLIER_IDENTITY_UNVERIFIED',
         'Supplier details did not verify against this booking. Staff reconciliation is required.');
     }
+    const storage = await recordShapontravelsCurrentStatus({
+      bookingId: booking.id, requestStartedAt, expected, status,
+    });
     let supplierTicket: {
       result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
       ticketCount?: number;
@@ -104,7 +110,7 @@ export async function POST(request: Request) {
         }
       }
     }
-    return walletOk({ ...status, supplierTicket });
+    return walletOk({ ...status, supplierTicket, ...storage });
   } catch (error) {
     console.error('[shapontravels] booking status read failed', {
       bookingId: booking.id,

@@ -272,7 +272,7 @@ for (const [status, subject, label] of [
 const pdfSourcePath = path.join(root, 'lib', 'email', 'booking-ticket-pdf.ts');
 const pdfSource = fs.readFileSync(pdfSourcePath, 'utf8');
 for (const required of [
-  "['Passenger', 'Type', 'Gender', 'Date of Birth', 'Ticket Number']",
+  "['Passenger', 'Type', 'Gender', 'Ticket Number']",
   'contact.logoUrl',
   'https://images.kiwi.com/airlines/64x64/',
   "['images.kiwi.com']",
@@ -300,12 +300,38 @@ const pdfErrors = (pdfTranspiled.diagnostics ?? []).filter(
 );
 assert.equal(pdfErrors.length, 0, 'confirmed ticket PDF renderer must transpile');
 const nodeRequire = createRequire(import.meta.url);
+const passengerNoticePath = path.join(root, 'lib', 'flights', 'passenger-notice.ts');
+const passengerNoticeModule = { exports: {} };
+const passengerNoticeTranspiled = ts.transpileModule(fs.readFileSync(passengerNoticePath, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  fileName: passengerNoticePath,
+});
+new vm.Script(passengerNoticeTranspiled.outputText, { filename: passengerNoticePath }).runInNewContext({
+  module: passengerNoticeModule,
+  exports: passengerNoticeModule.exports,
+});
+const ticketPrintPath = path.join(root, 'lib', 'flights', 'ticket-print.ts');
+const ticketPrintModule = { exports: {} };
+const ticketPrintTranspiled = ts.transpileModule(fs.readFileSync(ticketPrintPath, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  fileName: ticketPrintPath,
+});
+new vm.Script(ticketPrintTranspiled.outputText, { filename: ticketPrintPath }).runInNewContext({
+  module: ticketPrintModule,
+  exports: ticketPrintModule.exports,
+  require(specifier) {
+    if (specifier === '@/lib/flights/airline-pnr') return airlinePnrModule;
+    throw new Error(`Unexpected runtime import in ticket print helper: ${specifier}`);
+  },
+});
 const pdfModule = { exports: {} };
 const pdfContext = vm.createContext({
   module: pdfModule,
   exports: pdfModule.exports,
   require(specifier) {
     if (specifier === '@/lib/flights/airline-pnr') return airlinePnrModule;
+    if (specifier === '@/lib/flights/passenger-notice') return passengerNoticeModule.exports;
+    if (specifier === '@/lib/flights/ticket-print') return ticketPrintModule.exports;
     if (specifier === 'server-only') return {};
     if (specifier === 'pdfkit') return nodeRequire('pdfkit');
     if (specifier === 'node:path') return nodeRequire('node:path');

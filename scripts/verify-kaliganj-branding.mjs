@@ -19,7 +19,10 @@ const runtimeFiles = ['app', 'components', 'lib', 'public'].flatMap(files)
 // Supplier identifiers and their status-check code paths are not site identity.
 // Keep guarding standalone legacy company-name mentions in the runtime.
 for (const file of runtimeFiles) {
-  assert.doesNotMatch(read(file).replace(/shapon(?:travels|[-_]?status)/gi, ''), forbidden, file);
+  const identityText = read(file)
+    .replace(/shapon(?:travels|[-_]?status)/gi, '')
+    .replace(/\b(?:shapon_current_status|record_shapon_booking_current_status_v1)\b/g, '');
+  assert.doesNotMatch(identityText, forbidden, file);
 }
 function load(file) {
   const compiled = ts.transpileModule(read(file), {

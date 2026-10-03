@@ -5,6 +5,11 @@ import { AlertTriangle, SearchCheck, ShieldAlert } from 'lucide-react';
 
 import type { StaffAttemptReconciliation } from '@/lib/dashboard/booking-attempt-reconciliation';
 import { bookingReviewResponsibility } from '@/lib/dashboard/booking-review-responsibility';
+import {
+  formatShapontravelsBookingStatus,
+  type ShapontravelsStatusCheck,
+  type ShapontravelsStatusMessage,
+} from '@/lib/shapontravels/booking-status-message';
 
 const timestamp = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'medium',
@@ -21,6 +26,7 @@ function stamp(value: string | null): string {
 function SupplierAttemptStatusCheck({ attemptId }: { attemptId: string }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [presentation, setPresentation] = useState<ShapontravelsStatusMessage | null>(null);
 
   async function check() {
     if (busy) return;
@@ -33,17 +39,13 @@ function SupplierAttemptStatusCheck({ attemptId }: { attemptId: string }) {
       );
       const body = await response.json() as {
         success?: boolean;
-        data?: { result?: string; supplierStatus?: string | null; supplierPublicRef?: string | null };
+        data?: ShapontravelsStatusCheck;
         error?: { errorMessage?: string };
       };
       if (!response.ok || !body.success || !body.data) {
         throw new Error(body.error?.errorMessage || 'Supplier status could not be checked.');
       }
-      setMessage(body.data.result === 'verified'
-        ? `Supplier reports ${body.data.supplierStatus ?? 'a booking'} (${body.data.supplierPublicRef}). Keep this case open until staff resolve it.`
-        : body.data.result === 'pending'
-          ? 'Supplier processing is still pending. Keep this case open.'
-          : 'Supplier lookup found no booking. This is inconclusive; check the supplier portal.');
+      setPresentation(formatShapontravelsBookingStatus(body.data, 'attempt'));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Supplier status could not be checked.');
     } finally {
@@ -57,6 +59,12 @@ function SupplierAttemptStatusCheck({ attemptId }: { attemptId: string }) {
         className="rounded border border-amber-400 bg-white px-2 py-1 text-[10px] font-semibold text-amber-950 disabled:opacity-60">
         {busy ? 'Checking…' : 'Check supplier status'}
       </button>
+      {presentation && (
+        <div role="status" className="space-y-1 text-[10px] text-amber-950">
+          <p className="font-semibold">{presentation.headline}</p>
+          {presentation.details.map((detail) => <p key={detail}>{detail}</p>)}
+        </div>
+      )}
       {message && <p role="status" className="text-[10px] text-amber-950">{message}</p>}
     </div>
   );

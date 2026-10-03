@@ -156,7 +156,13 @@ const routeDependencies = {
   },
   '@/lib/shapontravels/client': { isShapontravelsConfigured: () => true, ShapontravelsWriteError },
   '@/lib/wallet/http': http,
-  '@/lib/wallet/permissions': load('lib/wallet/permissions.ts', { '@/lib/impexp/booking-source': {} }),
+  '@/lib/wallet/permissions': load('lib/wallet/permissions.ts', {
+    '@/lib/impexp/booking-source': {},
+    '@/lib/shapontravels/current-status-projection': load('lib/shapontravels/current-status-projection.ts', {
+      './booking-status': load('lib/shapontravels/booking-status.ts'),
+      '@/lib/flights/booking-status': load('lib/flights/booking-status.ts'),
+    }),
+  }),
 };
 const route = load('app/api/flights/booking/issue/route.ts', routeDependencies);
 const statusRoute = load('app/api/flights/booking/issue/status/route.ts', {
@@ -304,6 +310,21 @@ assert.equal(cutoff.status, 409);
 assert.equal((await cutoff.json()).error.errorCode, 'SUPPLIER_TIME_LIMIT_EXPIRED');
 assert.deepEqual(effects, ['reserve', 'release']);
 boundary.httpStatus = 200;
+booking.shapon_current_status = {
+  currentStatus: {
+    status: 'cancelled', bookingState: 'held', supplierStatus: 'Cancelled',
+    source: 'supplier_pnr', verified: true, checkedAt: new Date().toISOString(),
+    supplierCheckedAt: new Date().toISOString(), reviewRequired: false, lastCheck: null,
+  },
+  originalBookingStatus: 'Created', fetchedAt: new Date().toISOString(),
+  effectiveStatus: 'cancelled', reviewRequired: false,
+};
+effects.length = 0;
+assert.equal(await canSubmit(), false, 'Observed cancellation disables the Issue panel even while the stored row is held');
+assert.equal((await issue()).status, 403, 'The Issue route must reject cancellation before reservation');
+assert.deepEqual(effects, [], 'A current cancellation cannot reserve or release funds');
+assert.equal(shaponCalls.length, 4, 'A current cancellation cannot send NewTicket');
+delete booking.shapon_current_status;
 booking.supplier_refs = { ...supplierRefs, itemCodeRef: 'invalid' };
 effects.length = 0;
 assert.equal(await canSubmit(), false);

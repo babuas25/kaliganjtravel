@@ -12,6 +12,7 @@ new vm.Script(compiled.outputText, { filename: sourcePath }).runInNewContext({
   module, exports: module.exports, Date,
 });
 const verify = module.exports.verifyShapontravelsBookingStatus;
+const parseCurrent = module.exports.parseShapontravelsCurrentStatus;
 const expected = {
   uniqueTransId: 'transaction-uuid', itemCodeRef: 'item-uuid',
   priceCodeRef: 'price-uuid', bookingCodeRef: 'booking-uuid',
@@ -30,9 +31,13 @@ const receipt = {
 const read = { httpStatus: 200, supplierPublicRef: expected.supplierPublicRef, body: receipt };
 const verified = verify(read, expected);
 assert.equal(verified.result, 'verified');
+assert.equal(verified.currentStatusState, 'absent');
+assert.equal(verified.currentStatus, null);
+assert.equal(verified.originalBookingStatus, 'Created');
 assert.equal(verified.supplierStatus, 'Created');
 assert.equal(verified.supplierPublicRef, expected.supplierPublicRef);
 assert.equal(verified.ticketedEvidencePresent, false);
+assert.ok(Number.isFinite(Date.parse(verified.checkedAt)));
 assert.equal(verify({ ...read, body: { ...receipt, item1: { ...receipt.item1,
   ticketInfoes: [] } } }, expected).ticketedEvidencePresent, false);
 assert.equal(verify({ ...read, body: { ...receipt, item1: { ...receipt.item1,
@@ -46,4 +51,228 @@ assert.equal(verify({ httpStatus: 202, supplierPublicRef: expected.supplierPubli
 assert.equal(verify({ httpStatus: 202, supplierPublicRef: expected.supplierPublicRef,
   body: { bookingId: 'different-uuid', state: 'pending' } }, expected).result, 'mismatch');
 assert.equal(verify({ httpStatus: 404, supplierPublicRef: null, body: {} }, expected).result, 'not_found');
+
+const supplierTime = '2026-10-03T14:43:33.123456+06:00';
+const laterCheckTime = '2026-10-03T09:01:02Z';
+const current = {
+  status: 'cancelled', bookingState: 'held', supplierStatus: 'Cancelled',
+  supplierCheckedAt: supplierTime, verified: true, source: 'supplier_pnr',
+  checkedAt: supplierTime, reviewRequired: true,
+  lastCheck: { checkedAt: supplierTime, verified: true, reasonCode: null },
+};
+assert.deepEqual(JSON.parse(JSON.stringify(parseCurrent(current))), current);
+assert.equal(parseCurrent(undefined), null);
+assert.equal(parseCurrent(null), null);
+const currentRead = (metadata, body = receipt) => ({
+  ...read, body: { ...body, currentStatus: metadata },
+});
+const plain = value => JSON.parse(JSON.stringify(value));
+const assertCurrent = (metadata, message) => {
+  const value = verify(currentRead(metadata), expected);
+  assert.equal(value.result, 'verified', message);
+  assert.equal(value.currentStatusState, 'available', message);
+  assert.equal(value.originalBookingStatus, 'Created', message);
+  assert.deepEqual(plain(value.currentStatus), plain(metadata), message);
+  assert.equal(value.supplierStatus, metadata.supplierStatus, message);
+  return value;
+};
+
+// A successful identity check does not turn the immutable Book receipt into current evidence.
+const cancelled = assertCurrent(current, 'held booking with verified supplier cancellation');
+assert.equal(cancelled.currentStatus.status, 'cancelled');
+assert.equal(cancelled.currentStatus.bookingState, 'held');
+assert.equal(cancelled.currentStatus.supplierCheckedAt, supplierTime);
+assert.equal(cancelled.currentStatus.checkedAt, supplierTime);
+assert.notEqual(cancelled.checkedAt, supplierTime);
+assert.equal(cancelled.ticketedEvidencePresent, false);
+assert.equal(receipt.item1.bookingStatus, 'Created');
+assert.equal(Object.hasOwn(receipt, 'currentStatus'), false);
+
+const admin = assertCurrent({
+  ...current, status: 'confirmed', bookingState: 'manually_resolved', verified: false,
+  source: 'admin_decision', checkedAt: '2026-10-03T08:40:00+00:00',
+}, 'admin outcome keeps precedence while newer raw supplier cancellation stays visible');
+assert.equal(admin.currentStatus.status, 'confirmed');
+assert.equal(admin.currentStatus.verified, false);
+assert.equal(admin.currentStatus.supplierStatus, 'Cancelled');
+assert.equal(admin.currentStatus.supplierCheckedAt, supplierTime);
+assert.equal(admin.currentStatus.reviewRequired, true);
+assert.equal(admin.ticketedEvidencePresent, false);
+
+assertCurrent({
+  ...current, status: 'in-progress', bookingState: 'issuing', source: 'ticket_operation',
+  verified: false, checkedAt: '2026-10-03T08:50:00Z',
+}, 'unfinished ticket operation stays in progress despite supplier cancellation');
+assertCurrent({
+  ...current, status: 'confirmed', bookingState: 'issued', source: 'ticket_operation',
+  verified: true, checkedAt: '2026-10-03T08:50:00Z',
+}, 'completed ticket operation retains its effective outcome');
+assertCurrent({
+  ...current, status: 'cancelled', bookingState: 'cancelled', source: 'cancellation_operation',
+  checkedAt: '2026-10-03T08:55:00Z',
+}, 'completed cancellation operation retains its effective outcome');
+assertCurrent({
+  ...current, status: 'expired', source: 'staff_manual', verified: false,
+  supplierStatus: 'Booked', checkedAt: '2026-10-03T08:55:00Z',
+}, 'manual cutoff differs from the supplier status without claiming supplier verification');
+for (const [status, source, bookingState] of [
+  ['pending', 'saved_booking', 'pending'],
+  ['on-hold', 'saved_booking', 'held'],
+  ['unconfirmed', 'saved_import', null],
+]) {
+  assertCurrent({
+    ...current, status, source, bookingState, verified: false,
+    supplierStatus: null, supplierCheckedAt: null, checkedAt: null,
+    reviewRequired: false, lastCheck: null,
+  }, `${source} ${status} has no invented supplier check`);
+}
+
+for (const reasonCode of [
+  'SUPPLIER_TIMEOUT', 'SUPPLIER_READ_FAILED', 'SUPPLIER_RECONCILIATION_FAILED',
+  'SUPPLIER_AUTH_FAILED', 'S'.repeat(80),
+]) {
+  const failed = assertCurrent({
+    ...current, lastCheck: { checkedAt: laterCheckTime, verified: false, reasonCode },
+  }, `${reasonCode} does not replace the prior verified cancellation`);
+  assert.equal(failed.currentStatus.verified, true);
+  assert.equal(failed.currentStatus.supplierStatus, 'Cancelled');
+  assert.equal(failed.currentStatus.checkedAt, supplierTime);
+  assert.equal(failed.currentStatus.lastCheck.checkedAt, laterCheckTime);
+  assert.equal(failed.currentStatus.lastCheck.verified, false);
+}
+
+const optional = { ...current };
+delete optional.reviewRequired;
+delete optional.lastCheck;
+const optionalResult = verify(currentRead(optional), expected);
+assert.equal(optionalResult.currentStatusState, 'available');
+assert.equal(optionalResult.currentStatus.reviewRequired, null);
+assert.equal(optionalResult.currentStatus.lastCheck, null);
+assert.deepEqual(plain(parseCurrent(plain(optionalResult.currentStatus))), plain(optionalResult.currentStatus),
+  'parsed optional metadata remains valid when saved and read back');
+const withoutReason = verify(currentRead({
+  ...current, lastCheck: { checkedAt: laterCheckTime, verified: false },
+}), expected);
+assert.equal(withoutReason.currentStatus.lastCheck.reasonCode, null);
+
+assertCurrent({ ...current, status: 'unconfirmed', supplierStatus: null },
+  'a sparse verified PNR may have a check timestamp without a supplier status');
+assertCurrent({
+  ...current, supplierStatus: '  CaNcElEd  ',
+  supplierCheckedAt: '2020-02-29T23:59:59.987654321-05:30',
+  checkedAt: '2020-02-29T23:59:59.987654321-05:30',
+}, 'raw supplier text and old evidence offsets stay intact without a freshness cutoff');
+const additive = verify(currentRead({
+  ...current, futureField: { safeToIgnore: true },
+  lastCheck: { ...current.lastCheck, futureCheckField: 'optional' },
+}), expected);
+assert.equal(additive.currentStatusState, 'available');
+assert.deepEqual(plain(additive.currentStatus), current);
+
+const missingField = name => {
+  const metadata = { ...current };
+  delete metadata[name];
+  return metadata;
+};
+const malformed = [
+  ['null', null], ['array', []], ['string', 'Cancelled'],
+  ['unknown normalized status', { ...current, status: 'Created' }],
+  ['unknown source', { ...current, source: 'live' }],
+  ['string verification', { ...current, verified: 'true' }],
+  ['null verification', { ...current, verified: null }],
+  ...['status', 'source', 'verified', 'bookingState', 'supplierStatus', 'supplierCheckedAt', 'checkedAt']
+    .map(name => [`missing ${name}`, missingField(name)]),
+  ['unbounded booking state', { ...current, bookingState: 'x'.repeat(101) }],
+  ['unbounded supplier text', { ...current, supplierStatus: 'x'.repeat(101) }],
+  ['blank supplier text', { ...current, supplierStatus: '  ' }],
+  ['control character supplier text', { ...current, supplierStatus: 'Cancelled\n' }],
+  ['numeric supplier text', { ...current, supplierStatus: 42 }],
+  ['supplier status without evidence timestamp', { ...current, supplierCheckedAt: null }],
+  ...[
+    '2026-10-03T14:43:33', '03/10/2026 14:43:33', '2025-02-29T14:43:33Z',
+    '2026-02-31T14:43:33Z', '2026-13-03T14:43:33Z', '2026-10-03T24:43:33Z',
+    '2026-10-03T14:43:33+00:60',
+  ].map(checkedAt => [`invalid timestamp ${checkedAt}`, { ...current, checkedAt }]),
+  ['invalid supplier timestamp', { ...current, supplierCheckedAt: 'yesterday' }],
+  ['numeric review flag', { ...current, reviewRequired: 0 }],
+  ['string review flag', { ...current, reviewRequired: 'false' }],
+  ['array last check', { ...current, lastCheck: [] }],
+  ['string last check', { ...current, lastCheck: 'timeout' }],
+  ['last check missing timestamp', { ...current, lastCheck: { verified: false } }],
+  ['last check null timestamp', { ...current, lastCheck: { checkedAt: null, verified: false } }],
+  ['last check missing zone', { ...current, lastCheck: { checkedAt: '2026-10-03T09:01:02', verified: false } }],
+  ['last check string verification', { ...current, lastCheck: { checkedAt: laterCheckTime, verified: 'false' } }],
+  ['last check missing verification', { ...current, lastCheck: { checkedAt: laterCheckTime } }],
+  ['last check unsafe reason detail', { ...current, lastCheck: { checkedAt: laterCheckTime, verified: false, reasonCode: 'supplier timeout: credential detail' } }],
+  ['last check reason starts with digit', { ...current, lastCheck: { checkedAt: laterCheckTime, verified: false, reasonCode: '1_TIMEOUT' } }],
+  ['last check unbounded reason', { ...current, lastCheck: { checkedAt: laterCheckTime, verified: false, reasonCode: 'x'.repeat(81) } }],
+];
+for (const [message, metadata] of malformed) {
+  const value = verify(currentRead(metadata), expected);
+  assert.equal(value.result, 'verified', message);
+  assert.equal(value.currentStatusState, 'invalid', message);
+  assert.equal(value.currentStatus, null, message);
+  assert.equal(value.originalBookingStatus, 'Created', message);
+  assert.equal(value.supplierStatus, null, `${message}: never fall back to historical Created`);
+  assert.equal(parseCurrent(metadata), null, message);
+}
+
+const assertUntrusted = (reading, result, message) => {
+  const value = verify(reading, expected);
+  assert.equal(value.result, result, message);
+  assert.equal(value.currentStatusState, 'absent', message);
+  assert.equal(value.currentStatus, null, message);
+  assert.equal(value.originalBookingStatus, null, message);
+  assert.equal(value.supplierStatus, null, message);
+  assert.equal(value.ticketedEvidencePresent, false, message);
+};
+for (const name of ['uniqueTransID', 'itemCodeRef', 'priceCodeRef', 'bookingCodeRef', 'bookingRefNumber', 'pnr']) {
+  assertUntrusted(currentRead(current, {
+    ...receipt, item1: { ...receipt.item1, [name]: 'different', ticketCodeRef: 'ticket-id' },
+  }), 'mismatch', `current metadata cannot bypass ${name} identity`);
+}
+assertUntrusted({ ...currentRead(current), supplierPublicRef: 'STRDIFFERENT123' }, 'mismatch', 'wrong public reference');
+assertUntrusted({ ...currentRead(current), supplierPublicRef: null }, 'unverified', 'missing public reference');
+assertUntrusted(currentRead(current, { ...receipt, item2: { isSuccess: false } }), 'unverified', 'failed saved receipt');
+assertUntrusted({ httpStatus: 404, supplierPublicRef: null, body: { currentStatus: current } }, 'not_found', '404 has no trusted current metadata');
+
+// Legacy 202 protocol remains pending even when the independently verified current outcome is cancelled.
+const pendingRead = {
+  httpStatus: 202, supplierPublicRef: expected.supplierPublicRef,
+  body: { bookingId: expected.bookingCodeRef, state: 'held', currentStatus: current },
+};
+const pending = verify(pendingRead, expected);
+assert.equal(pending.result, 'pending');
+assert.equal(pending.currentStatusState, 'available');
+assert.equal(pending.currentStatus.status, 'cancelled');
+assert.equal(pending.supplierStatus, 'Cancelled');
+assert.equal(pending.originalBookingStatus, null);
+assert.equal(pending.ticketedEvidencePresent, false);
+assertUntrusted({ ...pendingRead, body: { ...pendingRead.body, bookingId: 'wrong-booking' } }, 'mismatch', '202 wrong booking ID');
+assertUntrusted({ ...pendingRead, supplierPublicRef: 'STRDIFFERENT123' }, 'mismatch', '202 wrong public reference');
+for (const reading of [
+  { ...pendingRead, body: { state: 'held', currentStatus: current } },
+  { ...pendingRead, supplierPublicRef: null },
+]) {
+  const value = verify(reading, expected);
+  assert.equal(value.result, 'pending');
+  assert.equal(value.currentStatusState, 'invalid');
+  assert.equal(value.currentStatus, null);
+}
+assert.equal(verify({ ...pendingRead, body: { bookingId: expected.bookingCodeRef } }, expected).currentStatusState, 'absent');
+const byPublicRef = verify({ ...pendingRead, body: { currentStatus: current } }, { ...expected, bookingCodeRef: null });
+assert.equal(byPublicRef.result, 'pending');
+assert.equal(byPublicRef.currentStatusState, 'available');
+assert.equal(verify(pendingRead, { ...expected, bookingCodeRef: null, supplierPublicRef: null }).currentStatusState, 'invalid');
+
+const confirmed = { ...current, status: 'confirmed', source: 'ticket_operation' };
+assert.equal(verify(currentRead(confirmed), expected).ticketedEvidencePresent, false,
+  'a normalized confirmed status alone is not actual ticket evidence');
+assert.equal(verify(currentRead(confirmed, {
+  ...receipt, item1: { ...receipt.item1, ticketCodeRef: 'ticket-id' },
+}), expected).ticketedEvidencePresent, true);
+assert.equal(verify(currentRead(current, {
+  ...receipt, item1: { ...receipt.item1, ticketInfoes: [{ ticketNo: '1234567890' }] },
+}), expected).ticketedEvidencePresent, true,
+  'original actual ticket fields remain evidence independently of current cancellation');
 console.log('Shapontravels read-only status verification passed');

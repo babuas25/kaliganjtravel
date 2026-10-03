@@ -4,6 +4,17 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Shapontravels current status, 2026-10-03 — prepared locally:**
+`20261003000000_shapon_current_status_projection.sql` adds receipt-bound,
+append-only saved API observations. A successful staff supplier check can update
+the shared booking list/detail/filter projection without modifying the original
+booking, ticket, wallet or notification records. Local terminal decisions and
+active operations retain precedence; the atomic issue claim blocks conflicting
+or review-required observations before reserving funds. The migration has not
+been applied to the hosted database. Verify with
+`npm run verify:shapontravels-current-status` before a separately authorized
+application and database rollout.
+
 **B2B wallet discovery, 2026-10-02:** applied
 `20261002000000_agency_wallet_provisioning.sql` as the sole pending migration.
 Existing agencies were missing three BDT wallets, including `ST-B2B924493`;

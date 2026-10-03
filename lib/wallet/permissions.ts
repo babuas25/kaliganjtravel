@@ -2,6 +2,7 @@ import type { DashboardSession } from '@/lib/dashboard/session';
 import type { BookingRow } from '@/lib/db/flight-bookings';
 import type { Role } from '@/lib/roles';
 import { isExternalBookingSource } from '@/lib/impexp/booking-source';
+import { shapontravelsCurrentStatusBlocksIssue } from '@/lib/shapontravels/current-status-projection';
 
 export type WalletOwner = {
   ownerType: 'user' | 'agency';
@@ -85,9 +86,10 @@ export function canIssueBooking(
   booking: Pick<
     BookingRow,
     'booking_owner_type' | 'booking_owner_key' | 'status' | 'lifecycle_status'
-  >
+  > & Partial<Pick<BookingRow, 'supplier' | 'shapon_current_status'>>
 ): boolean {
   if (session.role === 'staff_support') return false;
+  if (shapontravelsCurrentStatusBlocksIssue(booking)) return false;
   if (booking.status !== 'on-hold' && booking.status !== 'pending') return false;
   if (booking.status === 'on-hold' && booking.lifecycle_status !== 'on-hold') return false;
   if (!booking.booking_owner_type || !booking.booking_owner_key) return false;

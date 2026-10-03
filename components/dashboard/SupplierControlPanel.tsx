@@ -146,12 +146,6 @@ export default function SupplierControlPanel({
           ) : null}
         </fieldset>
 
-        {activeSupplier === 'shapontravels' && (
-          <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-            Shapontravels issues tickets from held bookings. Direct ticket fares remain unavailable.
-          </p>
-        )}
-
         <div className="mt-6 space-y-3 rounded-xl bg-navy-50 p-4">
           <label className="flex cursor-pointer items-center justify-between gap-4">
             <span>

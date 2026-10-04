@@ -5,11 +5,12 @@ the current behavior of `/dashboard/markup`, the server-side pricing engine,
 rule precedence, database constraints, and the checks required when the feature
 changes.
 
-This engine prices Triplover offers. The separate Shapontravels pricing
-path uses the supplier's final `fareBreakdown.payable` directly and does
-not apply local markup rules; see the [supplier guide](./docs/29-SHAPONTRAVELS-READ-ONLY-GUIDE.md).
+This engine prices Triplover and Shapontravels offers. Shapontravels supplies
+its payable and gross through a validated decimal `fareBreakdown`; the adapter
+applies the same local rules while preserving supplier payable separately
+from the customer's selling price.
 
-Last reviewed against the implementation: 2026-09-28.
+Last reviewed against the implementation: 2026-10-04.
 
 ## 1. The short version
 
@@ -37,7 +38,7 @@ Last reviewed against the implementation: 2026-09-28.
 flowchart LR
     A["Verified server session"] --> B["Derive pricing audience"]
     B --> C["Load active rules for that audience"]
-    D["Triplover Search or RePrice"] --> E["Normalize supplier fare"]
+    D["Supplier Search or RePrice"] --> E["Normalize supplier fare"]
     C --> F["Select the highest-priority matching rule"]
     E --> F
     F --> G["Price the fare using only that rule"]
@@ -45,7 +46,7 @@ flowchart LR
     G --> J["Return role-authorized public fare"]
 ```
 
-The active-rule database read starts alongside the Triplover request, so the
+The active-rule database read starts alongside the supplier request, so the
 application does not add a separate sequential database wait after the supplier
 responds. Rule selection is performed locally for each normalized itinerary.
 
@@ -60,6 +61,7 @@ responds. Rule selection is performed locally for each normalized itinerary.
 | [`lib/db/markup-rules.ts`](./lib/db/markup-rules.ts) | Server-only Supabase reads and writes |
 | [`lib/triplover/search.ts`](./lib/triplover/search.ts) | Applies markup to normalized Search offers and stores private snapshots |
 | [`lib/triplover/reprice.ts`](./lib/triplover/reprice.ts) | Re-runs current markup against the live RePrice result |
+| [`lib/shapontravels/pricing.ts`](./lib/shapontravels/pricing.ts) | Validates Shapontravels gross, payable, and passenger totals before applying the same pricing engine |
 | [`app/api/flights/search/route.ts`](./app/api/flights/search/route.ts) | Derives the Search pricing audience from the session |
 | [`app/api/flights/reprice/route.ts`](./app/api/flights/reprice/route.ts) | Re-derives the RePrice pricing audience from the session |
 | [`lib/flights/search-cache.ts`](./lib/flights/search-cache.ts) | Stores supplier references and pricing snapshots outside the browser |
@@ -455,6 +457,7 @@ npm run typecheck
 npm run lint
 npm run build
 npm run verify:markup-priority
+npm run verify:shapontravels-pricing
 npm run verify:canonical-pricing-regression
 ```
 

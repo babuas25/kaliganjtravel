@@ -715,7 +715,7 @@ export async function searchFlights(
   const markupRulesStartedAt = performance.now();
   emitSearchTrace(trace, { name: 'markup_rules_start' });
   let markupRulesCompletedAt = markupRulesStartedAt;
-  const rulesPromise = supplier === 'shapontravels' ? null : activeMarkupRulesFor(audience).then(
+  const rulesPromise = activeMarkupRulesFor(audience).then(
     (result) => {
       markupRulesCompletedAt = performance.now();
       emitSearchTrace(trace, { name: 'markup_rules_complete' });
@@ -763,7 +763,7 @@ export async function searchFlights(
   const supplierCallCompletedAt = performance.now();
   emitSearchTrace(trace, { name: 'supplier_search_response_complete' });
   options.onProgress?.('processing');
-  const rulesResult = rulesPromise ? await rulesPromise : null;
+  const rulesResult = await rulesPromise;
   const mappingStartedAt = performance.now();
   const markupRulesMs = markupRulesCompletedAt - markupRulesStartedAt;
   const postSupplierMarkupWaitMs = Math.max(
@@ -812,7 +812,10 @@ export async function searchFlights(
     mapped.itineraries.forEach((itinerary, i) => {
       const refs = mapped.refs[i];
       if (supplier === 'shapontravels') {
-        const priced = shapontravelsPricedOffer(offer.fareBreakdown, audience);
+        const priced = shapontravelsPricedOffer(offer.fareBreakdown, audience, {
+          rulesAvailable: rulesResult.ok,
+          rules: selectMarkupRules(rulesResult.rules, audience, itinerary.carrierCode, input.routes),
+        });
         if (!priced) {
           droppedOfferCount += 1;
           return;
@@ -857,7 +860,7 @@ export async function searchFlights(
         continue;
       }
       const selectedRules = isShapontravels ? null : selectMarkupRules(
-        rulesResult!.rules,
+        rulesResult.rules,
         audience,
         supplier.carrierCode,
         input.routes
@@ -866,7 +869,7 @@ export async function searchFlights(
         ? shapontravelsPricingByItineraryId.get(supplier.id)!
         : priceOffer({
         audience,
-        rulesAvailable: rulesResult!.ok,
+        rulesAvailable: rulesResult.ok,
         rules: selectedRules!,
         supplierTotalPrice: supplier.supplierTotalPrice,
         basePrice: supplier.basePrice,
@@ -876,7 +879,7 @@ export async function searchFlights(
         passengerCount,
       });
       const passengerCounts = Object.fromEntries(
-        supplier.fares.map((fare) => [
+        (isShapontravels ? priced.fares : supplier.fares).map((fare) => [
           fare.passengerType.toLowerCase(),
           fare.count,
         ])

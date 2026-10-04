@@ -109,7 +109,12 @@ function loadUpsellModule() {
 }
 
 const { groupUpsellOptions } = loadUpsellModule();
+const markup = compileModule(await readFile('lib/markup.ts', 'utf8'), 'lib/markup.ts', (id) => {
+  if (id === '@/lib/agency') return { isAgencyCode: () => true };
+  throw new Error(`Unexpected markup import in verifier: ${id}`);
+});
 const { shapontravelsPricedOffer } = compileModule(shaponPricingSource, shaponPricingPath, (id) => {
+  if (id === '@/lib/markup') return markup;
   throw new Error(`Unexpected Shapon pricing import in verifier: ${id}`);
 });
 
@@ -548,7 +553,7 @@ function loadRepriceModule({ search, response, calls }) {
           },
           };
         },
-        selectMarkupRules: () => [],
+        selectMarkupRules: () => ({ rule: null }),
       };
     }
     if (id === '@/lib/triplover/client') {
@@ -631,7 +636,7 @@ function loadSearchModule({
             basis: 'test',
           },
         }),
-        selectMarkupRules: () => [],
+        selectMarkupRules: () => ({ rule: null }),
       };
     }
     if (id === '@/lib/triplover/client') {
@@ -1055,8 +1060,8 @@ await assert.rejects(
 assert.equal(mismatchCalls.supplier, 1, 'a mismatch does not replay supplier RePrice');
 assert.equal(mismatchCalls.persist.length, 0, 'a mismatch cannot overwrite Redis selection state');
 
-// The read-only provider must use its own Reprice transport and payable price,
-// without creating a booking-capable Redis selection.
+// Shapon uses its own Reprice transport and stores the locally priced offer
+// separately from supplier payable in a booking-capable Redis selection.
 const shaponSearch = {
   ...roundTripSearch,
   supplierAccount: 'shapontravels',
@@ -1085,12 +1090,14 @@ const shaponResult = await shaponReprice.repriceFlight({
   itineraryId: 'itn-0-0',
   principal: principal('shapon-reader'),
 });
-assert.equal(shaponResult.totalPrice, 5084.36);
+assert.equal(shaponResult.totalPrice, 5349, 'B2C without a rule falls back to gross');
 assert.equal(shaponResult.bookingAvailable, true);
 assert.equal(shaponCalls.shapon, 1);
 assert.equal(shaponCalls.supplier, 0);
 assert.equal(shaponCalls.persist.length, 1);
 assert.equal(shaponCalls.persist[0][2].priceCodeRef, 'repriced-roundtrip');
+assert.equal(shaponCalls.persist[0][2].pricing.supplierTotalPrice, 5084.36);
+assert.equal(shaponCalls.persist[0][2].pricing.sellingPrice, 5349);
 const shaponMismatch = structuredClone(shaponResponse);
 shaponMismatch.directions[1][0].segments[0].flightNumber = 'QR-999';
 const shaponMismatchCalls = { supplier: 0, persist: [] };

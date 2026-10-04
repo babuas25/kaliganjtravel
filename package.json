@@ -18,7 +18,7 @@
     "verify:shapontravels-status": "node scripts/verify-shapontravels-status.mjs && node scripts/verify-shapontravels-status-message.mjs && npm run verify:shapontravels-current-status",
     "verify:shapontravels-current-status": "node scripts/verify-shapontravels-current-status-app.mjs && node scripts/verify-shapontravels-current-status-db.mjs",
     "verify:shapontravels-ticket": "node scripts/verify-shapontravels-ticket.mjs",
-    "verify:shapontravels-pricing": "node scripts/verify-shapontravels-pricing.mjs",
+    "verify:shapontravels-pricing": "node scripts/verify-shapontravels-pricing.mjs && node scripts/verify-shapontravels-markup-flow.mjs",
     "verify:flight-search-reference-safety": "node scripts/verify-flight-search-reference-safety.mjs",
     "verify:search-stream-finalization": "node scripts/verify-search-stream-finalization.mjs",
     "verify:booking-step3": "node scripts/verify-booking-step3.mjs",

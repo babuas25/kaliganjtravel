@@ -2,10 +2,10 @@
 
 This document describes the ShoponTravels pricing engine, including the single-rule priority model, rule structure, audience-based pricing, and integration with flight search. The pricing system applies commercial markup and discount rules to supplier fares to generate selling prices for different customer segments.
 
-The engine described here prices Triplover offers. The separate Shapontravels
-pricing path validates and uses the supplier's final
-`fareBreakdown.payable` directly; it does not apply local markup rules. See the
-[Shapontravels supplier guide](./29-SHAPONTRAVELS-READ-ONLY-GUIDE.md).
+The engine prices both Triplover and Shapontravels offers. Shapontravels validates
+`fareBreakdown.payable` as supplier payable and `fareBreakdown.gross` as gross,
+then applies the same local rule selection, caps, discounts, and audience
+fallbacks. Supplier payable remains separate from the customer's selling price.
 
 **Related Documentation:**
 - [`docs/05-FLIGHT-SEARCH.md`](./05-FLIGHT-SEARCH.md) - Flight search architecture and supplier integration
@@ -22,7 +22,7 @@ pricing path validates and uses the supplier's final
 
 ## 1. Pricing System Overview
 
-The pricing system transforms supplier fares (from Triplover API) into selling prices for different customer audiences. It uses a rule-based markup engine that applies commercial rules while enforcing gross price caps and tax floor protections.
+The pricing system transforms supplier fares into selling prices for different customer audiences. It uses a rule-based markup engine that applies commercial rules while enforcing gross price caps and tax floor protections.
 
 ### Key Principles
 

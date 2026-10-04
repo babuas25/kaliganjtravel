@@ -343,6 +343,7 @@ export async function repriceFlight({
     throw error;
   }
   const expectedSelectionVersion = currentSelection?.quoteStoreVersion ?? 0;
+  const rulesPromise = activeMarkupRulesFor(audience);
 
   if (search.supplierAccount === 'shapontravels') {
     const responseEnvelope = await shapontravelsRead('Reprice', {
@@ -360,7 +361,11 @@ export async function repriceFlight({
         response.itemCodeRef !== refs.itemCodeRef) {
       throw new ShapontravelsReadError('INVALID_REPRICE_RESPONSE');
     }
-    const priced = shapontravelsPricedOffer(response.fareBreakdown, audience);
+    const rulesResult = await rulesPromise;
+    const priced = shapontravelsPricedOffer(response.fareBreakdown, audience, {
+      rulesAvailable: rulesResult.ok,
+      rules: selectMarkupRules(rulesResult.rules, audience, refs.context.carrierCode, refs.context.routes),
+    });
     if (!priced) throw new ShapontravelsReadError('INVALID_REPRICE_PRICE');
     if (!Array.isArray(response.directions) || !repriceMatchesSelectedItinerary(response, refs.selection)) {
       throw new FlightRepriceError(
@@ -370,8 +375,10 @@ export async function repriceFlight({
     }
     const previousTotalPrice = refs.pricing.sellingPrice;
     const priceDifferenceMinor = Math.round((priced.totalPrice - previousTotalPrice) * 100);
-    const supplierPriceChanged = response.isPriceChanged === true || priceDifferenceMinor !== 0;
-    const requiresConfirmation = supplierPriceChanged;
+    const supplierPriceChanged = response.isPriceChanged === true ||
+      changed(priced.snapshot.supplierTotalPrice, refs.pricing.supplierTotalPrice);
+    const sellingPriceChanged = priceDifferenceMinor !== 0;
+    const requiresConfirmation = supplierPriceChanged || sellingPriceChanged;
     const repricedAt = new Date().toISOString();
     let saved: boolean;
     try {
@@ -403,12 +410,12 @@ export async function repriceFlight({
       basePrice: priced.basePrice,
       taxes: priced.taxes,
       ait: priced.ait,
-      serviceMargin: 0,
+      serviceMargin: priced.serviceMargin,
       fares: priced.fares,
       bookable: response.bookable === true,
       fareClass: liveFareClass(response),
       supplierPriceChanged,
-      sellingPriceChanged: priceDifferenceMinor !== 0,
+      sellingPriceChanged,
       requiresConfirmation,
       repricedAt,
       bookingAvailable: response.bookable === true,
@@ -419,7 +426,6 @@ export async function repriceFlight({
   // stale response may never replace a newer same-principal selection. The
   // mutable selection is intentionally separate from the compressed immutable
   // Search graph, so a large Search is never rewritten after RePrice.
-  const rulesPromise = activeMarkupRulesFor(audience);
   const call = await triploverCall('RePrice', '/api/Reprice', {
     uniqueTransID: search.uniqueTransId,
     itemCodeRef: refs.itemCodeRef,

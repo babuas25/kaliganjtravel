@@ -2,6 +2,13 @@
 
 This records the 2026-09-26 read-only milestone. The later hold-booking implementation is described in [the hold guide](30-SHAPONTRAVELS-HOLD-GUIDE.md).
 
+Pricing update (2026-10-04): Search and Reprice now apply the same local
+markup rules as Triplover. Validated `fareBreakdown.payable` remains the supplier
+amount; the customer selling price is calculated using audience, airline, and
+route rules, with gross caps and tax floors. Passenger breakdown amounts already
+include their counts and are not multiplied again. Super Admin sees supplier
+payable. The read-only flow below describes the original milestone.
+
 This guide describes the local KaligonjTours integration verified on 2026-09-26. It uses the [public Shapontravels OpenAPI](https://api.shapontravels.com/openapi.json) and an issued API Management client. The API docs' Try it out uses the configured environment; treat calls as live.
 
 ## Configure

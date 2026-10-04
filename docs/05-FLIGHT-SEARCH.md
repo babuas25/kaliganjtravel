@@ -236,10 +236,10 @@ type BaggageInfo = {
 
 ## Markup Application
 
-This section describes local pricing for Triplover offers. The separate
-Shapontravels pricing path uses the supplier's final
-`fareBreakdown.payable` without adding local markup; see the
-[supplier guide](29-SHAPONTRAVELS-READ-ONLY-GUIDE.md).
+Triplover and Shapontravels offers use the same local pricing rules. For
+Shapontravels, the adapter validates decimal `fareBreakdown.payable`, gross,
+taxes, AIT, and passenger totals before applying markup. The private snapshot
+keeps supplier payable and the resulting customer selling price separately.
 
 ### Rule Selection
 

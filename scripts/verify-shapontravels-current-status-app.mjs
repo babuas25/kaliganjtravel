@@ -52,6 +52,27 @@ const booking = {
 const parseSaved = projection.parseShapontravelsCurrentStatusProjection;
 const blocksIssue = projection.shapontravelsCurrentStatusBlocksIssue;
 const canIssue = permissions.canIssueBooking;
+const publicCurrent = {
+  status: 'on-hold', bookingState: null, supplierStatus: null, supplierCheckedAt: null,
+  verified: false, source: 'public_receipt', checkedAt: null, reviewRequired: false, lastCheck: null,
+};
+const publicSaved = { ...saved, currentStatus: publicCurrent };
+assert.deepEqual(plain(parseSaved(publicSaved)), publicSaved);
+assert.equal(canIssue(ownerSession, { ...booking, shapon_current_status: publicSaved }), true,
+  'a receipt-bound public hold retains normal local Issue permission without inventing private state');
+for (const status of ['pending', 'in-progress', 'confirmed', 'cancelled', 'expired', 'unconfirmed']) {
+  assert.equal(canIssue({ role: 'superadmin' }, { ...booking,
+    shapon_current_status: { ...publicSaved, currentStatus: { ...publicCurrent, status } },
+  }), false, 'public terminal or processing status blocks normal Issue for every role');
+}
+for (const changes of [
+  { reviewRequired: true }, { verified: true }, { bookingState: 'held' },
+  { supplierStatus: 'Booked' }, { checkedAt: evidenceTime }, { reviewRequired: null },
+]) {
+  assert.equal(canIssue(ownerSession, { ...booking,
+    shapon_current_status: { ...publicSaved, currentStatus: { ...publicCurrent, ...changes } },
+  }), false, 'public review or malformed private evidence cannot authorize Issue');
+}
 
 assert.deepEqual(plain(parseSaved(saved)), saved);
 assert.equal(blocksIssue(booking), false);
@@ -173,6 +194,9 @@ const skipStatuses = [
   statusModule.verifyShapontravelsBookingStatus({ ...read, httpStatus: 404 }, expected),
   statusModule.verifyShapontravelsBookingStatus({ ...read, body: receipt }, expected),
   statusModule.verifyShapontravelsBookingStatus({ ...read, body: { ...receipt, currentStatus: null } }, expected),
+  statusModule.verifyShapontravelsBookingStatus({ ...read, body: { ...receipt,
+    currentStatus: { status: 'on-hold', reviewRequired: false },
+  } }, expected),
   statusModule.verifyShapontravelsBookingStatus({ ...read, supplierPublicRef: 'STRDIFFERENT123' }, expected),
   statusModule.verifyShapontravelsBookingStatus({ ...read, body: { ...read.body, item2: { isSuccess: false } } }, expected),
 ];
@@ -197,6 +221,23 @@ assert.deepEqual(calls[0], {
 }, 'the request start and immutable original Book identifiers are passed unchanged');
 assert.equal(expected.bookingRefNumber, '55555555-5555-4555-8555-555555555555');
 assert.equal(receipt.item1.bookingStatus, 'Created');
+
+const compactStatus = statusModule.verifyShapontravelsBookingStatus({ ...read,
+  body: { ...receipt, currentStatus: { status: 'on-hold', reviewRequired: false },
+    publicReceipt: { status: 'on-hold', pendingReview: false, actions: { canIssue: true } },
+  },
+}, expected);
+assert.deepEqual(plain(compactStatus.currentStatus), publicCurrent);
+rpcReply = { data: { recorded: true, projectionUpdated: true, currentStatus: publicSaved }, error: null };
+assert.deepEqual(plain(await record({ status: compactStatus })), {
+  projectionUpdated: true, currentStatusStorage: 'saved',
+  displayStatus: 'on-hold', displayReviewRequired: false,
+});
+assert.deepEqual(calls.at(-1).params.p_current_status, publicCurrent,
+  'public status storage carries explicit provenance without supplier verification or timestamps');
+assert.deepEqual(calls.at(-1).params.p_receipt_identity, { ...expected, originalBookingStatus: 'Created' },
+  'compact status storage keeps every original identity pin');
+rpcReply = { data: { recorded: true, projectionUpdated: true }, error: null };
 
 const adminStatus = statusModule.verifyShapontravelsBookingStatus({ ...read,
   body: { ...read.body, currentStatus: { ...current, status: 'confirmed',

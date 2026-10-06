@@ -23,6 +23,7 @@ const SOURCE_LABELS: Record<ShapontravelsCurrentStatus['source'], string> = {
   staff_manual: 'Staff decision',
   saved_booking: 'Saved booking record',
   saved_import: 'Imported booking record',
+  public_receipt: 'Public booking receipt',
 };
 
 const CHECK_FAILURE_LABELS: Record<string, string> = {

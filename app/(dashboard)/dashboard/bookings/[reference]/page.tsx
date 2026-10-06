@@ -261,7 +261,13 @@ export default async function BookingDetailsPage({
       };
     }
   }
-  if (session.role === 'superadmin' && !externalBooking) {
+  if (
+    session.role === 'superadmin' &&
+    row.supplier?.toLowerCase() === 'triplover' &&
+    row.import_source === null &&
+    !row.direct_ticketing &&
+    (row.audience === 'b2c' || row.audience === 'agency')
+  ) {
     try {
       superAdminDecisionContext = await readSuperAdminIssueResolutionContext({
         actorUserId: session.clerkId,

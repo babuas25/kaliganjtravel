@@ -28,9 +28,13 @@ export function shapontravelsTicketIdentityReady(booking: {
         (sum, value) => sum + (typeof value === 'number' ? value : NaN), 0
       )
     : 0;
+  // Public Book references mirror the PNR; retained older receipts may use a UUID.
+  // The platform booking and quote identities still require their own UUIDs.
   return Boolean(
     booking.pnr && booking.pnr.trim().length > 2 &&
-    booking.booking_ref_number && uuid.test(booking.booking_ref_number) &&
+    booking.booking_ref_number &&
+      (booking.booking_ref_number === booking.pnr ||
+        uuid.test(booking.booking_ref_number)) &&
     booking.booking_code_ref && uuid.test(booking.booking_code_ref) &&
     booking.supplier_refs?.uniqueTransId && uuid.test(booking.supplier_refs.uniqueTransId) &&
     booking.supplier_refs.itemCodeRef && uuid.test(booking.supplier_refs.itemCodeRef) &&
@@ -47,7 +51,7 @@ export async function issueShapontravelsTicket(
 ): Promise<TicketIssueOutcome> {
   const body = await shapontravelsIssueRequest({
     PNR: input.pnr,
-    // NewTicket expects the PNR mirror; Book's receipt UUID stays in storage.
+    // The public API uses the PNR mirror. Rust resolves private supplier refs.
     BookingRefNumber: input.pnr,
     UniqueTransID: input.uniqueTransId,
     PriceCodeRef: input.priceCodeRef,

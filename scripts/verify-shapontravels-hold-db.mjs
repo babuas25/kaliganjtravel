@@ -11,7 +11,9 @@ try {
     create schema auth; create schema storage; create schema extensions;
     create extension pgcrypto with schema extensions;`);
   const migrations = 'supabase/fresh-install/supabase/migrations';
+  const publicReferenceMigration = '20261006000000_shapon_public_booking_reference.sql';
   for (const file of fs.readdirSync(migrations).filter(file => file.endsWith('.sql')).sort()) {
+    if (file === publicReferenceMigration) continue;
     await db.exec(fs.readFileSync(`${migrations}/${file}`, 'utf8'));
   }
   await db.exec("insert into app_users(clerk_id, role) values ('shapon-hold-owner','customer')");
@@ -41,9 +43,8 @@ try {
   [attemptId, digest(attemptId), randomUUID(), transaction, item, price,
     JSON.stringify(offer), JSON.stringify({ travellers: [{ passengerType: 'ADT' }] }),
     requestKey, payloadHash]);
-  const supplierBookingUuid = randomUUID();
   const outcome = { status: 'held', pnr: 'ABC123', airlinesPnr: ['ABC123'],
-    bookingRefNumber: supplierBookingUuid, supplierPublicRef: 'STRTESTHOLD',
+    bookingRefNumber: 'ABC123', supplierPublicRef: 'STRTESTHOLD',
     bookingStatus: 'Created',
     ticketingTimeLimit: '2030-01-01T12:00:00+06:00', bookingCodeRef: randomUUID(),
     supplierRefs: { uniqueTransId: transaction, itemCodeRef: item, priceCodeRef: price },
@@ -55,7 +56,7 @@ try {
   const booking = await finalize();
   assert.equal(booking.supplier, 'shapontravels');
   assert.equal(booking.supplier_account, 'shapontravels');
-  assert.equal(booking.booking_ref_number, supplierBookingUuid);
+  assert.equal(booking.booking_ref_number, outcome.pnr);
   assert.equal(booking.supplier_public_ref, 'STRTESTHOLD');
   assert.equal((await db.query('select supplier_reference from booking_dashboard_list_v where id=$1', [booking.id])).rows[0].supplier_reference, 'STRTESTHOLD');
   assert.equal(booking.status, 'on-hold');
@@ -68,8 +69,41 @@ try {
     'select booking_uses_saved_references(b) as allowed from flight_bookings b where id=$1',
     [booking.id]
   )).rows[0].allowed;
+  assert.equal(await savedReferencesAllowed(), false,
+    'The previous UUID-only predicate reproduces the public PNR reference rejection');
+  await db.exec(fs.readFileSync(`${migrations}/${publicReferenceMigration}`, 'utf8'));
   assert.equal(await savedReferencesAllowed(), true,
-    'Verified Shapontravels API holds can use saved references');
+    'The forward migration accepts verified public PNR references without rewriting the booking');
+  const candidateAllowed = async overrides => (await db.query(
+    'select booking_uses_saved_references(jsonb_populate_record(b,$2::jsonb)) as allowed from flight_bookings b where id=$1',
+    [booking.id, JSON.stringify(overrides)]
+  )).rows[0].allowed;
+  assert.equal(await candidateAllowed({ booking_ref_number: randomUUID() }), true,
+    'Previously stored UUID booking references remain eligible');
+  for (const value of ['OTHER1', '', '  ', null, ` ${outcome.pnr} `]) {
+    assert.equal(await candidateAllowed({ booking_ref_number: value }), false,
+      `Mismatched, empty or missing Book reference must be rejected: ${JSON.stringify(value)}`);
+  }
+  for (const value of ['not-a-uuid', '', null]) {
+    assert.equal(await candidateAllowed({ booking_code_ref: value }), false,
+      'bookingCodeRef must remain a platform UUID');
+    for (const field of ['uniqueTransId', 'itemCodeRef', 'priceCodeRef']) {
+      assert.equal(await candidateAllowed({ supplier_refs: { ...outcome.supplierRefs, [field]: value } }), false,
+        `${field} must remain a platform UUID`);
+    }
+  }
+  for (const overrides of [
+    { supplier: 'unknown' }, { supplier_account: 'triplover' },
+    { supplier_public_ref: null }, { supplier_public_ref: 'ABC123' },
+    { legacy_operational: true }, { import_source: 'MANUAL' }, { direct_ticketing: true },
+  ]) {
+    assert.equal(await candidateAllowed(overrides), false,
+      `Existing saved-reference scope remains enforced: ${JSON.stringify(overrides)}`);
+  }
+  for (const account of ['firsttrip', 'takeoff', 'triplover']) {
+    assert.equal(await candidateAllowed({ supplier: 'triplover', supplier_account: account }), true,
+      'Existing Triplover family saved-reference policy remains eligible');
+  }
   await db.query('update flight_bookings set supplier_public_ref=null where id=$1', [booking.id]);
   assert.equal(await savedReferencesAllowed(), false, 'Missing verified STR cannot bypass a deadline');
   await db.query('update flight_bookings set supplier_public_ref=$2 where id=$1', [booking.id, 'STRTESTHOLD']);
@@ -119,7 +153,7 @@ try {
   assert.equal(issued.status, 'confirmed');
   assert.equal(issued.payment_state, 'captured');
   assert.equal(issued.supplier_public_ref, 'STRTESTHOLD');
-  assert.equal(issued.booking_ref_number, supplierBookingUuid);
+  assert.equal(issued.booking_ref_number, outcome.pnr);
   assert.equal(issued.ticket_code_ref, ticket.ticketCodeRef);
   assert.deepEqual(issued.ticket_numbers, ticket.ticketNumbers);
   assert.equal((await db.query("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='booking_confirm'", [booking.id])).rows[0].n, 1);

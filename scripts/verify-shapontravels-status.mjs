@@ -52,6 +52,30 @@ assert.equal(verify({ httpStatus: 202, supplierPublicRef: expected.supplierPubli
   body: { bookingId: 'different-uuid', state: 'pending' } }, expected).result, 'mismatch');
 assert.equal(verify({ httpStatus: 404, supplierPublicRef: null, body: {} }, expected).result, 'not_found');
 
+const legacyExpected = { ...expected, bookingRefNumber: '55555555-5555-4555-8555-555555555555' };
+const publicReferenceRead = { ...read, body: { ...receipt, item1: {
+  ...receipt.item1, bookingRefNumber: expected.pnr,
+} } };
+assert.equal(verify(publicReferenceRead, legacyExpected).result, 'verified',
+  'a legacy UUID row verifies the current public PNR mirror with every other identity pinned');
+assert.equal(verify(publicReferenceRead, { ...expected, bookingRefNumber: expected.pnr }).result, 'verified');
+for (const changes of [
+  { bookingRefNumber: 'foreign-ref' },
+  { bookingRefNumber: '66666666-6666-4666-8666-666666666666' },
+  { pnr: 'OTHER1' },
+  { uniqueTransID: 'another-transaction' },
+  { itemCodeRef: 'another-item' },
+  { priceCodeRef: 'another-price' },
+  { bookingCodeRef: 'another-booking' },
+]) {
+  assert.equal(verify({ ...publicReferenceRead, body: { ...publicReferenceRead.body,
+    item1: { ...publicReferenceRead.body.item1, ...changes },
+  } }, legacyExpected).result, 'mismatch', 'public PNR compatibility does not relax another identity pin');
+}
+assert.equal(verify(publicReferenceRead, { ...legacyExpected, pnr: null }).result, 'mismatch',
+  'legacy reference compatibility requires a saved PNR');
+assert.equal(verify(publicReferenceRead, { ...expected, bookingRefNumber: 'arbitrary-old-ref' }).result, 'mismatch');
+
 const supplierTime = '2026-10-03T14:43:33.123456+06:00';
 const laterCheckTime = '2026-10-03T09:01:02Z';
 const current = {
@@ -67,6 +91,76 @@ const currentRead = (metadata, body = receipt) => ({
   ...read, body: { ...body, currentStatus: metadata },
 });
 const plain = value => JSON.parse(JSON.stringify(value));
+const compactRead = (metadata, publicReceipt = {
+  status: metadata.status, pendingReview: false, actions: { canIssue: metadata.status === 'on-hold' },
+}) => ({ ...currentRead(metadata), body: { ...receipt, currentStatus: metadata, publicReceipt } });
+const publicCurrent = (status = 'on-hold', reviewRequired = false) => ({
+  status, bookingState: null, supplierStatus: null, supplierCheckedAt: null,
+  verified: false, source: 'public_receipt', checkedAt: null, reviewRequired, lastCheck: null,
+});
+for (const status of ['pending', 'on-hold', 'confirmed', 'in-progress', 'cancelled', 'expired', 'unconfirmed']) {
+  const value = verify(compactRead({ status, reviewRequired: false }), expected);
+  assert.equal(value.result, 'verified');
+  assert.equal(value.currentStatusState, 'available');
+  assert.deepEqual(plain(value.currentStatus), publicCurrent(status));
+  assert.deepEqual(plain(parseCurrent(value.currentStatus)), publicCurrent(status),
+    'normalized public receipt metadata can be saved and read without private evidence');
+  assert.equal(value.originalBookingStatus, 'Created');
+  assert.equal(value.supplierStatus, null);
+  assert.equal(value.ticketedEvidencePresent, false,
+    'a public confirmed status does not manufacture ticket evidence');
+}
+for (const publicReceipt of [
+  { status: 'on-hold', pendingReview: false, actions: { canIssue: false } },
+  { status: 'on-hold', pendingReview: true, actions: { canIssue: true } },
+]) {
+  assert.deepEqual(plain(verify(compactRead({ status: 'on-hold', reviewRequired: false }, publicReceipt), expected).currentStatus),
+    publicCurrent('on-hold', true), 'a compact hold must also explicitly allow Issue without public review');
+}
+assert.deepEqual(plain(verify(compactRead({ status: 'on-hold', reviewRequired: true }), expected).currentStatus),
+  publicCurrent('on-hold', true), 'an Issue capability cannot clear the original review flag');
+for (const publicReceipt of [
+  null, {}, { status: 'cancelled', pendingReview: false, actions: { canIssue: true } },
+  { status: 'on-hold', pendingReview: null, actions: { canIssue: true } },
+  { status: 'on-hold', pendingReview: false },
+  { status: 'on-hold', pendingReview: false, actions: {} },
+  { status: 'on-hold', pendingReview: false, actions: { canIssue: 'true' } },
+]) {
+  const value = verify(compactRead({ status: 'on-hold', reviewRequired: false }, publicReceipt), expected);
+  assert.equal(value.currentStatusState, 'invalid');
+  assert.equal(value.currentStatus, null, 'missing or conflicting public capability cannot authorize a hold');
+}
+assert.equal(verify(currentRead({ status: 'on-hold', reviewRequired: false }), expected).currentStatusState, 'invalid');
+assert.equal(parseCurrent({ status: 'on-hold', reviewRequired: false }), null,
+  'raw compact status requires its receipt capabilities; the saved parser alone cannot infer them');
+for (const publicReceipt of [
+  { status: 'on-hold', pendingReview: false, actions: { canIssue: true } },
+  { status: 'on-hold', pendingReview: false, actions: { canIssue: false } },
+  { status: 'on-hold', pendingReview: true, actions: { canIssue: true } },
+]) {
+  assert.equal(verify(compactRead(publicCurrent(), publicReceipt), expected).currentStatusState, 'invalid',
+    'a raw supplier response cannot impersonate the normalized saved public source');
+}
+for (const metadata of [
+  { status: 'on-hold' }, { status: 'on-hold', reviewRequired: null },
+  { status: 'on-hold', reviewRequired: 'false' },
+  { status: 'on-hold', reviewRequired: false, bookingState: 'held' },
+  { status: 'on-hold', reviewRequired: false, source: 'saved_booking' },
+  { ...publicCurrent(), verified: true }, { ...publicCurrent(), bookingState: 'held' },
+  { ...publicCurrent(), supplierStatus: 'Booked' },
+  { ...publicCurrent(), checkedAt: supplierTime },
+  { ...publicCurrent(), supplierCheckedAt: supplierTime },
+  { ...publicCurrent(), lastCheck: { checkedAt: supplierTime, verified: true, reasonCode: null } },
+  { ...publicCurrent(), reviewRequired: null }, { ...publicCurrent(), extra: 'private' },
+]) {
+  assert.equal(verify(compactRead(metadata), expected).currentStatusState, 'invalid',
+    'public receipt compatibility accepts only the explicit compact or normalized conservative contract');
+  assert.equal(parseCurrent(metadata), null);
+}
+const compactMismatch = compactRead({ status: 'on-hold', reviewRequired: false });
+assert.equal(verify({ ...compactMismatch, body: { ...compactMismatch.body, item1: {
+  ...receipt.item1, bookingCodeRef: 'different-booking',
+} } }, expected).result, 'mismatch', 'a public action cannot override receipt identity');
 const assertCurrent = (metadata, message) => {
   const value = verify(currentRead(metadata), expected);
   assert.equal(value.result, 'verified', message);

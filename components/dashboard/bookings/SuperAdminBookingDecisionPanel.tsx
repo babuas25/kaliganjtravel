@@ -78,7 +78,11 @@ function title(value: string | null | undefined): string {
     : 'Not recorded';
 }
 
-function accountingLabel(value: string | undefined): string {
+function accountingLabel(
+  accounting: SuperAdminIssueResolutionContext['accounting']
+): string {
+  if (!accounting) return 'Not checked';
+  const value = accounting.accountingState;
   if (value === 'paid') return 'Already paid / captured';
   if (value === 'active_hold') return 'Active wallet Hold';
   if (value === 'unpaid') return 'No Hold and no captured payment';
@@ -478,7 +482,7 @@ export default function SuperAdminBookingDecisionPanel({
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Actual local accounting</p>
-            <p className="mt-1 text-sm font-semibold text-navy-950">{accountingLabel(accounting?.accountingState)}</p>
+            <p className="mt-1 text-sm font-semibold text-navy-950">{accountingLabel(accounting)}</p>
           </div>
         </div>
 

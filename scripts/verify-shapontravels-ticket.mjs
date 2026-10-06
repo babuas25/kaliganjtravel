@@ -20,12 +20,13 @@ function compile(file, imports, globals = {}) {
   return module.exports;
 }
 
+const legacyBookingReference = '55555555-5555-4555-8555-555555555555';
 const refs = Object.freeze({
   uniqueTransId: '11111111-1111-4111-8111-111111111111',
   itemCodeRef: '22222222-2222-4222-8222-222222222222',
   priceCodeRef: '33333333-3333-4333-8333-333333333333',
   bookingCodeRef: '44444444-4444-4444-8444-444444444444',
-  bookingRefNumber: '55555555-5555-4555-8555-555555555555',
+  bookingRefNumber: 'ABC123',
   pnr: 'ABC123', expectedPassengerCount: 1,
 });
 const ticketCodeRef = '66666666-6666-4666-8666-666666666666';
@@ -61,10 +62,29 @@ assert.equal(ticket.shapontravelsTicketIdentityReady({
   supplier_refs: refs, passenger_counts: { ADT: 1 },
 }), true);
 assert.equal(ticket.shapontravelsTicketIdentityReady({
-  pnr: refs.pnr, booking_ref_number: refs.pnr,
+  pnr: refs.pnr, booking_ref_number: legacyBookingReference,
   booking_code_ref: refs.bookingCodeRef,
   supplier_refs: refs, passenger_counts: { ADT: 1 },
-}), false);
+}), true, 'Historical UUID receipts remain supported');
+for (const bookingReference of ['OTHER1', '', null]) {
+  assert.equal(ticket.shapontravelsTicketIdentityReady({
+    pnr: refs.pnr, booking_ref_number: bookingReference,
+    booking_code_ref: refs.bookingCodeRef,
+    supplier_refs: refs, passenger_counts: { ADT: 1 },
+  }), false, 'A non-UUID reference must exactly match the saved PNR');
+}
+for (const field of ['uniqueTransId', 'itemCodeRef', 'priceCodeRef']) {
+  assert.equal(ticket.shapontravelsTicketIdentityReady({
+    pnr: refs.pnr, booking_ref_number: refs.pnr,
+    booking_code_ref: refs.bookingCodeRef,
+    supplier_refs: { ...refs, [field]: refs.pnr }, passenger_counts: { ADT: 1 },
+  }), false, `${field} must remain a UUID when the booking reference mirrors PNR`);
+}
+assert.equal(ticket.shapontravelsTicketIdentityReady({
+  pnr: refs.pnr, booking_ref_number: refs.pnr,
+  booking_code_ref: refs.pnr,
+  supplier_refs: refs, passenger_counts: { ADT: 1 },
+}), false, 'The platform booking ID must remain a UUID');
 const issue = () => ticket.issueShapontravelsTicket(refs, 'operation:v1:fixed', {});
 const issued = await issue();
 assert.equal(issued.bookingStatus, 'Confirmed');
@@ -96,7 +116,7 @@ async function transport(status) {
   const client = compile('lib/shapontravels/client.ts', {}, {
     process: { env: {
       SHAPONTRAVELS_SEARCH_BASE_URL: 'https://supplier.example.test/',
-      CLIENT_ID: refs.bookingRefNumber, CLIENT_SECRET: 'fixture-secret',
+      CLIENT_ID: legacyBookingReference, CLIENT_SECRET: 'fixture-secret',
     } },
     fetch: async (url, init) => {
       if (url.pathname === '/auth/token') {
@@ -111,7 +131,7 @@ async function transport(status) {
       assert.equal(init.headers.authorization, 'Bearer stm_ticket');
       const payload = JSON.parse(init.body);
       assert.equal(payload.BookingRefNumber, payload.PNR,
-        'Shapon NewTicket requires BookingRefNumber to mirror PNR, not the Book receipt UUID');
+        'Shapon NewTicket requires BookingRefNumber to mirror PNR');
       assert.deepEqual(payload, {
         PNR: refs.pnr, BookingRefNumber: refs.pnr,
         UniqueTransID: refs.uniqueTransId, PriceCodeRef: refs.priceCodeRef,
@@ -143,8 +163,8 @@ async function transport(status) {
   }
   assert.equal(issueCalls, 1, 'Unknown outcomes never repeat the Issue mutation');
   assert.deepEqual(events, ['before', status]);
-  assert.equal(refs.bookingRefNumber, '55555555-5555-4555-8555-555555555555',
-    'The saved Book receipt UUID remains available for status verification');
+  assert.equal(refs.bookingRefNumber, refs.pnr,
+    'Ticketing preserves the public Book receipt reference');
 }
 await transport(200);
 await transport(202);
@@ -154,7 +174,7 @@ for (const status of [200, 202, 404]) {
   const client = compile('lib/shapontravels/client.ts', {}, {
     process: { env: {
       SHAPONTRAVELS_SEARCH_BASE_URL: 'https://supplier.example.test/',
-      CLIENT_ID: refs.bookingRefNumber, CLIENT_SECRET: 'fixture-secret',
+      CLIENT_ID: legacyBookingReference, CLIENT_SECRET: 'fixture-secret',
     } },
     fetch: async (url, init) => {
       if (url.pathname === '/auth/token') {

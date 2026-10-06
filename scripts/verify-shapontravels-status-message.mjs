@@ -77,6 +77,17 @@ assert.match(pending, /Saved booking record \(not machine-verified\)/);
 assert.match(pending, /No source timestamp/);
 cases++;
 
+const publicReceipt = text(format({ ...check, currentStatus: {
+  status: 'on-hold', bookingState: null, supplierStatus: null, supplierCheckedAt: null,
+  verified: false, source: 'public_receipt', checkedAt: null, reviewRequired: false, lastCheck: null,
+} }));
+assert.match(publicReceipt, /Current API booking status: On Hold/);
+assert.match(publicReceipt, /Public booking receipt \(not machine-verified\)/);
+assert.match(publicReceipt, /No source timestamp was supplied/);
+assert.doesNotMatch(publicReceipt, /Created|Last verified supplier status|Evidence time|staff review/);
+assert.match(publicReceipt, /Wallet and payment are unchanged/);
+cases++;
+
 // A failed latest check keeps the selected evidence and its original timestamp.
 for (const reasonCode of [null, 'SUPPLIER_TIMEOUT', 'SUPPLIER_READ_FAILED', 'SUPPLIER_RECONCILIATION_FAILED']) {
   const failed = text(format({ ...check, currentStatus: {

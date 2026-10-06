@@ -53,7 +53,7 @@ async function createHold(label) {
   [attemptId, digest(attemptId), randomUUID(), `itn-${label}`, transaction, item, price,
     JSON.stringify(offer), JSON.stringify({ travellers: [{ passengerType: 'ADT' }] }), key, hash]);
   const outcome = { status: 'held', pnr: 'ABC123', airlinesPnr: ['ABC123'],
-    bookingRefNumber: randomUUID(), supplierPublicRef: `STR${label.toUpperCase()}TEST123`,
+    bookingRefNumber: 'ABC123', supplierPublicRef: `STR${label.toUpperCase()}TEST123`,
     bookingStatus: 'Created', ticketingTimeLimit: '2030-01-01T12:00:00+06:00',
     bookingCodeRef: randomUUID(), supplierRefs: { uniqueTransId: transaction,
       itemCodeRef: item, priceCodeRef: price }, ticketCodeRef: null, ticketNumbers: [], warnings: [] };
@@ -68,6 +68,9 @@ async function createHold(label) {
 const holdMetadata = () => ({ status: 'on-hold', bookingState: 'held', supplierStatus: null,
   supplierCheckedAt: null, verified: false, source: 'saved_booking', checkedAt: null,
   reviewRequired: false, lastCheck: null });
+const compactMetadata = (status = 'on-hold', reviewRequired = false) => ({
+  status, reviewRequired, source: 'public_receipt', verified: false, bookingState: null,
+  supplierStatus: null, checkedAt: null, supplierCheckedAt: null, lastCheck: null });
 const cancelledMetadata = () => ({ status: 'cancelled', bookingState: 'held',
   supplierStatus: 'Cancelled', supplierCheckedAt: instant(-60_000), verified: true,
   source: 'supplier_pnr', checkedAt: instant(-60_000), reviewRequired: true,
@@ -123,6 +126,13 @@ try {
   const remotePending = await createHold('pending');
   const unknownReview = await createHold('unknownreview');
   const localReconciliation = await createHold('localreconciliation');
+  const compactHold = await createHold('compacthold');
+  const compactReview = await createHold('compactreview');
+  const richMissingState = await createHold('richmissingstate');
+  const compactConflicts = new Map();
+  for (const status of ['cancelled', 'expired', 'unconfirmed', 'pending', 'in-progress', 'confirmed']) {
+    compactConflicts.set(status, await createHold(`compact${status.replace('-', '')}`));
+  }
   const snapshot = await businessSnapshot();
   const cancelledRead = await record(cancelled, cancelledMetadata());
   assert.equal(cancelledRead.recorded, true);
@@ -149,6 +159,51 @@ try {
   assert.deepEqual(await businessSnapshot(), snapshot, 'Read observations cannot mutate any original business table/outbox');
   assert.equal((await walletClaim(cancelled)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_ISSUE');
   assert.deepEqual(await businessSnapshot(), snapshot, 'Atomic cancellation veto cannot reserve or mutate the original booking');
+
+  const compactRead = await record(compactHold, compactMetadata());
+  assert.equal(compactRead.recorded, true, 'The compact public status can be saved with exact receipt identity');
+  assert.equal(compactRead.currentStatus.reviewRequired, false,
+    'An explicit no-review public On Hold remains eligible despite private state being absent');
+  assert.deepEqual(compactRead.currentStatus.currentStatus, compactMetadata(),
+    'Public metadata retains false verification and null private states/timestamps');
+  assert.equal((await detail(compactHold)).lifecycle_status, 'on-hold');
+  assert.equal((await record(compactReview, compactMetadata('on-hold', true))).recorded, true);
+  assert.equal((await walletClaim(compactReview)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_ISSUE');
+  for (const [status, subject] of compactConflicts) {
+    const read = await record(subject, compactMetadata(status));
+    assert.equal(read.recorded, true);
+    assert.equal(read.effectiveStatus, status === 'confirmed' ? 'on-hold' : status,
+      'A public Confirmed cannot manufacture local tickets; other remote conflicts retain their display status');
+    assert.equal(read.currentStatus.reviewRequired, true,
+      'Every compact remote conflict forces review even when its supplier review flag is false');
+    assert.equal((await walletClaim(subject)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_ISSUE');
+  }
+  assert.equal((await record(richMissingState, { ...holdMetadata(), bookingState: null })).recorded, true);
+  assert.equal((await detail(richMissingState)).shapon_current_status.reviewRequired, true,
+    'Rich evidence without held bookingState retains the prior fail-closed behavior');
+  assert.equal((await walletClaim(richMissingState)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_ISSUE');
+  for (const metadata of [
+    { ...compactMetadata(), reviewRequired: null },
+    { ...compactMetadata(), reviewRequired: undefined },
+    { ...compactMetadata(), reviewRequired: 'false' },
+    { ...compactMetadata(), verified: true },
+    { ...compactMetadata(), bookingState: 'held' },
+    { ...compactMetadata(), supplierStatus: 'Booked' },
+    { ...compactMetadata(), checkedAt: instant(-1_000) },
+    { ...compactMetadata(), supplierCheckedAt: instant(-1_000) },
+    { ...compactMetadata(), lastCheck: { verified: false, checkedAt: instant(-1_000) } },
+    { ...compactMetadata(), extraEvidence: 'unverified' },
+  ]) {
+    assert.equal((await record(compactHold, metadata)).recorded, false,
+      'Compact provenance cannot invent verification, evidence, timestamps or an unknown review flag');
+  }
+  for (const key of ['uniqueTransId','itemCodeRef','priceCodeRef','bookingCodeRef','bookingRefNumber','pnr','supplierPublicRef']) {
+    assert.equal((await record(compactHold, compactMetadata(), instant(6_000),
+      { ...compactHold.identity, [key]: 'different' })).recorded, false,
+    `Compact metadata also requires exact ${key} receipt identity`);
+  }
+  assert.deepEqual(await businessSnapshot(), snapshot,
+    'Compact status records, invalid metadata and all conflict vetoes leave business/wallet/outbox unchanged');
 
   for (const key of ['uniqueTransId','itemCodeRef','priceCodeRef','bookingCodeRef','bookingRefNumber','pnr','supplierPublicRef']) {
     assert.equal((await record(cancelled, holdMetadata(), instant(6_000),
@@ -217,7 +272,15 @@ try {
   assert.equal((await record(issuable, holdMetadata())).effectiveStatus, 'on-hold');
   assert.equal((await detail(issuable)).shapon_current_status.reviewRequired, false);
   const wallet = (await db.query("select (wallet_ensure_account('user','shapon-current-owner','BDT')).*")).rows[0];
-  await db.query('update wallet_accounts set available_balance=1000000 where id=$1', [wallet.id]);
+  await db.query('update wallet_accounts set available_balance=2000000 where id=$1', [wallet.id]);
+  const compactKey = `operation:v1:${digest(compactHold.booking.id)}`;
+  const compactHash = digest(`ticket:${compactHold.booking.id}`);
+  const compactClaim = (await db.query("select wallet_begin_booking_issue_v2($1,'shapon-current-owner','customer',$2,$3) as result",
+    [compactHold.booking.id, compactKey, compactHash])).rows[0].result;
+  assert.equal(compactClaim.ok, true,
+    'A valid compact public no-review hold permits the real synthetic atomic wallet claim');
+  assert.equal((await db.query('select count(*)::int as n from wallet_reservations where booking_id=$1',
+    [compactHold.booking.id])).rows[0].n, 1);
   const issueKey = `operation:v1:${digest(issuable.booking.id)}`;
   const issueHash = digest(`ticket:${issuable.booking.id}`);
   const claim = (await db.query("select wallet_begin_booking_issue_v2($1,'shapon-current-owner','customer',$2,$3) as result",

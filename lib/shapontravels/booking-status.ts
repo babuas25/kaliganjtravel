@@ -15,8 +15,9 @@ const CURRENT_STATUSES = [
 ] as const;
 const CURRENT_SOURCES = [
   'supplier_pnr', 'ticket_operation', 'cancellation_operation', 'admin_decision',
-  'staff_manual', 'saved_booking', 'saved_import',
+  'staff_manual', 'saved_booking', 'saved_import', 'public_receipt',
 ] as const;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export type ShapontravelsCurrentStatus = {
   status: typeof CURRENT_STATUSES[number];
   bookingState: string | null;
@@ -78,13 +79,46 @@ function evidenceTime(value: unknown): string | null | undefined {
 
 type CurrentMetadata = Pick<ShapontravelsBookingStatus, 'currentStatus' | 'currentStatusState'>;
 
-function currentMetadata(envelope: Record<string, unknown>): CurrentMetadata {
+function currentMetadata(envelope: Record<string, unknown>, allowSavedPublic = false): CurrentMetadata {
   if (!Object.hasOwn(envelope, 'currentStatus')) {
     return { currentStatus: null, currentStatusState: 'absent' };
   }
   const invalid: CurrentMetadata = { currentStatus: null, currentStatusState: 'invalid' };
   const current = object(envelope.currentStatus);
-  if (!current || !CURRENT_STATUSES.includes(current.status as ShapontravelsCurrentStatus['status']) ||
+  if (!current || !CURRENT_STATUSES.includes(current.status as ShapontravelsCurrentStatus['status'])) return invalid;
+  // Public machine receipts deliberately withhold private state and supplier
+  // check details. Keep their saved status without inventing that evidence.
+  const compact = Object.keys(current).length === 2 &&
+    Object.hasOwn(current, 'status') && Object.hasOwn(current, 'reviewRequired');
+  const savedPublic = current.source === 'public_receipt' &&
+    Object.keys(current).length === 9 && current.verified === false &&
+    current.bookingState === null && current.supplierStatus === null &&
+    current.supplierCheckedAt === null && current.checkedAt === null && current.lastCheck === null;
+  if (compact || current.source === 'public_receipt') {
+    if ((!compact && (!allowSavedPublic || !savedPublic)) ||
+        typeof current.reviewRequired !== 'boolean') return invalid;
+    let reviewRequired = current.reviewRequired;
+    if (compact) {
+      const receipt = object(envelope.publicReceipt);
+      const actions = object(receipt?.actions);
+      if (!receipt || receipt.status !== current.status ||
+          typeof receipt.pendingReview !== 'boolean' || typeof actions?.canIssue !== 'boolean') return invalid;
+      // A manually resolved or otherwise unusable hold can have review=false
+      // while the public receipt correctly forbids issuing it.
+      reviewRequired = reviewRequired || receipt.pendingReview ||
+        (current.status === 'on-hold' && actions.canIssue !== true);
+    }
+    return {
+      currentStatusState: 'available',
+      currentStatus: {
+        status: current.status as ShapontravelsCurrentStatus['status'],
+        bookingState: null, supplierStatus: null, supplierCheckedAt: null,
+        verified: false, source: 'public_receipt', checkedAt: null,
+        reviewRequired, lastCheck: null,
+      },
+    };
+  }
+  if (
       !CURRENT_SOURCES.includes(current.source as ShapontravelsCurrentStatus['source']) ||
       typeof current.verified !== 'boolean') return invalid;
   const bookingState = nullableText(current.bookingState);
@@ -122,7 +156,7 @@ function currentMetadata(envelope: Record<string, unknown>): CurrentMetadata {
 
 /** Validate saved current evidence without assigning receipt identity or freshness. */
 export function parseShapontravelsCurrentStatus(value: unknown): ShapontravelsCurrentStatus | null {
-  return currentMetadata({ currentStatus: value }).currentStatus;
+  return currentMetadata({ currentStatus: value }, true).currentStatus;
 }
 
 /** Verify saved receipt identity before exposing independent current evidence. */
@@ -173,11 +207,16 @@ export function verifyShapontravelsBookingStatus(
       !shortText(receipt.bookingStatus)) {
     return { ...base, result: 'unverified' };
   }
+  // Current public receipts publish the PNR in this field; older local rows
+  // retain the private UUID. All remaining receipt and PNR pins still match.
+  const legacyPublicReference = UUID.test(expected.bookingRefNumber ?? '') &&
+    Boolean(expected.pnr) && receipt.bookingRefNumber === expected.pnr;
   if (receipt.uniqueTransID !== expected.uniqueTransId ||
       receipt.itemCodeRef !== expected.itemCodeRef ||
       receipt.priceCodeRef !== expected.priceCodeRef ||
       (expected.bookingCodeRef && receipt.bookingCodeRef !== expected.bookingCodeRef) ||
-      (expected.bookingRefNumber && receipt.bookingRefNumber !== expected.bookingRefNumber) ||
+      (expected.bookingRefNumber && receipt.bookingRefNumber !== expected.bookingRefNumber &&
+        !legacyPublicReference) ||
       (expected.pnr && receipt.pnr !== expected.pnr) ||
       (expected.supplierPublicRef && read.supplierPublicRef !== expected.supplierPublicRef)) {
     return { ...base, result: 'mismatch' };

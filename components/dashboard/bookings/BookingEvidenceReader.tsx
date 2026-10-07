@@ -180,7 +180,7 @@ export default function BookingEvidenceReader({
             value={purpose}
             onChange={(event) => changePurpose(event.target.value as EvidencePurpose)}
             disabled={loading}
-            className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-navy-950 outline-none focus:border-brand-orange"
+            className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-navy-950 outline-hidden focus:border-brand-orange"
           >
             <option value="held">Held / unticketed</option>
             <option value="ticketed">Ticketed</option>
@@ -202,7 +202,7 @@ export default function BookingEvidenceReader({
                 setError(null);
               }}
               disabled={loading}
-              className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-navy-950 outline-none focus:border-brand-orange"
+              className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-navy-950 outline-hidden focus:border-brand-orange"
             >
               <option value="Cancelled">Cancelled report</option>
               <option value="Refunded">Refunded report</option>

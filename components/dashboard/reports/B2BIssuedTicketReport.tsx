@@ -335,7 +335,7 @@ export default function B2BIssuedTicketReport({ agencies }: Props) {
                     value={draft.search}
                     onChange={(event) => setDraft({ ...draft, search: event.target.value })}
                     placeholder="Search reference"
-                    className="w-full rounded-lg border border-neutral-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+                    className="w-full rounded-lg border border-neutral-200 py-2.5 pl-9 pr-3 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
                   />
                 </span>
               </label>
@@ -346,7 +346,7 @@ export default function B2BIssuedTicketReport({ agencies }: Props) {
                   value={draft.from}
                   max={draft.to || undefined}
                   onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
                 />
               </label>
               <label>
@@ -356,7 +356,7 @@ export default function B2BIssuedTicketReport({ agencies }: Props) {
                   value={draft.to}
                   min={draft.from || undefined}
                   onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
                 />
               </label>
               <label>
@@ -364,7 +364,7 @@ export default function B2BIssuedTicketReport({ agencies }: Props) {
                 <select
                   value={draft.bookedBy}
                   onChange={(event) => setDraft({ ...draft, bookedBy: event.target.value })}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
                 >
                   <option value="">All agency users</option>
                   {(report?.users ?? []).map((user) => (
@@ -377,7 +377,7 @@ export default function B2BIssuedTicketReport({ agencies }: Props) {
                 <select
                   value={draft.airline}
                   onChange={(event) => setDraft({ ...draft, airline: event.target.value })}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
                 >
                   <option value="">All airlines</option>
                   {(report?.airlines ?? []).map((airline) => (

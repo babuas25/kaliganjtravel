@@ -158,7 +158,7 @@ export default async function Home() {
                 return (
                   <article
                     key={offer.id}
-                    className="relative min-h-56 overflow-hidden rounded-2xl bg-gradient-to-br from-navy-950 via-navy-900 to-brand-orange p-6 text-white shadow-xl"
+                    className="relative min-h-56 overflow-hidden rounded-2xl bg-linear-to-br/srgb from-navy-950 via-navy-900 to-brand-orange p-6 text-white shadow-xl"
                   >
                     {imageUrl ? (
                       <>
@@ -169,7 +169,7 @@ export default async function Home() {
                           sizes="(min-width: 768px) 33vw, 100vw"
                           className="object-cover"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-br from-navy-950/40 via-navy-900/20 to-brand-orange/25" />
+                        <div className="absolute inset-0 bg-linear-to-br/srgb from-navy-950/40 via-navy-900/20 to-brand-orange/25" />
                       </>
                     ) : null}
                     <div className="relative flex h-full min-h-44 flex-col justify-end">

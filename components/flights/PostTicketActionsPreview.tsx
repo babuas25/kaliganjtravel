@@ -41,7 +41,7 @@ export type PostTicketRouteOption = {
 };
 
 const quickActionButtonClass =
-  "flex w-full items-center justify-center gap-2 rounded-md bg-white px-3 py-2.5 text-sm font-semibold text-navy-950 transition hover:bg-navy-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 focus-visible:ring-offset-navy-950";
+  "flex w-full items-center justify-center gap-2 rounded-md bg-white px-3 py-2.5 text-sm font-semibold text-navy-950 transition hover:bg-navy-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 focus-visible:ring-offset-navy-950";
 const sectionCardClass = "rounded-md border border-navy-950/10 bg-white p-3";
 const terminalStatuses = new Set(["rejected", "expired"]);
 
@@ -724,7 +724,7 @@ export default function PostTicketActionsPreview({
                               {item.value === "reissue" && selected && (
                                 <label className="mt-2 block text-[9px] font-semibold uppercase tracking-wide text-neutral-500">
                                   Preferred new date
-                                  <input type="date" required value={requestedDates[route.id] ?? ""} onChange={(event) => { setRequestedDates((current) => ({ ...current, [route.id]: event.target.value })); resetSubmissionIdentity(); }} className="mt-1 h-9 w-full rounded-md border border-navy-950/15 bg-white px-2 text-xs font-medium text-navy-950 outline-none focus:border-brand-orange" />
+                                  <input type="date" required value={requestedDates[route.id] ?? ""} onChange={(event) => { setRequestedDates((current) => ({ ...current, [route.id]: event.target.value })); resetSubmissionIdentity(); }} className="mt-1 h-9 w-full rounded-md border border-navy-950/15 bg-white px-2 text-xs font-medium text-navy-950 outline-hidden focus:border-brand-orange" />
                                 </label>
                               )}
                             </div>
@@ -746,7 +746,7 @@ export default function PostTicketActionsPreview({
                     )}
                     <label className={sectionCardClass + " block"}>
                       <span className="text-[10px] font-bold uppercase tracking-wide text-navy-950">Note <span className="font-medium text-neutral-400">(optional)</span></span>
-                      <textarea value={note} onChange={(event) => { setNote(event.target.value); resetSubmissionIdentity(); }} maxLength={500} rows={2} placeholder="Add information for the support team." className="mt-1.5 w-full resize-none rounded-md border border-navy-950/15 bg-navy-50/40 px-2 py-2 text-xs text-navy-950 outline-none focus:border-brand-orange" />
+                      <textarea value={note} onChange={(event) => { setNote(event.target.value); resetSubmissionIdentity(); }} maxLength={500} rows={2} placeholder="Add information for the support team." className="mt-1.5 w-full resize-none rounded-md border border-navy-950/15 bg-navy-50/40 px-2 py-2 text-xs text-navy-950 outline-hidden focus:border-brand-orange" />
                     </label>
                     <button type="submit" disabled={!formReady || submitting} className="flex w-full items-center justify-center gap-2 rounded-md bg-brand-orange px-3 py-2.5 text-xs font-semibold text-navy-950 transition hover:bg-brand-orange-dark hover:text-white disabled:opacity-50">
                       {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />} Submit {item.label} Request

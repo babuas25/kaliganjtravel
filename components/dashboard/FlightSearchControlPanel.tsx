@@ -124,7 +124,7 @@ function SupplierLimitCard({ usage }: { usage: FlightSearchSupplierUsage }) {
             onChange={(event) => setValue(event.target.value)}
             disabled={pending}
             placeholder="Blank = unlimited; 0 = blocked"
-            className="mt-1.5 h-9 w-full rounded-lg border border-neutral-300 px-3 text-sm outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
+            className="mt-1.5 h-9 w-full rounded-lg border border-neutral-300 px-3 text-sm outline-hidden focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
           />
         </label>
         <button

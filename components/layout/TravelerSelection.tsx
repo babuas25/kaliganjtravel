@@ -334,7 +334,7 @@ export default function TravelerSelection({
                       id={`${instanceId}-child-age-${index}`}
                       value={draft.childrenAges[index] || ''}
                       onChange={(e) => setChildAge(index, Number(e.target.value))}
-                      className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm text-navy-950 outline-none focus:border-brand-orange"
+                      className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm text-navy-950 outline-hidden focus:border-brand-orange"
                     >
                       <option value="">Choose</option>
                       {CHILD_AGES.map((age) => (

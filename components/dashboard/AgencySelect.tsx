@@ -42,7 +42,7 @@ export default function AgencySelect({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
-      className={`rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 focus:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:bg-navy-50 ${className}`}
+      className={`rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 focus:border-brand-orange focus:outline-hidden focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:bg-navy-50 ${className}`}
     >
       <option value="">Select an agency…</option>
       {agencies.map((agency) => (

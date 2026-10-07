@@ -81,7 +81,7 @@ export default function SubUserInvitePanel({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="name@example.com"
-            className="mt-1 w-full rounded-md border border-navy-100 px-3 py-2 text-sm text-navy-950 placeholder:text-navy-700/40 focus:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange"
+            className="mt-1 w-full rounded-md border border-navy-100 px-3 py-2 text-sm text-navy-950 placeholder:text-navy-700/40 focus:border-brand-orange focus:outline-hidden focus:ring-1 focus:ring-brand-orange"
           />
         </label>
 

@@ -82,7 +82,7 @@ export default function PromoCarousel({
                 className="object-cover"
               />
             )}
-            <div className="absolute inset-0 bg-gradient-to-r from-navy-950/90 via-navy-900/60 to-transparent" />
+            <div className="absolute inset-0 bg-linear-to-r/srgb from-navy-950/90 via-navy-900/60 to-transparent" />
             <div className="absolute inset-0 flex flex-col justify-center px-8 text-white md:px-12">
               <p className="mb-2 inline-block w-fit rounded-full bg-brand-orange px-3 py-1 text-xs font-bold uppercase tracking-wide">
                 {s.eyebrow}

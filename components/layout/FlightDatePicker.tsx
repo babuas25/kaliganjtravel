@@ -263,7 +263,7 @@ export default function FlightDatePicker({
           disabled={isDisabled}
           aria-current={isToday ? 'date' : undefined}
           className={cn(
-            'mx-auto h-10 w-10 rounded-full text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40',
+            'mx-auto h-10 w-10 rounded-full text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange/40',
             isDisabled && 'cursor-not-allowed text-neutral-300',
             !isDisabled && !isSelected && 'text-navy-950 hover:bg-brand-orange-light hover:text-brand-orange-dark',
             !isDisabled && !isSelected && isToday && 'font-bold text-brand-orange ring-1 ring-inset ring-brand-orange/30',

@@ -9,6 +9,7 @@ import { promotionSchema } from '@/lib/promotional-popup';
 import { FOLDERS, uploadAsset } from '@/lib/cloudinary';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import { recordSecurityAuditEvent } from '@/lib/db/security';
+import { inspectFlightSearchBackgroundBytes } from '@/lib/upload-verify';
 
 export async function savePromotionAction(input: unknown, expectedVersion: number) {
   const session = await getDashboardSession();
@@ -37,7 +38,10 @@ export async function uploadPromotionAction(form: FormData) {
   const file = form.get('file');
   if (!(file instanceof File) || file.size === 0 || file.size > 2 * 1024 * 1024) return { ok: false, message: 'Choose a JPG, PNG or WebP image up to 2 MB.' };
   try {
-    const source = sharp(Buffer.from(await file.arrayBuffer()), { limitInputPixels: 24000000 });
+    const inputBytes = Buffer.from(await file.arrayBuffer());
+    // Check the raster signature before Sharp can load an SVG or other decoder.
+    if (!inspectFlightSearchBackgroundBytes(inputBytes, file.type).ok) return { ok: false, message: 'Use a static JPG, PNG or WebP image.' };
+    const source = sharp(inputBytes, { limitInputPixels: 24000000 });
     const metadata = await source.metadata();
     if (!['jpeg', 'png', 'webp'].includes(metadata.format ?? '') || (metadata.pages ?? 1) > 1) return { ok: false, message: 'Use a static JPG, PNG or WebP image.' };
     const bytes = await source.rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90 }).toBuffer();

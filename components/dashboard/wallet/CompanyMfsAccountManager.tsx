@@ -53,7 +53,7 @@ const EMPTY_DRAFT: Draft = {
 };
 
 const CONTROL =
-  'mt-1.5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-navy-400 focus:ring-2 focus:ring-navy-100 disabled:cursor-not-allowed disabled:bg-neutral-100';
+  'mt-1.5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm outline-hidden transition placeholder:text-neutral-400 focus:border-navy-400 focus:ring-2 focus:ring-navy-100 disabled:cursor-not-allowed disabled:bg-neutral-100';
 
 async function api(url: string, options?: RequestInit) {
   const response = await fetch(url, { cache: 'no-store', ...options });

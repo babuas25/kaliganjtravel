@@ -65,7 +65,7 @@ export default async function BankDetailsPage() {
     <div className="min-h-screen bg-neutral-50 text-navy-950">
       <Header logo={logo} hiddenNavSegments={hiddenDashboardSegments()} />
       <main>
-        <header className="border-b border-orange-100 bg-gradient-to-br from-orange-50 via-white to-white">
+        <header className="border-b border-orange-100 bg-linear-to-br/srgb from-orange-50 via-white to-white">
           <div className="mx-auto max-w-6xl px-6 py-10 sm:py-14">
             <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-600 transition hover:text-brand-orange-dark">
               <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to home

@@ -20,7 +20,7 @@ export default async function AnnouncementsPage() {
       <h2 className="text-lg font-bold text-navy-950">No announcements yet</h2><p className="mt-2 text-sm text-neutral-500">New promotions will appear here when they’re published.</p>
       <Link href="/dashboard/flight-search" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-brand-orange">Search flights <ArrowRight className="h-4 w-4" aria-hidden /></Link>
     </div> : <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-      {offers.map((offer) => <Link key={offer.id} href={`/dashboard/announcements/${offer.id}`} className="group flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">
+      {offers.map((offer) => <Link key={offer.id} href={`/dashboard/announcements/${offer.id}`} className="group flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange">
         <div className="flex aspect-[16/10] items-center justify-center border-b border-neutral-100 bg-navy-50 p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={offer.imageUrl} alt={offer.title} className="h-full w-full object-contain" />

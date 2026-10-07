@@ -8,8 +8,12 @@ Use Node.js 24 and run:
 
 ```sh
 npm ci
+npm audit
 npm run lint
 npm run typecheck
+npm run verify:promotion-upload
+npm run verify:next-eslint-root-dirs
+npm run verify:tailwind-compatibility
 npm run verify:ci
 npm run build
 ```
@@ -31,6 +35,41 @@ Clerk key and an execution-key string in an isolated database test.
 The branding check now reflects the existing neutral ink palette. The database
 check verifies the frozen baseline checksum against its installation receipt;
 it does not overwrite the baseline or connect to Supabase.
+
+## Dependency security remediation (2026-10-08)
+
+The dependency audit was reduced from 24 findings to zero, including after a
+clean `npm ci --ignore-scripts`. Next.js and its matching lint/SWC packages are
+16.3.6, Sharp is 0.35.5, Nodemailer is 10.0.16, brace-expansion is 5.0.12, and
+source-map-js is 1.2.2. Sharp overrides reference the direct dependency, avoiding
+separate stale pins. Nodemailer now supplies its own TypeScript declarations.
+
+Tailwind CSS and its PostCSS plugin are 4.3.3, with tailwind-merge 3.7.0. The
+migration preserves the existing theme colors and control defaults, changes
+hidden-outline and gradient utilities to their v4 equivalents, and retains
+sRGB gradient interpolation. All 1,837 actual baseline classes were accounted
+for. Nineteen isolated browser samples matched the previous CSS in normal and
+forced-color modes. The browser minimums are Safari 16.4, Chrome 111, and Firefox
+128, following the [Tailwind upgrade guide](https://tailwindcss.com/docs/upgrade-guide).
+
+The official Next.js lint plugin still depends on an unpatched `braces` chain.
+A scoped override replaces only its `fast-glob` dependency with the private
+`vendor/next-eslint-glob` adapter, using patched brace-expansion and released
+tinyglobby/picomatch packages. All upstream lint rules remain installed. The
+adapter's 33 directory cases, bounded-pattern checks, and actual internal-link
+lint rule are verified. Review this narrow Node 24/POSIX adapter when updating
+the Next plugin, and remove it once the upstream dependency is fixed.
+
+Promotion-image uploads verify raster signatures and declared MIME before
+calling Sharp. Local tests cover valid JPEG/PNG/WebP processing and SVG rejection
+before decoding, plus authorization, size/rate limits, and audit/storage ordering.
+
+GitHub Actions now fails its quality job on any npm audit finding and runs the
+three new verification commands above. Lint, typecheck, the existing CI/pricing
+regression checks, local email and Excel export checks, and production build
+passed. Build verification uses a synthetic Clerk key with real service
+configuration disabled. The audit gate controls the Actions deployment job;
+native Vercel Git deployments remain independent as described below.
 
 ## New Vercel project
 

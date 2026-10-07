@@ -93,7 +93,7 @@ function ModifyButton({
       aria-expanded={isOpen}
       aria-controls={contentId}
       onClick={onClick}
-      className={`flex items-center justify-center gap-2 rounded-md bg-brand-orange px-5 text-sm font-semibold text-black shadow-md shadow-brand-orange/20 transition hover:bg-brand-orange/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 ${className}`}
+      className={`flex items-center justify-center gap-2 rounded-md bg-brand-orange px-5 text-sm font-semibold text-black shadow-md shadow-brand-orange/20 transition hover:bg-brand-orange/90 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 ${className}`}
     >
       <SlidersHorizontal className="h-4 w-4" aria-hidden />
       {isOpen ? 'Hide search' : 'Modify search'}

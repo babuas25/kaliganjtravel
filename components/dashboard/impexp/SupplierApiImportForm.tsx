@@ -307,7 +307,7 @@ export default function SupplierApiImportForm({
 
   return (
     <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="border-b border-navy-100 bg-gradient-to-r from-navy-50 via-white to-brand-orange-light/40 px-5 py-5 sm:px-6">
+      <div className="border-b border-navy-100 bg-linear-to-r/srgb from-navy-50 via-white to-brand-orange-light/40 px-5 py-5 sm:px-6">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-orange text-black shadow-sm">
             <DatabaseZap className="h-5 w-5" aria-hidden />

@@ -112,7 +112,7 @@ export default function ResultsSortBar({
                 aria-expanded={isOpen}
                 aria-controls={menuId}
                 onClick={() => setOpenMenu(isOpen ? null : group.key)}
-                className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-md border px-3 text-left text-xs font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange ${
+                className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-md border px-3 text-left text-xs font-semibold shadow-sm transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange ${
                   isActive
                     ? 'border-brand-orange/40 bg-brand-orange-light text-brand-orange-dark'
                     : 'border-neutral-200 bg-white text-navy-950 hover:border-neutral-300 hover:bg-neutral-50'

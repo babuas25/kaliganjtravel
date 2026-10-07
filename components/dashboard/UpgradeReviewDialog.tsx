@@ -221,7 +221,7 @@ export default function UpgradeReviewDialog({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="What they should correct before applying again"
-                  className="mt-1.5 w-full rounded-md border border-navy-100 px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20"
+                  className="mt-1.5 w-full rounded-md border border-navy-100 px-3 py-2 text-sm text-navy-950 outline-hidden transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20"
                 />
               </label>
             </div>

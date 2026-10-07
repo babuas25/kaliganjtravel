@@ -1313,7 +1313,7 @@ export default function BookingActions({
                     onChange={(event) => setShareEmail(event.target.value)}
                     disabled={sharing}
                     placeholder="name@example.com"
-                    className="w-full rounded-md border border-white/20 bg-white px-3 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-neutral-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="w-full rounded-md border border-white/20 bg-white px-3 py-2.5 text-sm text-navy-950 outline-hidden transition placeholder:text-neutral-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:opacity-70"
                   />
                   <button
                     type="submit"
@@ -1375,7 +1375,7 @@ export default function BookingActions({
                           onChange={(event) => setSmsRecipientNumber(event.target.value)}
                           disabled={smsSending || !smsPreview.canSend}
                           placeholder="017XXXXXXXX or 88017XXXXXXXX"
-                          className="w-full rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-xs text-navy-950 outline-none transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:bg-neutral-100"
+                          className="w-full rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-xs text-navy-950 outline-hidden transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:bg-neutral-100"
                         />
                         <label
                           htmlFor="booking-share-sms-message"
@@ -1390,7 +1390,7 @@ export default function BookingActions({
                           value={smsMessage}
                           onChange={(event) => setSmsMessage(event.target.value)}
                           disabled={smsSending || !smsPreview.canSend}
-                          className="w-full resize-y rounded-md border border-neutral-200 bg-neutral-100 p-2.5 font-sans text-xs leading-5 text-neutral-800 outline-none transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed"
+                          className="w-full resize-y rounded-md border border-neutral-200 bg-neutral-100 p-2.5 font-sans text-xs leading-5 text-neutral-800 outline-hidden transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed"
                         />
                         <div className="flex items-center justify-between gap-2 text-[10px] text-neutral-500">
                           <span>Use a different number for each send.</span>

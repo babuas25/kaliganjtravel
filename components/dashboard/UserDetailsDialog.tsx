@@ -48,7 +48,7 @@ interface Props {
 }
 
 const INPUT_CLASS =
-  'mt-1 w-full rounded-md border border-navy-100 px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:bg-navy-50';
+  'mt-1 w-full rounded-md border border-navy-100 px-3 py-2 text-sm text-navy-950 outline-hidden transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:bg-navy-50';
 
 /**
  * One editable field. File fields never reach here — they render as links.

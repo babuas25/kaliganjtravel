@@ -82,7 +82,7 @@ function SearchCard({ item }: { item: FlightSearchSuggestion }) {
       href={href}
       prefetch={false}
       title={`Search flights: ${route}`}
-      className="group flex min-h-32 min-w-[270px] flex-1 snap-start flex-col rounded-xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-orange/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange lg:min-w-0"
+      className="group flex min-h-32 min-w-[270px] flex-1 snap-start flex-col rounded-xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-orange/35 hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange lg:min-w-0"
     >
       <span className="flex min-w-0 items-start justify-between gap-3">
         <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-emerald-600">

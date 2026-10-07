@@ -37,7 +37,7 @@ type Props = {
 };
 
 const CONTROL =
-  'mt-1.5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm outline-none transition placeholder:text-neutral-400 focus:border-navy-400 focus:ring-2 focus:ring-navy-100 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500';
+  'mt-1.5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm outline-hidden transition placeholder:text-neutral-400 focus:border-navy-400 focus:ring-2 focus:ring-navy-100 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500';
 const LABEL = 'block text-sm font-medium text-navy-950';
 
 function RequiredLabel({ children }: { children: React.ReactNode }) {

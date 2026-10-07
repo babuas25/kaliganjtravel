@@ -14,7 +14,7 @@ import {
 import { ROLES, ROLE_LABELS } from '@/lib/roles';
 
 const FIELD_CLASS =
-  'rounded-md border border-navy-100 bg-white px-2.5 py-2 text-sm text-navy-950 focus:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange';
+  'rounded-md border border-navy-100 bg-white px-2.5 py-2 text-sm text-navy-950 focus:border-brand-orange focus:outline-hidden focus:ring-1 focus:ring-brand-orange';
 
 const LABEL_CLASS = 'text-xs font-medium text-navy-700';
 

@@ -131,7 +131,7 @@ export default function SubUsersTable({ rows }: { rows: SubUserRow[] }) {
                                 setDraft({ ...draft, firstName: e.target.value })
                               }
                               placeholder="First name"
-                              className="w-28 rounded-md border border-navy-100 px-2 py-1 text-sm text-navy-950 focus:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                              className="w-28 rounded-md border border-navy-100 px-2 py-1 text-sm text-navy-950 focus:border-brand-orange focus:outline-hidden focus:ring-1 focus:ring-brand-orange"
                             />
                             <input
                               value={draft.lastName}
@@ -139,7 +139,7 @@ export default function SubUsersTable({ rows }: { rows: SubUserRow[] }) {
                                 setDraft({ ...draft, lastName: e.target.value })
                               }
                               placeholder="Last name"
-                              className="w-28 rounded-md border border-navy-100 px-2 py-1 text-sm text-navy-950 focus:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                              className="w-28 rounded-md border border-navy-100 px-2 py-1 text-sm text-navy-950 focus:border-brand-orange focus:outline-hidden focus:ring-1 focus:ring-brand-orange"
                             />
                             <button
                               type="button"

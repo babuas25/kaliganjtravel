@@ -18,7 +18,7 @@ const navigation = [
   { label: 'About us', href: '/about-us', path: '/about-us' },
   { label: 'Contact', href: '/contact-us', path: '/contact-us' },
 ];
-const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-4';
+const focusRing = 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-4';
 
 /** The logo is resolved server-side and handed down; this stays a client tree. */
 export default function Header({ logo, hiddenNavSegments, showContactBar = false }: {

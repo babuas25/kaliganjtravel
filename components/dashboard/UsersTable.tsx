@@ -296,7 +296,7 @@ export default function UsersTable({
                       onChange={(e) =>
                         chooseRole(row, e.target.value as Role)
                       }
-                      className="w-full rounded-md border border-navy-100 bg-white px-2 py-1.5 text-sm text-navy-950 focus:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:bg-navy-50 disabled:text-navy-700/60"
+                      className="w-full rounded-md border border-navy-100 bg-white px-2 py-1.5 text-sm text-navy-950 focus:border-brand-orange focus:outline-hidden focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:bg-navy-50 disabled:text-navy-700/60"
                     >
                       {options.map((role) => (
                         <option key={role} value={role}>

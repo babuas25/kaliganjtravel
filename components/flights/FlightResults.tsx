@@ -172,7 +172,7 @@ function StaffBookingAssigneePicker({
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search name, email, agency or Agency ID"
                 aria-label="Search booking assignee"
-                className="h-10 w-full rounded-md border border-neutral-300 px-3 text-sm text-navy-950 outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20"
+                className="h-10 w-full rounded-md border border-neutral-300 px-3 text-sm text-navy-950 outline-hidden focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20"
               />
               <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-neutral-200">
                 {loading ? (
@@ -516,7 +516,7 @@ function LoadingState({
             <h2 className="mt-4 text-[23px] font-semibold leading-tight tracking-tight text-navy-950 sm:text-[26px]">Your journey is taking shape</h2>
             <p className="mt-2 text-sm leading-6 text-neutral-500">Finding the right flight for you.</p>
 
-            <div className="mt-4 space-y-4 rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50/80 via-white to-orange-50/40 px-4 py-4 sm:px-5">
+            <div className="mt-4 space-y-4 rounded-2xl border border-orange-100 bg-linear-to-br/srgb from-orange-50/80 via-white to-orange-50/40 px-4 py-4 sm:px-5">
               {routes.map((route, index) => (
                 <div key={`${route.origin}-${route.destination}-${index}`} className={index > 0 ? 'border-t border-orange-100 pt-4' : ''}>
                   <div className="grid grid-cols-[1fr_88px_1fr] items-center gap-2">
@@ -660,7 +660,7 @@ function UnavailableResultsState({
         <button
           type="button"
           onClick={onSearchAgain}
-          className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-brand-orange px-5 text-base font-semibold text-navy-950 shadow-md shadow-brand-orange/20 transition hover:bg-brand-orange-dark hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 sm:col-span-2"
+          className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-brand-orange px-5 text-base font-semibold text-navy-950 shadow-md shadow-brand-orange/20 transition hover:bg-brand-orange-dark hover:text-white focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 sm:col-span-2"
         >
           <RefreshCw className="h-5 w-5" aria-hidden />
           Search again
@@ -1000,7 +1000,7 @@ export default function FlightResults({
                 aria-expanded={mobileFiltersOpen}
                 aria-controls={mobileFiltersId}
                 onClick={() => setMobileFiltersOpen((open) => !open)}
-                className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-xs font-bold text-navy-950 shadow-sm transition hover:border-brand-orange/40 hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange lg:hidden"
+                className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-xs font-bold text-navy-950 shadow-sm transition hover:border-brand-orange/40 hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange lg:hidden"
               >
                 <Filter className="h-4 w-4 text-brand-orange" aria-hidden />
                 Filter

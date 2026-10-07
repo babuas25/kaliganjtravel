@@ -317,7 +317,7 @@ function pageTokensFor(current: number, total: number): PageToken[] {
 }
 
 const inputClass =
-  'h-8 w-full rounded-md border border-neutral-300 bg-white px-2 text-xs text-navy-950 focus:border-brand-orange focus:outline-none focus:ring-2 focus:ring-brand-orange/30';
+  'h-8 w-full rounded-md border border-neutral-300 bg-white px-2 text-xs text-navy-950 focus:border-brand-orange focus:outline-hidden focus:ring-2 focus:ring-brand-orange/30';
 
 function bookingHref(referenceNo: string): string {
   return `/dashboard/bookings/${encodeURIComponent(referenceNo)}`;
@@ -619,7 +619,7 @@ export default function BookingsTable({
                       // The visible label is split across lines, which leaves
                       // the button without a usable name of its own.
                       aria-label={`Sort by ${label}`}
-                      className="rounded text-left leading-tight transition hover:text-brand-orange-dark focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                      className="rounded text-left leading-tight transition hover:text-brand-orange-dark focus:outline-hidden focus:ring-2 focus:ring-brand-orange/30"
                     >
                       {/* Header words stack, so twelve columns fit without a
                           horizontal scroll on a normal laptop. */}
@@ -902,7 +902,7 @@ export default function BookingsTable({
                   })
                 }
                 aria-label="Rows per page"
-                className="h-8 rounded-md border border-neutral-300 bg-white px-2 text-sm text-navy-950 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                className="h-8 rounded-md border border-neutral-300 bg-white px-2 text-sm text-navy-950 focus:outline-hidden focus:ring-2 focus:ring-brand-orange/30"
               >
                 {BOOKING_PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
@@ -1047,7 +1047,7 @@ function BookingVisibilityListAction({ booking }: { booking: BookingListRow }) {
           ? actionLabel
           : `${actionLabel} (wallet and lifecycle eligibility is rechecked on submit)`
       }
-      className="ml-1 inline-flex h-6 items-center gap-1 rounded border border-sky-200 bg-sky-50 px-1.5 text-[10px] font-semibold text-sky-800 transition hover:bg-sky-100 focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:cursor-wait disabled:opacity-60"
+      className="ml-1 inline-flex h-6 items-center gap-1 rounded border border-sky-200 bg-sky-50 px-1.5 text-[10px] font-semibold text-sky-800 transition hover:bg-sky-100 focus:outline-hidden focus:ring-2 focus:ring-sky-300 disabled:cursor-wait disabled:opacity-60"
     >
       {busy ? (
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -1080,7 +1080,7 @@ function RowActions({
         href={bookingHref(booking.referenceNo)}
         aria-label={`View booking ${booking.referenceNo}`}
         title="View booking"
-        className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+        className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-hidden focus:ring-2 focus:ring-brand-orange/30"
       >
         <Eye className="h-3 w-3" aria-hidden />
       </Link>
@@ -1134,7 +1134,7 @@ export function BookingsFilterBar({
           aria-label="Search bookings"
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.target.value)}
-          className="h-8 w-full rounded-md border border-neutral-300 bg-white pl-8 pr-3 text-xs text-navy-950 shadow-sm focus:border-brand-orange focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+          className="h-8 w-full rounded-md border border-neutral-300 bg-white pl-8 pr-3 text-xs text-navy-950 shadow-sm focus:border-brand-orange focus:outline-hidden focus:ring-2 focus:ring-brand-orange/30"
         />
       </div>
       <button

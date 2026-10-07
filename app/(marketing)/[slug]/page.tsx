@@ -83,7 +83,7 @@ export default async function FooterContentPage({ params }: PageProps) {
     <div className="min-h-screen bg-navy-50 text-navy-950">
       <Header logo={logo} hiddenNavSegments={hiddenDashboardSegments()} />
       <main>
-        <header className="bg-gradient-to-br from-navy-950 via-navy-900 to-navy-700 text-white">
+        <header className="bg-linear-to-br/srgb from-navy-950 via-navy-900 to-navy-700 text-white">
           <div className="mx-auto max-w-5xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
             <Link
               href="/"

@@ -323,7 +323,7 @@ export default function AnnouncementManager({ initialState }: Props) {
                     }
                     disabled={unavailable || isPending}
                     placeholder="Enter an announcement"
-                    className="h-10 w-full rounded-lg border border-navy-200 bg-white px-3 text-sm text-navy-950 outline-none transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:opacity-60"
+                    className="h-10 w-full rounded-lg border border-navy-200 bg-white px-3 text-sm text-navy-950 outline-hidden transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:opacity-60"
                   />
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-navy-700">

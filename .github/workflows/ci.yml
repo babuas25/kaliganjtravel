@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Lint, types and regression checks
+    name: Security audit, lint, types and regression checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -28,8 +28,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Audit dependencies
+        run: npm audit
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run verify:promotion-upload
+      - run: npm run verify:next-eslint-root-dirs
+      - run: npm run verify:tailwind-compatibility
       - run: npm run verify:ci
       - run: npm run verify:markup-priority
       - run: npm run verify:shapontravels-pricing

@@ -99,7 +99,7 @@ export default function ManualDateTimeField({
   }
 
   const selectClassName =
-    'h-10 min-w-0 flex-1 rounded-md border border-input bg-white px-3 text-sm text-navy-950 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2';
+    'h-10 min-w-0 flex-1 rounded-md border border-input bg-white px-3 text-sm text-navy-950 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2';
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -108,7 +108,7 @@ export default function ManualDateTimeField({
           type="button"
           aria-label={ariaLabel}
           aria-expanded={open}
-          className="flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <CalendarDays className="h-4 w-4 shrink-0 text-neutral-500" aria-hidden />
           <span className={`min-w-0 flex-1 truncate ${displayed ? 'text-navy-950' : 'text-muted-foreground'}`}>

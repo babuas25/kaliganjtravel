@@ -292,7 +292,7 @@ export default function HomepageOffersManager({
                 setHeading(event.target.value);
                 setNotice(null);
               }}
-              className="w-full rounded-lg border border-navy-200 px-3 py-2.5 font-normal outline-none transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
+              className="w-full rounded-lg border border-navy-200 px-3 py-2.5 font-normal outline-hidden transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
             />
           </label>
           <label className="space-y-1.5 text-sm font-medium text-navy-950 sm:col-span-2">
@@ -305,7 +305,7 @@ export default function HomepageOffersManager({
                 setSubheading(event.target.value);
                 setNotice(null);
               }}
-              className="w-full rounded-lg border border-navy-200 px-3 py-2.5 font-normal outline-none transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
+              className="w-full rounded-lg border border-navy-200 px-3 py-2.5 font-normal outline-hidden transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
             />
           </label>
         </div>
@@ -319,7 +319,7 @@ export default function HomepageOffersManager({
                 className="overflow-hidden rounded-xl border border-navy-100 bg-navy-50"
               >
                 <div className="grid lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-                  <div className="relative min-h-56 overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-brand-orange p-5 text-white">
+                  <div className="relative min-h-56 overflow-hidden bg-linear-to-br/srgb from-navy-950 via-navy-900 to-brand-orange p-5 text-white">
                     {offer.image ? (
                       <>
                         <Image
@@ -329,7 +329,7 @@ export default function HomepageOffersManager({
                           sizes="(min-width: 1024px) 380px, 100vw"
                           className="object-cover"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-br from-navy-950/40 via-navy-900/20 to-brand-orange/25" />
+                        <div className="absolute inset-0 bg-linear-to-br/srgb from-navy-950/40 via-navy-900/20 to-brand-orange/25" />
                       </>
                     ) : null}
                     <div className="relative flex h-full min-h-44 flex-col justify-end">
@@ -374,7 +374,7 @@ export default function HomepageOffersManager({
                           onChange={(event) =>
                             updateOffer(offer.id, { eyebrow: event.target.value })
                           }
-                          className="w-full rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm font-normal text-navy-950 outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
+                          className="w-full rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm font-normal text-navy-950 outline-hidden focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
                         />
                       </label>
                       <label className="space-y-1 text-xs font-medium text-navy-700">
@@ -386,7 +386,7 @@ export default function HomepageOffersManager({
                           onChange={(event) =>
                             updateOffer(offer.id, { title: event.target.value })
                           }
-                          className="w-full rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm font-normal text-navy-950 outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
+                          className="w-full rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm font-normal text-navy-950 outline-hidden focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
                         />
                       </label>
                       <label className="space-y-1 text-xs font-medium text-navy-700">
@@ -399,7 +399,7 @@ export default function HomepageOffersManager({
                           onChange={(event) =>
                             updateOffer(offer.id, { description: event.target.value })
                           }
-                          className="w-full resize-y rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm font-normal text-navy-950 outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
+                          className="w-full resize-y rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm font-normal text-navy-950 outline-hidden focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 disabled:bg-neutral-50"
                         />
                       </label>
                     </div>

@@ -42,7 +42,7 @@ type Assignee = { userId: string; name: string; email: string; role: string };
 type MutationInput = Record<string, unknown> & { action: string; expectedVersion: number };
 
 const fieldClass =
-  'h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-xs text-navy-950 outline-none transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10';
+  'h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-xs text-navy-950 outline-hidden transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10';
 const primaryButton =
   'inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-brand-orange px-3 text-xs font-semibold text-navy-950 transition hover:bg-brand-orange-dark hover:text-white disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryButton =
@@ -326,7 +326,7 @@ function QuoteForm({
           <p className="text-[10px] uppercase tracking-wide text-neutral-500">{direction}</p>
         </div>
       </div>
-      <label className="mt-3 block text-[11px] font-semibold text-neutral-600">Quotation notes<textarea value={details} onChange={(event) => setDetails(event.target.value)} rows={3} maxLength={4000} className="mt-1 w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-navy-950 outline-none focus:border-brand-orange" /></label>
+      <label className="mt-3 block text-[11px] font-semibold text-neutral-600">Quotation notes<textarea value={details} onChange={(event) => setDetails(event.target.value)} rows={3} maxLength={4000} className="mt-1 w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-navy-950 outline-hidden focus:border-brand-orange" /></label>
       {error && <p role="alert" className="mt-3 text-xs font-medium text-red-700">{error}</p>}
       <button type="button" disabled={busy} onClick={() => void publish()} className={`${primaryButton} mt-3`}>{busy && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />} Publish quotation</button>
     </section>

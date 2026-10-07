@@ -131,7 +131,7 @@ export function CountrySelector({
         aria-expanded={isOpen}
         aria-label={ariaLabel}
         onClick={() => setIsOpen((open) => !open)}
-        className={`flex w-full max-w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-navy-950 transition hover:bg-navy-50/60 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-orange ${triggerClassName}`}
+        className={`flex w-full max-w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-navy-950 transition hover:bg-navy-50/60 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-brand-orange ${triggerClassName}`}
       >
         <span className="flex min-w-0 items-center gap-2">
           {selected && (
@@ -175,7 +175,7 @@ export function CountrySelector({
               type="text"
               autoFocus
               placeholder="Search country..."
-              className="w-full max-w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-navy-950 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-orange"
+              className="w-full max-w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-navy-950 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-brand-orange"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               onClick={(event) => event.stopPropagation()}

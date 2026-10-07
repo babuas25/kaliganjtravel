@@ -845,7 +845,7 @@ function SegmentBlock({
           <span className="mt-1 flex w-full items-center gap-1" aria-hidden>
             <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-navy-950/40 bg-white" />
             <span className="h-px flex-1 bg-navy-950/20" />
-            <Plane className="h-3.5 w-3.5 shrink-0 rotate-90 text-brand-orange/60" />
+            <Plane className="h-3.5 w-3.5 shrink-0 rotate-90 text-[#f68712]/60" />
             <span className="h-px flex-1 bg-navy-950/20" />
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-navy-950/40" />
           </span>

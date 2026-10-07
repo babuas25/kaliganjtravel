@@ -60,7 +60,7 @@ export default function SendItineraryMenu({ cardRef, text, subject, offer, mobil
     }
   }
 
-  const rowClass = 'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-navy-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40 disabled:opacity-50';
+  const rowClass = 'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-navy-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange/40 disabled:opacity-50';
   const iconClass = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-navy-50 text-navy-950';
   function chooseChannel(next: 'email' | 'sms' | null) {
     setChannel(next);
@@ -121,7 +121,7 @@ export default function SendItineraryMenu({ cardRef, text, subject, offer, mobil
             <button type="button" disabled={busy} onClick={() => chooseChannel(null)} className="text-xs font-semibold text-neutral-500 hover:text-navy-950">← All sharing options</button>
             <div>
               <label htmlFor={recipientId} className="mb-1.5 block text-sm font-semibold text-navy-950">{channel === 'sms' ? 'Mobile number' : 'Email address'}</label>
-              <input id={recipientId} autoFocus required disabled={busy} type={channel === 'sms' ? 'tel' : 'email'} autoComplete={channel === 'sms' ? 'tel' : 'email'} maxLength={channel === 'sms' ? 30 : 254} value={recipient} onChange={(event) => { setRecipient(event.target.value); setFeedback(''); }} placeholder={channel === 'sms' ? '01XXXXXXXXX or +8801XXXXXXXXX' : 'name@example.com'} className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10" />
+              <input id={recipientId} autoFocus required disabled={busy} type={channel === 'sms' ? 'tel' : 'email'} autoComplete={channel === 'sms' ? 'tel' : 'email'} maxLength={channel === 'sms' ? 30 : 254} value={recipient} onChange={(event) => { setRecipient(event.target.value); setFeedback(''); }} placeholder={channel === 'sms' ? '01XXXXXXXXX or +8801XXXXXXXXX' : 'name@example.com'} className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-hidden focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10" />
             </div>
             <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-navy-50 p-3 text-xs leading-relaxed text-navy-950" aria-label="Message preview">{text}</div>
             <button type="submit" disabled={busy || (!error && Boolean(feedback))} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-brand-orange px-3 py-2 text-sm font-bold text-navy-950 hover:bg-brand-orange-dark hover:text-white disabled:opacity-50">

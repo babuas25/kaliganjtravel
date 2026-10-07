@@ -280,7 +280,7 @@ export default function ManualBookingImportForm({ onImported }: { onImported: ()
 
   return (
     <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="border-b border-navy-100 bg-gradient-to-r from-violet-50 via-white to-brand-orange-light/30 px-5 py-5 sm:px-6">
+      <div className="border-b border-navy-100 bg-linear-to-r/srgb from-violet-50 via-white to-brand-orange-light/30 px-5 py-5 sm:px-6">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-orange text-black shadow-sm">
             <FileInput className="h-5 w-5" aria-hidden />

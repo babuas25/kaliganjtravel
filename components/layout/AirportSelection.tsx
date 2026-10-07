@@ -248,7 +248,7 @@ export default function AirportSelection({
         placeholder={placeholder}
         autoComplete="off"
         aria-expanded={open}
-        className="mt-0.5 w-full truncate bg-transparent text-base font-bold text-navy-950 outline-none placeholder:font-normal placeholder:text-neutral-400 md:mt-1 md:text-[17px]"
+        className="mt-0.5 w-full truncate bg-transparent text-base font-bold text-navy-950 outline-hidden placeholder:font-normal placeholder:text-neutral-400 md:mt-1 md:text-[17px]"
       />
 
       {/* Always rendered, even when empty, so the panel does not jump height. */}
@@ -328,7 +328,7 @@ export default function AirportSelection({
                             setOpen(false);
                           }}
                           className={cn(
-                            'flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-brand-orange-light/60 focus-visible:bg-brand-orange-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange',
+                            'flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-brand-orange-light/60 focus-visible:bg-brand-orange-light focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange',
                             isSubItem ? 'border-l-2 border-neutral-200 pl-8 pr-4' : 'px-4'
                           )}
                         >

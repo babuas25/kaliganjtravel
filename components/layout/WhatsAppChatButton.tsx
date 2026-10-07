@@ -8,7 +8,7 @@ export default function WhatsAppChatButton() {
       rel="noopener noreferrer"
       aria-label="Chat on WhatsApp at 01795-271171"
       title="Chat on WhatsApp"
-      className="fixed bottom-5 right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-lg ring-1 ring-black/5 transition duration-200 hover:scale-105 hover:bg-[#20bd5a] hover:shadow-xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#25D366]/30 sm:bottom-6 sm:right-6"
+      className="fixed bottom-5 right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-lg ring-1 ring-black/5 transition duration-200 hover:scale-105 hover:bg-[#20bd5a] hover:shadow-xl focus-visible:outline-hidden focus-visible:ring-4 focus-visible:ring-[#25D366]/30 sm:bottom-6 sm:right-6"
     >
       <svg
         aria-hidden="true"

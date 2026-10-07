@@ -55,7 +55,7 @@ export default function StatusFeedbackProvider({ children }: { children: ReactNo
                 <span className="break-all font-mono text-xs font-semibold tracking-wide text-navy-950">{feedback.reference}</span>
               </div>
             )}
-            <button autoFocus type="button" onClick={() => setFeedback(null)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-orange px-4 py-3 text-sm font-semibold text-black transition hover:bg-brand-orange/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2">
+            <button autoFocus type="button" onClick={() => setFeedback(null)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-orange px-4 py-3 text-sm font-semibold text-black transition hover:bg-brand-orange/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2">
               Continue <ArrowRight className="h-4 w-4" aria-hidden />
             </button>
             <p className="mt-3 text-[11px] text-slate-400">{feedback?.tone === 'progress' ? 'You can follow the latest status in your booking.' : 'You can safely close this message.'}</p>

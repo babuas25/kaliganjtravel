@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
-  darkMode: ['class'],
+  darkMode: 'class',
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -13,6 +13,18 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // Retain the existing utility sizes while upgrading the CSS compiler.
+      boxShadow: {
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+        DEFAULT: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+      },
+      blur: {
+        sm: '4px',
+        DEFAULT: '8px',
+      },
+      ringWidth: {
+        DEFAULT: '3px',
+      },
       spacing: {
         '4.5': '1.125rem',
       },
@@ -80,6 +92,7 @@ const config: Config = {
         },
       },
       borderRadius: {
+        DEFAULT: '0.25rem',
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
@@ -114,4 +127,4 @@ const config: Config = {
   },
   plugins: [require('tailwindcss-animate')],
 };
-export default config;
+module.exports = config;

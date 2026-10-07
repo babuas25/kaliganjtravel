@@ -51,7 +51,7 @@ export default function AgeCalculator() {
         <button
           type="button"
           aria-label="Open age calculator"
-          className="group fixed right-0 top-[58%] z-40 flex h-11 w-10 -translate-y-1/2 items-center justify-center rounded-l-lg bg-brand-orange text-navy-950 shadow-lg transition hover:w-11 hover:bg-brand-orange-dark hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-orange/30"
+          className="group fixed right-0 top-[58%] z-40 flex h-11 w-10 -translate-y-1/2 items-center justify-center rounded-l-lg bg-brand-orange text-navy-950 shadow-lg transition hover:w-11 hover:bg-brand-orange-dark hover:text-white focus-visible:outline-hidden focus-visible:ring-4 focus-visible:ring-brand-orange/30"
         >
           <Calculator className="h-5 w-5" aria-hidden="true" />
           <span className="pointer-events-none absolute right-full mr-2 hidden whitespace-nowrap rounded-lg bg-brand-orange px-3 py-2 text-xs font-medium text-black shadow-lg group-hover:block group-focus-visible:block">
@@ -82,7 +82,7 @@ export default function AgeCalculator() {
                   setResult(null);
                   setError(null);
                 }}
-                className="mt-2 h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-navy-950 outline-none transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
+                className="mt-2 h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-navy-950 outline-hidden transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
               />
             </label>
             <label className="text-sm font-medium text-navy-950">
@@ -97,14 +97,14 @@ export default function AgeCalculator() {
                   setResult(null);
                   setError(null);
                 }}
-                className="mt-2 h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-navy-950 outline-none transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
+                className="mt-2 h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-navy-950 outline-hidden transition focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/15"
               />
             </label>
           </div>
 
           <button
             type="submit"
-            className="mt-5 flex h-12 w-full items-center justify-center rounded-lg bg-brand-orange px-5 text-base font-semibold text-navy-950 transition hover:bg-brand-orange-dark hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-orange/25"
+            className="mt-5 flex h-12 w-full items-center justify-center rounded-lg bg-brand-orange px-5 text-base font-semibold text-navy-950 transition hover:bg-brand-orange-dark hover:text-white focus-visible:outline-hidden focus-visible:ring-4 focus-visible:ring-brand-orange/25"
           >
             Calculate Age
           </button>

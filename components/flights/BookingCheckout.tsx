@@ -168,7 +168,7 @@ const initialContact: BookingContact = {
 // string that already carries `w-full` does not override it, because Tailwind
 // resolves the conflict by CSS order rather than by the order written here.
 const fieldBase =
-  'rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-navy-950 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-orange';
+  'rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-navy-950 transition focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-brand-orange';
 const fieldClass = `w-full ${fieldBase}`;
 const labelClass = 'mb-1 block text-xs font-medium text-neutral-600 sm:text-sm';
 
@@ -897,7 +897,7 @@ export default function BookingCheckout({
                               onChange={(event) =>
                                 applySavedPassenger(index, event.target.value)
                               }
-                              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs text-navy-950 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-orange disabled:cursor-wait disabled:bg-neutral-100 disabled:text-neutral-500"
+                              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs text-navy-950 transition focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-brand-orange disabled:cursor-wait disabled:bg-neutral-100 disabled:text-neutral-500"
                             >
                               <option value="">
                                 {savedPassengersLoading
@@ -1057,7 +1057,7 @@ export default function BookingCheckout({
                                             onClick={() =>
                                               changeGender(index, gender)
                                             }
-                                            className={`flex-1 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-900 ${
+                                            className={`flex-1 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-900 ${
                                               position > 0
                                                 ? 'border-l border-neutral-300'
                                                 : ''

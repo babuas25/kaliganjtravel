@@ -49,7 +49,7 @@ export default function AirlineFilterBar({
           type="button"
           onClick={() => scrollBy(-260)}
           aria-label="Scroll airlines left"
-          className="flex w-9 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 transition hover:border-brand-orange/40 hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
+          className="flex w-9 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 transition hover:border-brand-orange/40 hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange"
         >
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </button>
@@ -63,7 +63,7 @@ export default function AirlineFilterBar({
               type="button"
               aria-pressed={selectedAirlines.length === 0}
               onClick={() => chooseAirline(null)}
-              className={`flex min-h-11 shrink-0 items-center rounded-md border px-4 text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange ${
+              className={`flex min-h-11 shrink-0 items-center rounded-md border px-4 text-xs font-bold transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange ${
                 selectedAirlines.length === 0
                   ? 'border-brand-orange/40 bg-brand-orange-light text-brand-orange-dark'
                   : 'border-neutral-200 bg-white text-navy-950 hover:border-neutral-300 hover:bg-neutral-50'
@@ -83,7 +83,7 @@ export default function AirlineFilterBar({
                   aria-label={`Show ${airline.airlineName} flights`}
                   aria-pressed={isActive}
                   onClick={() => chooseAirline(airline.airlineCode)}
-                  className={`flex min-h-11 min-w-[142px] max-w-[210px] shrink-0 items-center gap-2 rounded-md border px-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange ${
+                  className={`flex min-h-11 min-w-[142px] max-w-[210px] shrink-0 items-center gap-2 rounded-md border px-3 text-left transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange ${
                     isActive
                       ? 'border-brand-orange/50 bg-brand-orange-light'
                       : 'border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50'
@@ -110,7 +110,7 @@ export default function AirlineFilterBar({
           type="button"
           onClick={() => scrollBy(260)}
           aria-label="Scroll airlines right"
-          className="flex w-9 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 transition hover:border-brand-orange/40 hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
+          className="flex w-9 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 transition hover:border-brand-orange/40 hover:bg-brand-orange-light hover:text-brand-orange-dark focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange"
         >
           <ChevronRight className="h-4 w-4" aria-hidden />
         </button>

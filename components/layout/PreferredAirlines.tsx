@@ -60,7 +60,7 @@ export default function PreferredAirlines({
           <button
             type="button"
             aria-labelledby={`${labelId} ${summaryId}`}
-            className={`flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 text-left text-sm transition hover:border-navy-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 ${value.length ? 'border-brand-orange/40 bg-brand-orange-light/40' : 'border-neutral-200 bg-navy-50/50'}`}
+            className={`flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 text-left text-sm transition hover:border-navy-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 ${value.length ? 'border-brand-orange/40 bg-brand-orange-light/40' : 'border-neutral-200 bg-navy-50/50'}`}
           >
             <Plane className="h-4 w-4 shrink-0 text-neutral-500" aria-hidden />
             <span id={summaryId} className="min-w-0 flex-1 truncate font-medium text-navy-950">
@@ -77,13 +77,13 @@ export default function PreferredAirlines({
               <Search className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
               <input value={query} onChange={(event) => setQuery(event.target.value)}
                 aria-label="Search airlines by name or code" placeholder="Search by airline or code"
-                className="min-w-0 flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-neutral-400" />
-              {query && <button type="button" aria-label="Clear airline search" onClick={() => setQuery('')} className="rounded p-1 text-neutral-500 hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"><X className="h-4 w-4" /></button>}
+                className="min-w-0 flex-1 bg-transparent py-3 text-sm outline-hidden placeholder:text-neutral-400" />
+              {query && <button type="button" aria-label="Clear airline search" onClick={() => setQuery('')} className="rounded p-1 text-neutral-500 hover:bg-neutral-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange"><X className="h-4 w-4" /></button>}
             </div>
             {value.length > 0 && (
               <div className="mt-3 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
                 {value.map((code) => <button key={code} type="button" onClick={() => toggle(code)} aria-label={`Remove ${nameFor(code)}`}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-brand-orange-light px-2 py-1.5 text-xs font-medium text-navy-950 hover:bg-brand-orange/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-brand-orange-light px-2 py-1.5 text-xs font-medium text-navy-950 hover:bg-brand-orange/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange">
                   <span className="truncate">{nameFor(code)}</span><X className="h-3 w-3 shrink-0" aria-hidden />
                 </button>)}
               </div>
@@ -105,8 +105,8 @@ export default function PreferredAirlines({
           <div className="flex shrink-0 items-center justify-between border-t border-neutral-100 bg-neutral-50/70 px-3 py-2.5">
             <span role="status" className="text-xs text-neutral-500">{value.length ? `${value.length} of ${MAX_PREFERRED_AIRLINES} selected` : 'All airlines included'}</span>
             <div className="flex items-center gap-2">
-              {value.length > 0 && <button type="button" onClick={() => onChange([])} className="min-h-9 rounded-lg px-2 text-xs font-medium text-neutral-500 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">Clear all</button>}
-              <button type="button" onClick={() => setOpen(false)} className="min-h-9 rounded-lg bg-navy-950 px-4 text-xs font-semibold text-white hover:bg-navy-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2">Done</button>
+              {value.length > 0 && <button type="button" onClick={() => onChange([])} className="min-h-9 rounded-lg px-2 text-xs font-medium text-neutral-500 hover:text-navy-950 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange">Clear all</button>}
+              <button type="button" onClick={() => setOpen(false)} className="min-h-9 rounded-lg bg-navy-950 px-4 text-xs font-semibold text-white hover:bg-navy-800 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2">Done</button>
             </div>
           </div>
         </PopoverContent>

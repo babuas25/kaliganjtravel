@@ -38,7 +38,7 @@ export type StaffEntry = {
 };
 
 const CONTROL_CLASS =
-  'mt-1.5 w-full rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20';
+  'mt-1.5 w-full rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 outline-hidden transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20';
 
 /**
  * The Staff tab on the Company profile.

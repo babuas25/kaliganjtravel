@@ -33,7 +33,7 @@ export default function DevRoleSwitcher({ role }: { role: Role }) {
             router.refresh();
           });
         }}
-        className="rounded-full border-0 bg-white px-2 py-1 text-xs font-medium text-navy-900 outline-none ring-1 ring-navy-100 focus:ring-brand-orange disabled:opacity-60"
+        className="rounded-full border-0 bg-white px-2 py-1 text-xs font-medium text-navy-900 outline-hidden ring-1 ring-navy-100 focus:ring-brand-orange disabled:opacity-60"
       >
         {ROLES.map((value) => (
           <option key={value} value={value}>

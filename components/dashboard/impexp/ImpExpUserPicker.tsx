@@ -57,7 +57,7 @@ export default function ImpExpUserPicker({
           aria-expanded={open}
           aria-label="Select booking owner"
           disabled={loading}
-          className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-input bg-white px-3 py-2 text-left text-sm ring-offset-background outline-none transition hover:bg-neutral-50 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-input bg-white px-3 py-2 text-left text-sm ring-offset-background outline-hidden transition hover:bg-neutral-50 focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
             <span className="flex items-center gap-2 text-neutral-500">

@@ -151,11 +151,11 @@ function RangeFilter({
         </SliderPrimitive.Track>
         <SliderPrimitive.Thumb
           aria-label={`${label} minimum`}
-          className="block h-4 w-4 rounded-full border-2 border-brand-orange bg-white shadow-sm outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-brand-orange disabled:opacity-60"
+          className="block h-4 w-4 rounded-full border-2 border-brand-orange bg-white shadow-sm outline-hidden ring-offset-2 focus-visible:ring-2 focus-visible:ring-brand-orange disabled:opacity-60"
         />
         <SliderPrimitive.Thumb
           aria-label={`${label} maximum`}
-          className="block h-4 w-4 rounded-full border-2 border-brand-orange bg-white shadow-sm outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-brand-orange disabled:opacity-60"
+          className="block h-4 w-4 rounded-full border-2 border-brand-orange bg-white shadow-sm outline-hidden ring-offset-2 focus-visible:ring-2 focus-visible:ring-brand-orange disabled:opacity-60"
         />
       </SliderPrimitive.Root>
       <div className="mt-1.5 flex items-start justify-between gap-3">

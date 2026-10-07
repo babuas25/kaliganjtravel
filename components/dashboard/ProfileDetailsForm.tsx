@@ -47,7 +47,7 @@ const SECTION_ICONS: Record<SectionId, LucideIcon> = {
 };
 
 const CONTROL_CLASS =
-  'mt-1.5 w-full rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:bg-navy-50 disabled:text-navy-700/70';
+  'mt-1.5 w-full rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 outline-hidden transition placeholder:text-navy-700/40 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 disabled:cursor-not-allowed disabled:bg-navy-50 disabled:text-navy-700/70';
 
 const LABEL_CLASS = 'text-sm font-medium text-navy-950';
 

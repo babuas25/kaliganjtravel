@@ -163,7 +163,7 @@ function draftFor(rule: MarkupRule): RuleDraft {
 }
 
 function inputClass(extra = '') {
-  return `mt-1 w-full rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-navy-700/35 focus:border-brand-orange focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:bg-navy-50 ${extra}`;
+  return `mt-1 w-full rounded-md border border-navy-100 bg-white px-3 py-2 text-sm text-navy-950 outline-hidden transition placeholder:text-navy-700/35 focus:border-brand-orange focus:ring-1 focus:ring-brand-orange disabled:cursor-not-allowed disabled:bg-navy-50 ${extra}`;
 }
 
 function Field({

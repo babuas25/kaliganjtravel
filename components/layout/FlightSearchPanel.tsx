@@ -166,7 +166,7 @@ function Radio({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition sm:gap-2 sm:px-3 sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 ${compact ? 'text-xs' : ''} ${active ? 'bg-brand-orange text-black shadow-sm' : 'text-neutral-600 hover:bg-white hover:text-navy-950'}`}
+      className={`inline-flex min-h-10 items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition sm:gap-2 sm:px-3 sm:text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 ${compact ? 'text-xs' : ''} ${active ? 'bg-brand-orange text-black shadow-sm' : 'text-neutral-600 hover:bg-white hover:text-navy-950'}`}
     >
       {active && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
       <span className="whitespace-nowrap">{label}</span>
@@ -465,23 +465,23 @@ export default function FlightSearchPanel({
                 <AirportSelection label="To" inputId="flight-to" inputName="to" value={to} onChange={setTo} placeholder="City or airport"
                   className="min-w-0 rounded-2xl border border-neutral-200 bg-navy-50/50 py-3 pl-6 pr-4 transition hover:border-navy-200 focus-within:border-brand-orange focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-orange/15" />
                 <button type="button" onClick={swapLocations} aria-label="Swap origin and destination"
-                  className="absolute left-1/2 top-1/2 z-10 grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-neutral-200 bg-white text-navy-700 shadow-sm transition hover:rotate-180 hover:border-brand-orange hover:text-brand-orange-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">
+                  className="absolute left-1/2 top-1/2 z-10 grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-neutral-200 bg-white text-navy-700 shadow-sm transition hover:rotate-180 hover:border-brand-orange hover:text-brand-orange-dark focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange">
                   <ArrowLeftRight className="h-4 w-4" aria-hidden />
                 </button>
               </div>
 
               <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-neutral-200 bg-navy-50/50 transition focus-within:border-brand-orange xl:col-span-4">
-                <FlightDatePicker label="Departure" value={departureDate} onChange={handleDepartureDateChange} minDate={getTodayDate()} className="border-r border-neutral-200 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange" />
+                <FlightDatePicker label="Departure" value={departureDate} onChange={handleDepartureDateChange} minDate={getTodayDate()} className="border-r border-neutral-200 px-4 py-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange" />
                 <div className="relative min-w-0">
-                  <FlightDatePicker label="Return" value={returnDate} onChange={setReturnDate} muted={isReturnDisabled} onOpen={activateRoundTrip} minDate={departureDate || getTodayDate()} openToDate={departureDate} placeholder="Add return" className="h-full w-full py-3 pl-4 pr-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange" />
+                  <FlightDatePicker label="Return" value={returnDate} onChange={setReturnDate} muted={isReturnDisabled} onOpen={activateRoundTrip} minDate={departureDate || getTodayDate()} openToDate={departureDate} placeholder="Add return" className="h-full w-full py-3 pl-4 pr-8 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange" />
                   {!isReturnDisabled && (
-                    <button type="button" onClick={dropReturnFlight} aria-label="Remove return flight and switch to one way" className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"><X className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={dropReturnFlight} aria-label="Remove return flight and switch to one way" className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange"><X className="h-3.5 w-3.5" /></button>
                   )}
                 </div>
               </div>
 
               <div className="flex min-w-0 rounded-2xl border border-neutral-200 bg-navy-50/50 transition hover:border-navy-200 focus-within:border-brand-orange xl:col-span-3">
-                <TravelerSelection value={travelers} onChange={setTravelers} className="flex-1 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange rounded-2xl" />
+                <TravelerSelection value={travelers} onChange={setTravelers} className="flex-1 px-4 py-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-orange rounded-2xl" />
               </div>
             </div>
           )}
@@ -496,7 +496,7 @@ export default function FlightSearchPanel({
               <p id="student-fare-availability" className="mt-1 text-xs text-neutral-500">Student fares are currently unavailable.</p>
             </div>
             <PreferredAirlines className="min-w-0 md:w-72 lg:w-80" value={preferredAirlines} onChange={setPreferredAirlines} />
-            <button type="button" onClick={submit} className="group inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-3 rounded-xl bg-brand-orange px-6 py-3 text-sm font-bold text-navy-950 shadow-sm transition hover:bg-brand-orange-dark hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 md:ml-auto md:w-auto">
+            <button type="button" onClick={submit} className="group inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-3 rounded-xl bg-brand-orange px-6 py-3 text-sm font-bold text-navy-950 shadow-sm transition hover:bg-brand-orange-dark hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2 md:ml-auto md:w-auto">
               <Search className="h-5 w-5" aria-hidden /> Search Flights <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" aria-hidden />
             </button>
           </div>

@@ -85,7 +85,8 @@ assert.match(manager, /Confirm removal/);
 
 assert.match(
   flightSearchPage,
-  /getFlightSearchBackground\(\)[\s\S]*h-\[255px\] w-full bg-cover bg-center[\s\S]*backgroundImage[\s\S]*background\.url/
+  /getFlightSearchBackground\(\)[\s\S]*(?:absolute inset-x-0 top-0 h-\[255px\]|h-\[255px\] w-full) bg-cover bg-center[\s\S]*backgroundImage[\s\S]*background\.url/,
+  'the managed background must remain a full-width, 255px cover band'
 );
 assert.match(
   flightSearchPage,

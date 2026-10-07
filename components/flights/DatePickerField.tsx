@@ -162,7 +162,7 @@ function Calendar({
     }`;
 
   const dropdownClass =
-    'h-8 cursor-pointer appearance-none rounded border border-neutral-300 bg-white py-1 pl-3 pr-8 text-sm font-medium text-navy-950 transition hover:bg-navy-50/60 focus:outline-none focus:ring-2 focus:ring-brand-orange/50';
+    'h-8 cursor-pointer appearance-none rounded border border-neutral-300 bg-white py-1 pl-3 pr-8 text-sm font-medium text-navy-950 transition hover:bg-navy-50/60 focus:outline-hidden focus:ring-2 focus:ring-brand-orange/50';
 
   return (
     <div className="p-3">
@@ -269,7 +269,7 @@ function Calendar({
               onClick={() => onSelect(date)}
               aria-label={displayFormatter.format(date)}
               aria-current={isToday ? 'date' : undefined}
-              className={`h-9 w-9 rounded-md text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-brand-orange/40 ${
+              className={`h-9 w-9 rounded-md text-sm font-medium transition focus:outline-hidden focus:ring-2 focus:ring-brand-orange/40 ${
                 outOfRange
                   ? 'pointer-events-none opacity-40'
                   : isSelected
@@ -341,7 +341,7 @@ export function DatePickerField({
         <button
           type="button"
           aria-label={ariaLabel}
-          className={`flex h-[42px] w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-sm transition hover:bg-navy-50/60 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-orange ${
+          className={`flex h-[42px] w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-sm transition hover:bg-navy-50/60 focus:border-transparent focus:outline-hidden focus:ring-2 focus:ring-brand-orange ${
             invalid ? 'border-brand-orange' : 'border-neutral-300'
           } ${selected ? 'text-navy-950' : 'text-neutral-400'}`}
         >

@@ -354,7 +354,7 @@ function WalletPicker({
             role="combobox"
             aria-expanded={open}
             aria-label="Select wallet"
-            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 text-left text-sm outline-none transition hover:bg-neutral-50 focus:ring-2 focus:ring-navy-200"
+            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 text-left text-sm outline-hidden transition hover:bg-neutral-50 focus:ring-2 focus:ring-navy-200"
           >
             {selected ? (
               <span className="min-w-0 flex-1">
@@ -677,7 +677,7 @@ function QueuePanel({
                 value={rejectionCause}
                 onChange={(event) => setRejectionCause(event.target.value)}
                 placeholder="Explain why this request is being rejected"
-                className="mt-1.5 min-h-28 w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-400 focus:ring-2 focus:ring-navy-100"
+                className="mt-1.5 min-h-28 w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-400 focus:ring-2 focus:ring-navy-100"
               />
               <span className="mt-1 block text-right text-xs text-neutral-400">
                 {rejectionCause.length}/1000

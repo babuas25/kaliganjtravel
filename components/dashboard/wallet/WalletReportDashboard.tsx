@@ -256,7 +256,7 @@ export default function WalletReportDashboard({ embedded = false }: { embedded?:
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="User, agency or booking"
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
             />
           </label>
           <label>
@@ -264,7 +264,7 @@ export default function WalletReportDashboard({ embedded = false }: { embedded?:
             <select
               value={type}
               onChange={(event) => setType(event.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
             >
               <option value="all">All transaction types</option>
               {transactionTypes.map((value) => <option key={value} value={value}>{readable(value)}</option>)}
@@ -277,7 +277,7 @@ export default function WalletReportDashboard({ embedded = false }: { embedded?:
               value={from}
               max={to || undefined}
               onChange={(event) => setFrom(event.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
             />
           </label>
           <label>
@@ -287,7 +287,7 @@ export default function WalletReportDashboard({ embedded = false }: { embedded?:
               value={to}
               min={from || undefined}
               onChange={(event) => setTo(event.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm outline-hidden focus:border-navy-500 focus:ring-2 focus:ring-navy-100"
             />
           </label>
         </div>

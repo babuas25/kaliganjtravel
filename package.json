@@ -17,7 +17,9 @@
     "verify:shapontravels-hold-db": "node scripts/verify-shapontravels-hold-db.mjs",
     "verify:shapontravels-status": "node scripts/verify-shapontravels-status.mjs && node scripts/verify-shapontravels-status-message.mjs && npm run verify:shapontravels-current-status",
     "verify:shapontravels-current-status": "node scripts/verify-shapontravels-current-status-app.mjs && node scripts/verify-shapontravels-current-status-db.mjs",
+    "verify:shapontravels-external-confirmation": "node scripts/verify-shapontravels-external-confirmation-route.mjs && node scripts/verify-shapontravels-external-confirmation-ui.mjs && node scripts/verify-shapontravels-external-confirmation-db.mjs",
     "verify:shapontravels-ticket": "node scripts/verify-shapontravels-ticket.mjs",
+    "verify:shapontravels-cancel": "node scripts/verify-shapontravels-cancel.mjs && node scripts/verify-shapontravels-cancel-route.mjs && node scripts/verify-shapontravels-cancel-status.mjs && node scripts/verify-shapontravels-cancel-ui.mjs && node scripts/verify-shapontravels-cancel-db.mjs",
     "verify:shapontravels-pricing": "node scripts/verify-shapontravels-pricing.mjs && node scripts/verify-shapontravels-markup-flow.mjs",
     "verify:flight-search-reference-safety": "node scripts/verify-flight-search-reference-safety.mjs",
     "verify:search-stream-finalization": "node scripts/verify-search-stream-finalization.mjs",
@@ -142,6 +144,7 @@
     "verify:b2b-agency-identity-lock": "node scripts/verify-b2b-agency-identity-lock.mjs",
     "verify:email": "node scripts/verify-email.mjs",
     "verify:wallet": "node scripts/verify-wallet.mjs",
+    "verify:bangla-qr": "node scripts/verify-bangla-qr-admin.mjs && node scripts/verify-bangla-qr-deposits.mjs",
     "verify:wallet-discovery": "node scripts/verify-wallet-discovery.mjs",
     "verify:booking-currency": "node scripts/verify-booking-currency.mjs",
     "verify:impexp-wallet": "node scripts/verify-impexp-wallet.mjs",
@@ -159,7 +162,7 @@
     "verify:kaliganj-branding": "node scripts/verify-kaliganj-branding.mjs",
     "verify:kaliganj-markup": "node scripts/verify-kaliganj-markup.mjs",
     "verify:ktt-booking-references": "node scripts/verify-ktt-booking-references.mjs && node scripts/verify-ktt-daily-booking-references.mjs",
-    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && npm run verify:wallet-discovery && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && node scripts/verify-kt-passenger-references.mjs && npm run verify:ktt-booking-references && npm run verify:flight-search-reference-safety && npm run verify:shapontravels-read-client && npm run verify:shapontravels-hold-db && node scripts/verify-shapon-wallet-refusal-recovery.mjs && npm run verify:shapontravels-status && npm run verify:shapontravels-ticket && npm run verify:supplier-write-uncertainty && npm run verify:booking-currency && npm run verify:impexp-trip-scope && npm run verify:search-stream-finalization && npm run verify:booking-without-pnr && npm run verify:booking-read-recovery && npm run verify:booking-ticketing-time && npm run verify:booking-deadline-notice"
+    "verify:ci": "npm run verify:kaliganj-branding && npm run verify:fresh-database && npm run verify:wallet-discovery && node scripts/verify-cash-deposit-branch.mjs && node scripts/verify-kt-request-references.mjs && node scripts/verify-kt-passenger-references.mjs && npm run verify:ktt-booking-references && npm run verify:flight-search-reference-safety && npm run verify:shapontravels-read-client && npm run verify:shapontravels-hold-db && node scripts/verify-shapon-wallet-refusal-recovery.mjs && npm run verify:shapontravels-status && npm run verify:shapontravels-external-confirmation && npm run verify:shapontravels-ticket && npm run verify:shapontravels-cancel && npm run verify:supplier-write-uncertainty && npm run verify:booking-currency && npm run verify:impexp-trip-scope && npm run verify:search-stream-finalization && npm run verify:booking-without-pnr && npm run verify:booking-read-recovery && npm run verify:booking-ticketing-time && npm run verify:booking-deadline-notice && npm run verify:bangla-qr"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.1",
@@ -229,8 +232,8 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
-    "@next/eslint-plugin-next": "16.3.6",
-    "@next/swc-wasm-nodejs": "16.3.6",
+    "@next/eslint-plugin-next": "16.3.8",
+    "@next/swc-wasm-nodejs": "16.3.8",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -238,7 +241,7 @@
     "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^10.9.0",
     "fast-glob": "file:vendor/next-eslint-glob",
-    "next": "16.3.6"
+    "next": "16.3.8"
   },
   "overrides": {
     "@next/eslint-plugin-next": {

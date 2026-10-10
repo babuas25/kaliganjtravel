@@ -225,7 +225,7 @@ export class ShapontravelsWriteError extends Error {
     readonly requestId: string | null = null,
     readonly pendingBookingId: string | null = null,
     readonly pendingReference: string | null = null,
-    readonly operation: 'Book' | 'NewTicket' = 'Book'
+    readonly operation: 'Book' | 'NewTicket' | 'Cancel' = 'Book'
   ) {
     super(`Shapontravels ${operation} ${code}` +
       (pendingBookingId ? ` bookingId=${pendingBookingId}` : '') +
@@ -295,6 +295,76 @@ export async function shapontravelsIssueRequest(
   return body;
 }
 
+/** One physical held-booking cancellation. A response gap never triggers replay. */
+export async function shapontravelsCancelRequest(
+  payload: unknown,
+  idempotencyKey: string,
+  hooks: import('@/lib/triplover/client').SupplierWriteLifecycleHooks
+): Promise<unknown> {
+  if (!/^[!-~]{1,128}$/.test(idempotencyKey)) {
+    throw new ShapontravelsWriteError(
+      'protocol', 'INVALID_CANCELLATION_KEY', null, null, null, null, 'Cancel'
+    );
+  }
+  let config: Credentials;
+  try {
+    config = credentials();
+  } catch {
+    throw new ShapontravelsWriteError(
+      'unconfigured', 'NOT_CONFIGURED', null, null, null, null, 'Cancel'
+    );
+  }
+  let token: Token;
+  try {
+    token = await accessToken(config);
+  } catch {
+    throw new ShapontravelsWriteError(
+      'auth', 'AUTH_UNAVAILABLE', null, null, null, null, 'Cancel'
+    );
+  }
+  const requestBody = JSON.stringify(payload);
+  await hooks.beforeRequest();
+  let response: Response;
+  try {
+    response = await fetch(new URL('api/Cancel', config.base), {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token.value}`,
+        'content-type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: requestBody,
+      cache: 'no-store',
+      redirect: 'error',
+      signal: AbortSignal.timeout(110_000),
+    });
+  } catch {
+    throw new ShapontravelsWriteError(
+      'network', 'CANCEL_NETWORK', null, null, null, null, 'Cancel'
+    );
+  }
+  let body: unknown;
+  try {
+    body = await boundedJson(response, 8 * 1024 * 1024);
+  } catch {
+    throw new ShapontravelsWriteError(
+      'protocol', 'INVALID_CANCELLATION_RESPONSE', response.status,
+      response.headers.get('x-request-id'), null, null, 'Cancel'
+    );
+  }
+  await hooks.onResponse({ httpStatus: response.status, receivedAt: new Date().toISOString() });
+  if (response.status !== 200) {
+    // An existing cancellation or a partial response can already have changed
+    // supplier state. Keep every post-dispatch refusal protected for review.
+    throw new ShapontravelsWriteError(
+      response.status === 202 ? 'pending' : 'protocol',
+      response.status === 202 ? 'CANCELLATION_OUTCOME_UNKNOWN' : responseCode(body),
+      response.status, response.headers.get('x-request-id'), null, null, 'Cancel'
+    );
+  }
+  return body;
+}
+
 function bookingPublicReference(response: Response): string | null {
   const reference = response.headers.get('x-booking-reference')?.trim();
   return reference && /^STR[A-Z0-9]{6,32}$/.test(reference) ? reference : null;
@@ -310,6 +380,49 @@ export type ShapontravelsTicketRead = {
   httpStatus: 200 | 202 | 404;
   body: unknown;
 };
+
+export type ShapontravelsCancellationRead = {
+  httpStatus: 200 | 202 | 404;
+  body: unknown;
+};
+
+/** Saved cancellation evidence for review; this never sends Cancel again. */
+export async function shapontravelsReadCancellation(
+  bookingId: string
+): Promise<ShapontravelsCancellationRead> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bookingId)) {
+    throw new ShapontravelsReadError('INVALID_BOOKING_LOOKUP');
+  }
+  const config = credentials();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await accessToken(config);
+    let response: Response;
+    try {
+      response = await fetch(new URL(`api/bookings/${bookingId}/cancellation`, config.base), {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token.value}` },
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch {
+      throw new ShapontravelsReadError('CANCELLATION_READ_NETWORK');
+    }
+    if (response.status === 401 && attempt === 0) {
+      if (cachedToken?.value === token.value) cachedToken = null;
+      await response.body?.cancel();
+      continue;
+    }
+    const body = await boundedJson(response, 8 * 1024 * 1024);
+    if (response.status === 200 || response.status === 202 || response.status === 404) {
+      return { httpStatus: response.status, body };
+    }
+    throw new ShapontravelsReadError(
+      responseCode(body), response.status, response.headers.get('x-request-id')
+    );
+  }
+  throw new ShapontravelsReadError('AUTH_FAILED');
+}
 
 /** Saved ticket state for operator reconciliation; this never sends Issue. */
 export async function shapontravelsReadTicket(

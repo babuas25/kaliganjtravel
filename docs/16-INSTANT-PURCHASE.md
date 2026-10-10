@@ -24,7 +24,7 @@ purchase pricing calculation.
 
 ## User Experience
 
-- Search results show **Instant Purchase** and **Hold unavailable**.
+- Search results show **Book & hold unavailable** with **Instant Purchase Only** underneath for direct-ticket fares.
 - RePrice remains mandatory before checkout.
 - If RePrice changes the selling price, the customer must explicitly accept it.
 - Checkout collects and validates traveller and contact information normally.

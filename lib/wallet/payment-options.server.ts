@@ -6,7 +6,9 @@ import { publicUrl } from '@/lib/cloudinary';
 import { resolveRole, ROLE_LABELS, type Role } from '@/lib/roles';
 import { SITE_ADDRESS } from '@/lib/site';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { banglaQrAssetUrl } from '@/lib/wallet/bangla-qr';
 import type {
+  BanglaQrAccountOption,
   CompanyBankAccountOption,
   CompanyMfsAccountOption,
   DepositBranchOption,
@@ -128,6 +130,31 @@ async function listMfsAccounts(): Promise<CompanyMfsAccountOption[]> {
   });
 }
 
+async function listBanglaQrAccounts(): Promise<BanglaQrAccountOption[]> {
+  const supabase = supabaseAdmin();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('wallet_company_bangla_qr_accounts')
+    .select('id, merchant_name, bank_name, merchant_id, qr_code')
+    .eq('active', true)
+    .order('sort_order')
+    .order('merchant_name');
+
+  if (error) {
+    console.warn('[wallet] Bangla QR accounts unavailable:', error.message);
+    return [];
+  }
+
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    merchantName: String(row.merchant_name),
+    bankName: row.bank_name ? String(row.bank_name) : null,
+    merchantId: row.merchant_id ? String(row.merchant_id) : null,
+    qrCodeUrl: banglaQrAssetUrl(row.qr_code),
+  })).filter((account) => account.qrCodeUrl !== null);
+}
+
 const PUBLIC_BANK_ACCOUNT_NAMES = new Set([
   'kaliganj tour and travel',
   // The company account at Dutch Bangla Bank uses this approved spelling.
@@ -176,14 +203,22 @@ async function listReceivers(): Promise<DepositReceiverOption[]> {
 }
 
 export async function listDepositPaymentOptions(): Promise<DepositPaymentOptions> {
-  const [branches, receivers, bankAccounts, mfsAccounts] = await Promise.all([
+  const [branches, receivers, bankAccounts, mfsAccounts, banglaQrAccounts] = await Promise.all([
     listBranches(),
     listReceivers(),
     listBankAccounts(),
     listMfsAccounts(),
+    listBanglaQrAccounts(),
   ]);
 
-  return { branches, receivers, bankAccounts, mfsAccounts };
+  return { branches, receivers, bankAccounts, mfsAccounts, banglaQrAccounts };
+}
+
+export async function findBanglaQrAccount(
+  id: string
+): Promise<BanglaQrAccountOption | null> {
+  const accounts = await listBanglaQrAccounts();
+  return accounts.find((account) => account.id === id) ?? null;
 }
 
 export async function findDepositBranch(

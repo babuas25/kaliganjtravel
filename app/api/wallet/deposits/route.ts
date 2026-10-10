@@ -23,6 +23,7 @@ import type {
   UserBankAccountSnapshot,
 } from '@/lib/wallet/payment-options';
 import {
+  findBanglaQrAccount,
   findCompanyBankAccount,
   findCompanyMfsAccount,
   findDepositBranch,
@@ -53,6 +54,14 @@ const cashSchema = z.object({
   branchId: z.string().uuid(),
   receivedByUserId: z.string().min(1).max(255),
   ...common,
+});
+
+const banglaQrSchema = z.object({
+  method: z.literal('bangla_qr'),
+  banglaQrAccountId: z.string().uuid(),
+  referenceNumber: z.string().trim().min(1).max(255),
+  ...common,
+  amount: amount.min(0.01),
 });
 
 const bankSchema = z.object({
@@ -92,6 +101,7 @@ const chequeSchema = z.object({
 
 const schema = z.discriminatedUnion('method', [
   cashSchema,
+  banglaQrSchema,
   bankSchema,
   bankTransferSchema,
   mobileSchema,
@@ -122,6 +132,8 @@ function depositMethodLabel(method: DepositRequestRow['method']): string {
   switch (method) {
     case 'cash':
       return 'Cash deposit';
+    case 'bangla_qr':
+      return 'Bangla QR';
     case 'bank':
       return 'Bank deposit';
     case 'bank_transfer':
@@ -169,6 +181,13 @@ type CompanyBankAccountRow = {
   swift_code: string | null;
 };
 
+type BanglaQrAccountRow = {
+  id: string;
+  merchant_name: string;
+  bank_name: string | null;
+  merchant_id: string | null;
+};
+
 function personName(user: RequesterRow | undefined): string | null {
   if (!user) return null;
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
@@ -200,8 +219,15 @@ async function serializeFinancialRequests(requests: DepositRequestRow[]) {
         .filter((id): id is string => Boolean(id))
     )
   );
+  const banglaQrAccountIds = Array.from(
+    new Set(
+      requests
+        .map((request) => request.bangla_qr_account_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
 
-  const [requestersResult, bankAccountsResult] = await Promise.all([
+  const [requestersResult, bankAccountsResult, banglaQrAccountsResult] = await Promise.all([
     supabase
       .from('app_users')
       .select('clerk_id, email, first_name, last_name, agency_code')
@@ -214,9 +240,15 @@ async function serializeFinancialRequests(requests: DepositRequestRow[]) {
           )
           .in('id', companyBankAccountIds)
       : Promise.resolve({ data: [] as CompanyBankAccountRow[], error: null }),
+    banglaQrAccountIds.length
+      ? supabase
+          .from('wallet_company_bangla_qr_accounts')
+          .select('id, merchant_name, bank_name, merchant_id')
+          .in('id', banglaQrAccountIds)
+      : Promise.resolve({ data: [] as BanglaQrAccountRow[], error: null }),
   ]);
 
-  if (requestersResult.error || bankAccountsResult.error) {
+  if (requestersResult.error || bankAccountsResult.error || banglaQrAccountsResult.error) {
     throw new Error('Deposit request details could not be loaded.');
   }
 
@@ -228,6 +260,12 @@ async function serializeFinancialRequests(requests: DepositRequestRow[]) {
   );
   const companyBankAccounts = new Map(
     ((bankAccountsResult.data ?? []) as CompanyBankAccountRow[]).map((account) => [
+      account.id,
+      account,
+    ])
+  );
+  const banglaQrAccounts = new Map(
+    ((banglaQrAccountsResult.data ?? []) as BanglaQrAccountRow[]).map((account) => [
       account.id,
       account,
     ])
@@ -289,6 +327,9 @@ async function serializeFinancialRequests(requests: DepositRequestRow[]) {
     const companyBankAccount = request.company_bank_account_id
       ? companyBankAccounts.get(request.company_bank_account_id)
       : undefined;
+    const banglaQrAccount = request.bangla_qr_account_id
+      ? banglaQrAccounts.get(request.bangla_qr_account_id)
+      : undefined;
 
     return {
       ...serializeRequest(request),
@@ -309,6 +350,13 @@ async function serializeFinancialRequests(requests: DepositRequestRow[]) {
             branchCode: companyBankAccount.branch_code,
             routingNumber: companyBankAccount.routing_number,
             swiftCode: companyBankAccount.swift_code,
+          }
+        : null,
+      bangla_qr_account: banglaQrAccount
+        ? {
+            merchantName: banglaQrAccount.merchant_name,
+            bankName: banglaQrAccount.bank_name,
+            merchantId: banglaQrAccount.merchant_id,
           }
         : null,
     };
@@ -393,6 +441,15 @@ export async function POST(request: Request) {
     }
     if (!receiver) {
       return walletFail(400, 'INVALID_RECEIVER', 'Choose an eligible cash receiver.');
+    }
+  } else if (input.method === 'bangla_qr') {
+    const account = await findBanglaQrAccount(input.banglaQrAccountId);
+    if (!account || !account.qrCodeUrl) {
+      return walletFail(
+        400,
+        'INVALID_BANGLA_QR_ACCOUNT',
+        'Choose an active Bangla QR payment account with a QR code.'
+      );
     }
   } else if (
     input.method === 'bank' ||
@@ -497,7 +554,9 @@ export async function POST(request: Request) {
     currency: summary.currency,
     method: input.method,
     referenceNumber:
-      input.method === 'bank' || input.method === 'bank_transfer'
+      input.method === 'bank' ||
+      input.method === 'bank_transfer' ||
+      input.method === 'bangla_qr'
         ? input.referenceNumber
         : input.method === 'mobile'
           ? input.transactionId
@@ -513,6 +572,8 @@ export async function POST(request: Request) {
       input.method === 'cheque'
         ? input.companyBankAccountId
         : undefined,
+    banglaQrAccountId:
+      input.method === 'bangla_qr' ? input.banglaQrAccountId : undefined,
     depositDate:
       input.method === 'bank' ||
       input.method === 'bank_transfer' ||

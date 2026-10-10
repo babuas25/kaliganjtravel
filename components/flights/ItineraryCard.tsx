@@ -1208,8 +1208,9 @@ export default function ItineraryCard({
             )}
             {bookingAvailable && !itinerary.bookable && (
               <p className="mt-1 text-center text-[10px] font-semibold text-blue-700">
-                <span className="block">{holdOnly ? 'Booking unavailable' : 'Instant purchase only'}</span>
-                <span className="block">Hold unavailable</span>
+                <span className="block">{holdOnly ? 'Booking' : 'Book & hold'}</span>
+                <strong className="block font-bold">unavailable</strong>
+                {!holdOnly && <span className="block">Instant Purchase Only</span>}
               </p>
             )}
           </div>

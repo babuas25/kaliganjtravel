@@ -350,6 +350,8 @@ export default function WalletDashboard({
                             ? 'Bank deposit'
                             : deposit.method === 'bank_transfer'
                               ? 'Bank transfer'
+                            : deposit.method === 'bangla_qr'
+                              ? 'Bangla QR'
                             : deposit.method === 'mobile'
                               ? 'Mobile banking'
                               : deposit.method}

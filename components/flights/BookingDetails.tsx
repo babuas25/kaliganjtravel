@@ -958,9 +958,10 @@ export default function BookingDetails({
   travellers,
   showStepper = true,
   passengerPrivacyNotice,
-  allowCancellation = true,
+  allowCancellation = false,
   allowSupplierRefresh = false,
   allowShaponStatusCheck = false,
+  allowExternalTicketConfirmation = false,
   allowTicketingTimeRefresh = false,
   autoRefreshDeadline = false,
   allowTicketing = true,
@@ -986,6 +987,7 @@ export default function BookingDetails({
   allowCancellation?: boolean;
   allowSupplierRefresh?: boolean;
   allowShaponStatusCheck?: boolean;
+  allowExternalTicketConfirmation?: boolean;
   allowTicketingTimeRefresh?: boolean;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
@@ -1356,6 +1358,7 @@ export default function BookingDetails({
           allowCancellation={allowCancellation}
           allowSupplierRefresh={allowSupplierRefresh}
           allowShaponStatusCheck={allowShaponStatusCheck}
+          allowExternalTicketConfirmation={allowExternalTicketConfirmation}
           refreshingTicketingTime={refreshingTicketingTime}
           onSupplierActionBusyChange={setSupplierActionBusy}
           autoRefreshDeadline={autoRefreshDeadline}

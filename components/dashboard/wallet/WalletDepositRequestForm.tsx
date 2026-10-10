@@ -7,6 +7,7 @@ import {
   Banknote,
   Building2,
   Landmark,
+  QrCode,
   Send,
   Smartphone,
 } from 'lucide-react';
@@ -51,13 +52,15 @@ function RequiredLabel({ children }: { children: React.ReactNode }) {
 function AttachmentField({
   required,
   configured,
+  label = 'Attachment',
 }: {
   required: boolean;
   configured: boolean;
+  label?: string;
 }) {
   return (
     <label className={LABEL}>
-      Attachment{' '}
+      {label}{' '}
       {required ? (
         <span className="text-brand-orange">*</span>
       ) : (
@@ -176,6 +179,7 @@ export default function WalletDepositRequestForm({
   const [grossAmount, setGrossAmount] = useState('');
   const [mfsName, setMfsName] = useState('');
   const [mfsAccountId, setMfsAccountId] = useState('');
+  const [banglaQrAccountId, setBanglaQrAccountId] = useState('');
   const [mfsPaymentType, setMfsPaymentType] = useState<
     MfsPaymentType | ''
   >('');
@@ -206,6 +210,14 @@ export default function WalletDepositRequestForm({
     ? matchingMfsAccounts[0]
     : matchingMfsAccounts.find((account) => account.id === mfsAccountId);
 
+  const banglaQrAccounts = useMemo(
+    () => options.banglaQrAccounts.filter((account) => account.qrCodeUrl),
+    [options.banglaQrAccounts]
+  );
+  const selectedBanglaQrAccount = banglaQrAccounts.length === 1
+    ? banglaQrAccounts[0]
+    : banglaQrAccounts.find((account) => account.id === banglaQrAccountId);
+
   const gross = Number(grossAmount);
   const fee = selectedMfsAccount?.chargePercent ?? 0;
   const depositableAmount =
@@ -224,6 +236,7 @@ export default function WalletDepositRequestForm({
     setMfsName('');
     setMfsAccountId('');
     setMfsPaymentType('');
+    setBanglaQrAccountId('');
   }
 
   return (
@@ -248,6 +261,12 @@ export default function WalletDepositRequestForm({
               className="rounded-none border-b-2 border-transparent px-5 py-3.5 shadow-none data-[state=active]:border-brand-orange data-[state=active]:bg-navy-50 data-[state=active]:text-navy-950 data-[state=active]:shadow-none"
             >
               <Banknote className="mr-2 h-4 w-4" /> Cash
+            </TabsTrigger>
+            <TabsTrigger
+              value="bangla-qr"
+              className="rounded-none border-b-2 border-transparent px-5 py-3.5 shadow-none data-[state=active]:border-brand-orange data-[state=active]:bg-navy-50 data-[state=active]:text-navy-950 data-[state=active]:shadow-none"
+            >
+              <QrCode className="mr-2 h-4 w-4" /> Bangla QR
             </TabsTrigger>
             <TabsTrigger
               value="bank-deposit"
@@ -328,6 +347,138 @@ export default function WalletDepositRequestForm({
               <AttachmentField required={false} configured={attachmentsConfigured} />
             </div>
             <SubmitBar disabled={!options.receivers.length} submitting={submitting} />
+          </form>
+        </TabsContent>
+
+        <TabsContent value="bangla-qr" className="mt-0">
+          <form onSubmit={submit}>
+            <input type="hidden" name="method" value="bangla_qr" />
+            <input
+              type="hidden"
+              name="banglaQrAccountId"
+              value={selectedBanglaQrAccount?.id ?? ''}
+            />
+            <div className="space-y-5 px-5 py-5 sm:px-6">
+              {banglaQrAccounts.length > 0 && !attachmentsConfigured && (
+                <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Receipt uploads are currently unavailable, so Bangla QR requests
+                  cannot be submitted. Please contact support or try again later.
+                </div>
+              )}
+              {!banglaQrAccounts.length ? (
+                <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Bangla QR is not available yet. Please contact support to have a
+                  merchant QR code configured.
+                </div>
+              ) : (
+                <>
+                  {banglaQrAccounts.length > 1 && (
+                    <label className={`${LABEL} max-w-xl`}>
+                      <RequiredLabel>Merchant</RequiredLabel>
+                      <select
+                        required
+                        value={banglaQrAccountId}
+                        onChange={(event) => setBanglaQrAccountId(event.target.value)}
+                        className={CONTROL}
+                      >
+                        <option value="" disabled>Select Bangla QR merchant</option>
+                        {banglaQrAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.merchantName}
+                            {account.bankName ? ` — ${account.bankName}` : ''}
+                            {account.merchantId ? ` — ${account.merchantId}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  <div className="grid items-start gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    {selectedBanglaQrAccount?.qrCodeUrl ? (
+                      <div className="rounded-xl border border-navy-100 bg-navy-50/50 p-4 text-center">
+                        <p className="font-bold text-navy-950">
+                          {selectedBanglaQrAccount.merchantName}
+                        </p>
+                        {selectedBanglaQrAccount.bankName && (
+                          <p className="mt-1 text-sm text-neutral-500">
+                            {selectedBanglaQrAccount.bankName}
+                          </p>
+                        )}
+                        {selectedBanglaQrAccount.merchantId && (
+                          <p className="mt-1 break-all text-xs text-neutral-500">
+                            Merchant / Terminal ID: {selectedBanglaQrAccount.merchantId}
+                          </p>
+                        )}
+                        <a
+                          href={selectedBanglaQrAccount.qrCodeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-4 block rounded-lg border border-neutral-200 bg-white p-2 outline-hidden focus-visible:ring-2 focus-visible:ring-navy-400"
+                        >
+                          <Image
+                            src={selectedBanglaQrAccount.qrCodeUrl}
+                            alt={`${selectedBanglaQrAccount.merchantName} Bangla QR code`}
+                            width={256}
+                            height={256}
+                            unoptimized
+                            className="mx-auto h-auto max-h-80 w-full object-contain"
+                          />
+                          <span className="mt-2 block text-xs font-medium text-navy-950">
+                            Open QR image
+                          </span>
+                        </a>
+                        <p className="mt-3 text-xs text-neutral-500">
+                          Scan this QR code to pay, then submit your transaction
+                          details and receipt for approval.
+                        </p>
+                      </div>
+                    ) : (
+                      <div role="status" className="flex min-h-44 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-center text-sm text-neutral-500">
+                        Select a merchant to view its Bangla QR code.
+                      </div>
+                    )}
+
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <label className={`${LABEL} sm:col-span-2`}>
+                        <RequiredLabel>Reference / Transaction ID</RequiredLabel>
+                        <input
+                          name="referenceNumber"
+                          required
+                          disabled={!selectedBanglaQrAccount}
+                          maxLength={255}
+                          placeholder="Enter reference or transaction ID"
+                          className={CONTROL}
+                        />
+                      </label>
+
+                      <label className={LABEL}>
+                        <RequiredLabel>Amount</RequiredLabel>
+                        <input
+                          name="amount"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          required
+                          disabled={!selectedBanglaQrAccount}
+                          placeholder="0.00"
+                          className={CONTROL}
+                        />
+                      </label>
+
+                      <AttachmentField
+                        label="Screenshot / Receipt"
+                        required
+                        configured={attachmentsConfigured}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <SubmitBar
+              disabled={!selectedBanglaQrAccount || !attachmentsConfigured}
+              submitting={submitting}
+            />
           </form>
         </TabsContent>
 

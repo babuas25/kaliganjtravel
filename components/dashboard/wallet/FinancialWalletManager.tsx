@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   Inbox,
   LayoutDashboard,
+  QrCode,
   RefreshCw,
   RotateCcw,
   SlidersHorizontal,
@@ -19,6 +20,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import CompanyBankAccountManager from '@/components/dashboard/wallet/CompanyBankAccountManager';
 import CompanyMfsAccountManager from '@/components/dashboard/wallet/CompanyMfsAccountManager';
+import CompanyBanglaQrAccountManager from '@/components/dashboard/wallet/CompanyBanglaQrAccountManager';
 import {
   Command,
   CommandEmpty,
@@ -81,6 +83,11 @@ type QueueRow = {
   deposit_date?: string | null;
   attachment_url?: string | null;
   user_bank_account?: UserBankAccountSnapshot | null;
+  bangla_qr_account?: {
+    merchantName: string;
+    bankName: string | null;
+    merchantId: string | null;
+  } | null;
   company_bank_account?: {
     bankName: string;
     accountName: string;
@@ -120,7 +127,7 @@ type LedgerRow = {
   createdByUserId: string;
   createdAt: string;
   deposit?: {
-    method: 'cash' | 'bank' | 'bank_transfer' | 'mobile' | 'cheque';
+    method: 'cash' | 'bank' | 'bank_transfer' | 'mobile' | 'cheque' | 'bangla_qr';
     publicRef: string;
   } | null;
   adjustment?: {
@@ -160,13 +167,28 @@ function queueMethodLabel(row: QueueRow) {
   if (row.adjustment_type) return row.adjustment_type;
   if (row.method === 'bank_transfer') return 'Bank transfer';
   if (row.method === 'bank') return 'Bank deposit';
+  if (row.method === 'bangla_qr') return 'Bangla QR';
   return row.method ?? 'Request';
+}
+
+function BanglaQrDestination({ account }: { account: QueueRow['bangla_qr_account'] }) {
+  if (!account) return null;
+  return (
+    <span className="rounded-md bg-navy-50 px-2 py-1">
+      <span className="font-bold text-navy-600">To:</span>{' '}
+      <span className="font-semibold text-navy-950">
+        {[account.merchantName, account.bankName, account.merchantId].filter(Boolean).join(' — ')}
+      </span>
+    </span>
+  );
 }
 
 function depositMethodLabel(method: NonNullable<LedgerRow['deposit']>['method']) {
   switch (method) {
     case 'cash':
       return 'Cash Deposit';
+    case 'bangla_qr':
+      return 'Bangla QR';
     case 'bank':
       return 'Bank Deposit';
     case 'bank_transfer':
@@ -602,6 +624,7 @@ function QueuePanel({
                         <span className="font-semibold text-navy-950">{row.deposit_date}</span>
                       </span>
                     )}
+                    {row.method === 'bangla_qr' && <BanglaQrDestination account={row.bangla_qr_account} />}
                     {(row.method === 'bank' || row.method === 'bank_transfer') && (
                       <>
                         <span className="min-w-0 truncate rounded-md bg-neutral-50 px-2 py-1">
@@ -834,6 +857,7 @@ function DepositHistoryPanel({
                   <span className="font-medium text-neutral-400">By:</span>{' '}
                   <span className="font-semibold text-navy-950">{reviewerLabel(row)}</span>
                 </span>
+                {row.method === 'bangla_qr' && <BanglaQrDestination account={row.bangla_qr_account} />}
                 {(row.method === 'bank' || row.method === 'bank_transfer') && (
                   <>
                     <span className="min-w-0 truncate rounded-md bg-neutral-50 px-2 py-1">
@@ -1109,7 +1133,7 @@ export default function FinancialWalletManager({
   const tabs: TabDefinition[] = [
     { value: 'overview', label: 'Overview', icon: LayoutDashboard },
     ...(canManageBankAccounts
-      ? [{ value: 'bank-accounts', label: 'Add Bank & MFS', icon: Building2 }]
+      ? [{ value: 'bank-accounts', label: 'Bank, MFS & QR', icon: Building2 }]
       : []),
     {
       value: 'deposits',
@@ -1232,8 +1256,8 @@ export default function FinancialWalletManager({
         {canManageBankAccounts && (
           <TabsContent value="bank-accounts" className="mt-0">
             <Tabs defaultValue="bank" className="space-y-4">
-              <div className="inline-flex rounded-lg border border-neutral-200 bg-white p-1 shadow-sm">
-                <TabsList className="h-auto bg-transparent p-0">
+              <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white p-1 shadow-sm">
+                <TabsList className="h-auto min-w-max justify-start bg-transparent p-0">
                   <TabsTrigger
                     value="bank"
                     className="gap-2 px-4 py-2 text-sm data-[state=active]:bg-brand-orange data-[state=active]:text-black"
@@ -1246,6 +1270,12 @@ export default function FinancialWalletManager({
                   >
                     <Smartphone className="h-4 w-4" /> MFS Account
                   </TabsTrigger>
+                  <TabsTrigger
+                    value="bangla-qr"
+                    className="gap-2 px-4 py-2 text-sm data-[state=active]:bg-brand-orange data-[state=active]:text-black"
+                  >
+                    <QrCode className="h-4 w-4" /> Bangla QR
+                  </TabsTrigger>
                 </TabsList>
               </div>
               <TabsContent value="bank" className="mt-0">
@@ -1253,6 +1283,9 @@ export default function FinancialWalletManager({
               </TabsContent>
               <TabsContent value="mfs" className="mt-0">
                 <CompanyMfsAccountManager />
+              </TabsContent>
+              <TabsContent value="bangla-qr" className="mt-0">
+                <CompanyBanglaQrAccountManager />
               </TabsContent>
             </Tabs>
           </TabsContent>

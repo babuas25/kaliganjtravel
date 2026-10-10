@@ -126,7 +126,7 @@ try {
   // Run the real wallet claim and finalizer against a synthetic supplier
   // receipt. No supplier Issue call or live wallet is involved.
   const wallet = (await db.query("select (wallet_ensure_account('user','shapon-hold-owner','BDT')).*" )).rows[0];
-  await db.query('update wallet_accounts set available_balance=1000000 where id=$1', [wallet.id]);
+  await db.query('update wallet_accounts set available_balance=10000000 where id=$1', [wallet.id]);
   const issueKey = `operation:v1:${digest(`issue:${booking.id}`)}`;
   const issueHash = digest(`issue-payload:${booking.id}`);
   const claim = (await db.query('select wallet_begin_booking_issue_v2($1,$2,$3,$4,$5) as result',
@@ -158,6 +158,65 @@ try {
   assert.deepEqual(issued.ticket_numbers, ticket.ticketNumbers);
   assert.equal((await db.query("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='booking_confirm'", [booking.id])).rows[0].n, 1);
 
+  // Two issued IndiGo passengers can share their airline PNR. Keep both ticket
+  // slots, retain the distinct booking PNR and capture the accepted amount once.
+  const indigoAttemptId = randomUUID();
+  const indigoKey = `operation:v1:${digest(indigoAttemptId)}`;
+  const indigoHash = digest(`payload:${indigoAttemptId}`);
+  const indigoRefs = { uniqueTransId: randomUUID(), itemCodeRef: randomUUID(), priceCodeRef: randomUUID() };
+  const indigoOffer = { ...offer, passengerCounts: { ADT: 2 },
+    pricing: { ...offer.pricing, supplierTotalPrice: 10168.72, sellingPrice: 10168.72, grossPrice: 10698 },
+    itinerary: { carrierCode: '6E', legs: [{ segments: [{ airlineCode: '6E' }] }] } };
+  await db.query(`insert into booking_attempts(id,access_token_hash,user_id,audience,
+      supplier,supplier_account,state,search_id,itinerary_id,unique_trans_id,
+      item_code_ref,price_code_ref,offer_snapshot,passenger_snapshot,expires_at,
+      submitted_at,operation_request_key,operation_request_payload_hash,
+      supplier_call_started_at,supplier_response_received_at,supplier_operation)
+    values ($1,$2,'shapon-hold-owner','b2c','shapontravels','shapontravels',
+      'submitting',$3,'itn-0-0',$4,$5,$6,$7,$8,now()+interval '10 minutes',
+      now(),$9,$10,now(),now(),'Book')`,
+  [indigoAttemptId, digest(indigoAttemptId), randomUUID(), indigoRefs.uniqueTransId,
+    indigoRefs.itemCodeRef, indigoRefs.priceCodeRef, JSON.stringify(indigoOffer),
+    JSON.stringify({ travellers: [{ passengerType: 'ADT' }, { passengerType: 'ADT' }] }), indigoKey, indigoHash]);
+  const indigoHold = { ...outcome, pnr: 'GDS123', bookingRefNumber: 'GDS123',
+    airlinesPnr: ['XY1234'], supplierPublicRef: 'STRTESTINDIGO', bookingCodeRef: randomUUID(),
+    supplierRefs: indigoRefs };
+  const indigoBooking = (await db.query(
+    'select (create_shapontravels_booking_from_attempt_v1($1,$2,$3,$4)).*',
+    [indigoAttemptId, indigoKey, indigoHash, JSON.stringify(indigoHold)]
+  )).rows[0];
+  const beforeIndigo = (await db.query('select available_balance,hold_balance from wallet_accounts where id=$1',
+    [wallet.id])).rows[0];
+  const indigoIssueKey = `operation:v1:${digest(`issue:${indigoBooking.id}`)}`;
+  const indigoIssueHash = digest(`issue-payload:${indigoBooking.id}`);
+  const indigoClaim = (await db.query('select wallet_begin_booking_issue_v2($1,$2,$3,$4,$5) as result',
+    [indigoBooking.id, 'shapon-hold-owner', 'customer', indigoIssueKey, indigoIssueHash])).rows[0].result;
+  assert.equal(indigoClaim.ok, true, `IndiGo hold claim: ${JSON.stringify(indigoClaim)}`);
+  await db.query('select mark_booking_operation_supplier_call_started($1,$2,$3)',
+    [indigoClaim.operationId, indigoIssueKey, indigoIssueHash]);
+  await db.query('select mark_booking_operation_supplier_response_received($1,$2,$3,200)',
+    [indigoClaim.operationId, indigoIssueKey, indigoIssueHash]);
+  const indigoTicket = { pnr: 'GDS123', bookingStatus: 'Confirmed',
+    ticketCodeRef: randomUUID(), ticketNumbers: ['XY1234', 'XY1234'], airlinesPnr: ['XY1234'] };
+  const captureIndigo = () => db.query('select wallet_capture_reservation_v2($1,$2,$3,$4,$5,$6,$7) as result',
+    [indigoBooking.id, 'shapon-hold-owner', 'customer', indigoIssueKey, indigoIssueHash,
+      indigoClaim.operationId, JSON.stringify(indigoTicket)]);
+  assert.equal((await captureIndigo()).rows[0].result.ok, true);
+  assert.equal((await captureIndigo()).rows[0].result.replay, true);
+  const storedIndigo = (await db.query(`select status,payment_state,pnr,airlines_pnr,ticket_numbers,
+      captured_amount from flight_bookings where id=$1`, [indigoBooking.id])).rows[0];
+  assert.equal(storedIndigo.status, 'confirmed');
+  assert.equal(storedIndigo.payment_state, 'captured');
+  assert.equal(storedIndigo.pnr, 'GDS123');
+  assert.deepEqual(storedIndigo.airlines_pnr, ['XY1234']);
+  assert.deepEqual(storedIndigo.ticket_numbers, ['XY1234', 'XY1234']);
+  assert.equal(Number(storedIndigo.captured_amount), 1016872, 'Wallet amounts use BDT minor units');
+  const afterIndigo = (await db.query('select available_balance,hold_balance from wallet_accounts where id=$1',
+    [wallet.id])).rows[0];
+  assert.equal(Number(beforeIndigo.available_balance) - Number(afterIndigo.available_balance), 1016872);
+  assert.equal(Number(afterIndigo.hold_balance), Number(beforeIndigo.hold_balance));
+  assert.equal((await db.query("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='booking_confirm'", [indigoBooking.id])).rows[0].n, 1);
+
   await assert.rejects(db.query(`insert into booking_attempts(id,access_token_hash,audience,
       supplier,supplier_account,state,search_id,itinerary_id,unique_trans_id,
       item_code_ref,price_code_ref,offer_snapshot,expires_at)
@@ -165,7 +224,7 @@ try {
       $4,$5,$6,'{}',now()+interval '10 minutes')`,
   [randomUUID(), digest('wrong-binding'), randomUUID(), randomUUID(), randomUUID(), randomUUID()]),
   /booking_attempts_shapontravels_binding_check/);
-  console.log('Shapontravels hold database verification passed');
+  console.log('Shapontravels hold database, numeric/shared IndiGo PNR receipt storage and one-time wallet capture passed');
 } finally {
   await db.close();
 }

@@ -53,6 +53,7 @@ import { readStaffBookingLifecycleTimeline } from '@/lib/db/booking-lifecycle-ti
 import { readBookingLocalTimeLimitContext } from '@/lib/db/booking-local-time-limit';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
+import { shapontravelsCancellationIdentityReady } from '@/lib/shapontravels/cancel';
 import { storedTicketReferences, usesStoredBookingReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import { readBookingUserVisibilityContext } from '@/lib/db/booking-visibility';
 import { listStaffBookingLifecycle } from '@/lib/db/booking-lifecycle';
@@ -299,6 +300,14 @@ export default async function BookingDetailsPage({
   }
 
   const publicBooking = await publicBookingWithHeaderContact(row);
+  const canCancelSupplierBooking = canCancelBooking(session, row) &&
+    ((row.supplier === 'triplover' && publicBooking.status === 'on-hold') ||
+      (row.supplier === 'shapontravels' &&
+        ['on-hold', 'pending', 'unconfirmed', 'expired'].includes(publicBooking.status) &&
+        row.supplier_account === 'shapontravels' &&
+        row.import_source === null &&
+        isShapontravelsConfigured() &&
+        shapontravelsCancellationIdentityReady(row)));
   const allowedPostTicketActions = ticketManagementActionsForBooking({
     status: publicBooking.status,
     directTicketing: row.direct_ticketing,
@@ -321,7 +330,7 @@ export default async function BookingDetailsPage({
         travellers={travellers}
         ticketManagementReferences={ticketManagementReferences}
         showStepper={false}
-        allowCancellation={row.supplier === 'triplover' && canCancelBooking(session, row)}
+        allowCancellation={canCancelSupplierBooking}
         allowSupplierRefresh={
           row.supplier === 'triplover' &&
           (!usesStoredBookingReferences(row) || row.status === 'confirmed' || row.status === 'cancelled') &&
@@ -331,6 +340,13 @@ export default async function BookingDetailsPage({
           row.supplier === 'shapontravels' &&
           row.supplier_account === 'shapontravels' &&
           canRefreshBookingSupplierDetails(session.role)
+        }
+        allowExternalTicketConfirmation={
+          row.supplier === 'shapontravels' &&
+          row.supplier_account === 'shapontravels' &&
+          row.import_source === null && !row.direct_ticketing &&
+          (row.status === 'on-hold' || row.status === 'pending') &&
+          (session.role === 'admin' || session.role === 'superadmin')
         }
         autoRefreshDeadline={false}
         allowTicketingTimeRefresh={

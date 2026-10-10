@@ -71,6 +71,14 @@ passed. Build verification uses a synthetic Clerk key with real service
 configuration disabled. The audit gate controls the Actions deployment job;
 native Vercel Git deployments remain independent as described below.
 
+## Next.js security patch (2026-10-11)
+
+The release audit found newly published Next.js advisories affecting 16.3.6.
+Updated Next.js, its lint plugin and the WASM compiler to the patched 16.3.8
+release. React/Node compatibility and the scoped lint glob override remain
+unchanged. The release checks include a fresh dependency audit, lint,
+TypeScript, the complete CI regression suite and an optimized production build.
+
 ## New Vercel project
 
 1. Sign in at https://vercel.com/new and import `babuas25/kaliganjtravel` as a new

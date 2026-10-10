@@ -4,16 +4,62 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
-**Shapontravels current status, 2026-10-03 — prepared locally:**
+**Shapon migration rollout, 2026-10-11 — applied and verified:**
+Applied only `20261008000000_shapontravels_booking_cancellation.sql`, then
+`20261010000000_shapon_external_ticket_confirmation.sql` to project
+`ljzoizsogbirlvlsrwzi`, using this workdir with `--include-all --skip-vault`.
+Both feature regression suites and TypeScript passed before rollout. Local and
+remote migration history now match, and the follow-up dry run has no pending
+migrations. Hosted readback verified RLS, restricted RPC/table permissions, the
+immutable confirmation trigger, and preserved staff-view columns and grants.
+REST readback confirmed an empty service-role table read, denied anonymous
+access, and all four rollout RPCs in the PostgREST schema cache.
+Booking, wallet, ledger, reservation, deposit, operation, reconciliation and
+notification row snapshots were unchanged; the new decision table is empty.
+No supplier write, booking confirmation, wallet charge or application deployment
+was performed. The verification receipt is
+[migration-receipts/20261011_shapon_cancellation_and_external_ticket_confirmation.json](migration-receipts/20261011_shapon_cancellation_and_external_ticket_confirmation.json).
+
+**Bangla QR deposits, 2026-10-08 — applied and verified:**
+`20261008010000_bangla_qr_deposits.sql` adds company QR accounts and the
+`bangla_qr` deposit method. The site owner selected the supplied **SHAPON TRAVELS
+INTERNATIONAL** QR (Sonali Bank PLC, TID `QR31469450`) as the initial receiving
+account. Its original QR image is bundled at `/images/payments/bangla-qr.png`;
+Super Admin can replace it from Accounts → Bank, MFS & QR → Bangla QR.
+Reference, amount and a private receipt are required. Requests use the existing
+Accounts approval flow and credit the wallet only once after approval.
+The migration was applied alone through an isolated linked migration directory;
+the unrelated cancellation migration below was still pending at that rollout
+and was applied on 2026-10-11. Hosted readback confirmed the seed, method
+constraint, foreign-key column, RLS and denied
+anonymous/authenticated table access. Existing wallet balances, deposit rows
+and ledger counts were unchanged. Local behavior checks are available with
+`npm run verify:bangla-qr`. The later Bangla QR version was already recorded
+remotely, so the 2026-10-11 cancellation rollout used the CLI's `--include-all`
+option after inspecting its dry run.
+
+**Shapontravels cancellation — prepared 2026-10-08, applied 2026-10-11:**
+`20261008000000_shapontravels_booking_cancellation.sql` permits owned,
+unticketed Shapontravels API bookings in On Hold, Pending, Unconfirmed or
+Expired to claim cancellation, with complete saved references and no active
+operation or conflicting financial/ticket evidence. It also restores the prior
+local state when the exact claimed cancellation provably never reached the
+supplier. Triplover retains its existing cancellation rules. This
+forward migration was applied to the hosted database before the matching
+application release. Verify with `npm run verify:shapontravels-cancel` and `npm run
+typecheck`. See [the hold guide](../../docs/30-SHAPONTRAVELS-HOLD-GUIDE.md)
+for the supplier's independent cancellation capability and reconciliation flow.
+
+**Shapontravels current status — prepared 2026-10-03, applied 2026-10-06:**
 `20261003000000_shapon_current_status_projection.sql` adds receipt-bound,
 append-only saved API observations. A successful staff supplier check can update
 the shared booking list/detail/filter projection without modifying the original
 booking, ticket, wallet or notification records. Local terminal decisions and
 active operations retain precedence; the atomic issue claim blocks conflicting
-or review-required observations before reserving funds. The migration has not
-been applied to the hosted database. Verify with
-`npm run verify:shapontravels-current-status` before a separately authorized
-application and database rollout.
+or review-required observations before reserving funds. This migration and the
+two 2026-10-06 public-reference/compact-status migrations were applied on
+2026-10-06; their versions remain aligned in hosted history. Verify with
+`npm run verify:shapontravels-current-status`.
 
 **B2B wallet discovery, 2026-10-02:** applied
 `20261002000000_agency_wallet_provisioning.sql` as the sole pending migration.
@@ -191,6 +237,15 @@ The test also verifies RLS on every public table, denies client-role access to t
 PGlite validates PostgreSQL schema and trigger behavior. It does **not** prove hosted PostgREST schema-cache behavior, provider credentials, Clerk/Vercel setup, pg_cron/pg_net/Vault operation, or every application's end-to-end workflow.
 
 ## Hosted installation record and future migrations
+
+The forward migration, applied and verified on 2026-10-11,
+`20261010000000_shapon_external_ticket_confirmation.sql` adds the Admin/Super
+Admin confirmation of an already issued and supplier-paid native Shapon ticket.
+It records a choice to capture the booking owner’s wallet or confirm without
+a wallet charge. Its database rollout precedes the matching application
+endpoint/UI deployment. Rehearse with
+`npm run verify:shapontravels-external-confirmation`; future migrations must
+continue using this workdir and preserve the frozen installed baseline.
 
 The commands below were used for this new hosted project before applying the baseline. The SQL refuses an existing public table/view schema and never drops an existing project to force installation. Do not attempt to install the baseline again.
 

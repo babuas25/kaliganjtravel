@@ -2,7 +2,10 @@ import type { DashboardSession } from '@/lib/dashboard/session';
 import type { BookingRow } from '@/lib/db/flight-bookings';
 import type { Role } from '@/lib/roles';
 import { isExternalBookingSource } from '@/lib/impexp/booking-source';
-import { shapontravelsCurrentStatusBlocksIssue } from '@/lib/shapontravels/current-status-projection';
+import {
+  shapontravelsCurrentStatusBlocksCancel,
+  shapontravelsCurrentStatusBlocksIssue,
+} from '@/lib/shapontravels/current-status-projection';
 
 export type WalletOwner = {
   ownerType: 'user' | 'agency';
@@ -163,17 +166,33 @@ export function canConfirmImportedBooking(
   return true;
 }
 
-/** Cancel uses the same ownership boundary as issue, but only for a live hold. */
+/** Cancel uses the wallet-owner boundary and rejects ticketed or active bookings. */
 export function canCancelBooking(
   session: DashboardSession,
   booking: Pick<
     BookingRow,
     'booking_owner_type' | 'booking_owner_key' | 'status' | 'lifecycle_status' |
     'direct_ticketing' | 'issued_at'
-  >
+  > & Partial<Pick<BookingRow,
+    | 'supplier' | 'shapon_current_status' | 'operation_kind' | 'operation_request_id'
+    | 'operation_started_at' | 'ticket_code_ref' | 'ticket_numbers'
+    | 'payment_state' | 'captured_amount'
+  >>
 ): boolean {
-  if (booking.direct_ticketing || booking.issued_at ||
-      booking.status !== 'on-hold' || booking.lifecycle_status !== 'on-hold') {
+  if (shapontravelsCurrentStatusBlocksCancel(booking)) return false;
+  if (booking.direct_ticketing || booking.issued_at) return false;
+  if (booking.supplier === 'shapontravels') {
+    if (!['on-hold', 'pending'].includes(booking.status) ||
+        !['on-hold', 'pending', 'unconfirmed', 'expired'].includes(booking.lifecycle_status ?? '') ||
+        booking.operation_kind || booking.operation_request_id || booking.operation_started_at ||
+        booking.ticket_code_ref ||
+        (booking.ticket_numbers != null &&
+          (!Array.isArray(booking.ticket_numbers) || booking.ticket_numbers.length > 0)) ||
+        (booking.captured_amount ?? 0) > 0 ||
+        (booking.payment_state != null && !['unpaid', 'released'].includes(booking.payment_state))) {
+      return false;
+    }
+  } else if (booking.status !== 'on-hold' || booking.lifecycle_status !== 'on-hold') {
     return false;
   }
   if (!booking.booking_owner_type || !booking.booking_owner_key) return false;

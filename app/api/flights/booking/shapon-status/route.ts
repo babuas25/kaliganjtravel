@@ -4,15 +4,21 @@ import { canRefreshBookingSupplierDetails } from '@/lib/dashboard/booking-lifecy
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
 import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { shapontravelsReadBooking, shapontravelsReadTicket } from '@/lib/shapontravels/client';
+import { shapontravelsReadBooking, shapontravelsReadTicket, shapontravelsReadCancellation } from '@/lib/shapontravels/client';
 import { verifyShapontravelsBookingStatus } from '@/lib/shapontravels/booking-status';
 import { recordShapontravelsCurrentStatus } from '@/lib/shapontravels/current-status-store';
 import { parseShapontravelsTicketReceipt, shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
+import { parseShapontravelsCancellationReceipt, shapontravelsCancellationIdentityReady } from '@/lib/shapontravels/cancel';
+import {
+  canConfirmShaponExternalTicket,
+  canOfferShaponExternalTicketConfirmation,
+  verifyShaponExternalTicketConfirmation,
+} from '@/lib/shapontravels/external-ticket-confirmation';
 import { walletFail, walletOk } from '@/lib/wallet/http';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const schema = z.object({
   bookingReference: z.string().regex(/^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/),
@@ -81,7 +87,33 @@ export async function POST(request: Request) {
       ticketCount?: number;
       ticketCodeRef?: string;
     } | null = null;
-    if (booking.status === 'in-progress' || booking.payment_state === 'reconciliation') {
+    let externalTicketConfirmation: { eligible: true; amount: number; currency: string } | null = null;
+    const cancellationActive = booking.operation_reason === 'cancellation' ||
+      booking.operation_reason === 'cancellation_reconciliation';
+    let supplierCancellation: {
+      result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
+    } | null = null;
+    if (cancellationActive) {
+      if (!shapontravelsCancellationIdentityReady(booking)) {
+        supplierCancellation = { result: 'unverified' };
+      } else {
+        try {
+          const cancellationRead = await shapontravelsReadCancellation(booking.booking_code_ref);
+          const result = cancellationRead.httpStatus === 202 ? 'pending'
+            : cancellationRead.httpStatus === 404 ? 'not_found'
+              : parseShapontravelsCancellationReceipt(cancellationRead.body, {
+                  ...refs, pnr: booking.pnr!, bookingRefNumber: booking.booking_ref_number!,
+                  bookingCodeRef: booking.booking_code_ref, supplierPublicRef,
+                }) ? 'verified' : 'unverified';
+          supplierCancellation = { result };
+        } catch {
+          supplierCancellation = { result: 'unavailable' };
+        }
+      }
+    }
+    if (!cancellationActive &&
+        (booking.status === 'in-progress' || booking.payment_state === 'reconciliation' ||
+         status.currentStatus?.status === 'confirmed')) {
       if (!shapontravelsTicketIdentityReady(booking)) {
         supplierTicket = { result: 'unverified' };
       } else {
@@ -97,6 +129,7 @@ export async function POST(request: Request) {
               pnr: booking.pnr!,
               bookingRefNumber: booking.booking_ref_number!,
               bookingCodeRef: booking.booking_code_ref,
+              itinerary: booking.itinerary,
               expectedPassengerCount: Object.values(booking.passenger_counts)
                 .reduce<number>((sum, value) => sum + (value ?? 0), 0),
             });
@@ -104,13 +137,22 @@ export async function POST(request: Request) {
               ? { result: 'verified', ticketCount: ticket.ticketNumbers.length,
                   ticketCodeRef: ticket.ticketCodeRef }
               : { result: 'unverified' };
+            if (ticket && canConfirmShaponExternalTicket(session.role) &&
+                canOfferShaponExternalTicketConfirmation(booking) &&
+                verifyShaponExternalTicketConfirmation(booking, read, ticketRead, supplierPublicRef)) {
+              externalTicketConfirmation = {
+                eligible: true,
+                amount: Math.round(Number(booking.pricing_snapshot.sellingPrice) * 100) / 100,
+                currency: booking.currency,
+              };
+            }
           }
         } catch {
           supplierTicket = { result: 'unavailable' };
         }
       }
     }
-    return walletOk({ ...status, supplierTicket, ...storage });
+    return walletOk({ ...status, supplierTicket, supplierCancellation, externalTicketConfirmation, ...storage });
   } catch (error) {
     console.error('[shapontravels] booking status read failed', {
       bookingId: booking.id,

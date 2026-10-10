@@ -24,10 +24,12 @@ const schema = z.discriminatedUnion('decision', [
   }),
 ]);
 
-function depositMethodLabel(method: 'cash' | 'bank' | 'bank_transfer' | 'mobile' | 'cheque') {
+function depositMethodLabel(method: 'cash' | 'bank' | 'bank_transfer' | 'mobile' | 'cheque' | 'bangla_qr') {
   switch (method) {
     case 'cash':
       return 'Cash deposit';
+    case 'bangla_qr':
+      return 'Bangla QR';
     case 'bank':
       return 'Bank deposit';
     case 'bank_transfer':

@@ -47,11 +47,20 @@ export type CompanyMfsAccountOption = {
   qrCodeUrl: string | null;
 };
 
+export type BanglaQrAccountOption = {
+  id: string;
+  merchantName: string;
+  bankName: string | null;
+  merchantId: string | null;
+  qrCodeUrl: string | null;
+};
+
 export type DepositPaymentOptions = {
   branches: DepositBranchOption[];
   receivers: DepositReceiverOption[];
   bankAccounts: CompanyBankAccountOption[];
   mfsAccounts: CompanyMfsAccountOption[];
+  banglaQrAccounts: BanglaQrAccountOption[];
 };
 
 export const MFS_PAYMENT_TYPES: readonly {

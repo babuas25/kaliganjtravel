@@ -86,11 +86,12 @@ export type DepositRequestRow = {
   wallet_account_id: string;
   amount: number;
   currency: string;
-  method: 'cash' | 'bank' | 'bank_transfer' | 'mobile' | 'cheque';
+  method: 'cash' | 'bangla_qr' | 'bank' | 'bank_transfer' | 'mobile' | 'cheque';
   reference_number: string | null;
   branch_id: string | null;
   received_by_user_id: string | null;
   company_bank_account_id: string | null;
+  bangla_qr_account_id: string | null;
   deposit_date: string | null;
   cheque_issued_date: string | null;
   cheque_issued_bank: string | null;
@@ -551,6 +552,7 @@ export async function createDepositRequest(input: {
   branchId?: string;
   receivedByUserId?: string;
   companyBankAccountId?: string;
+  banglaQrAccountId?: string;
   depositDate?: string;
   chequeIssuedDate?: string;
   chequeIssuedBank?: string;
@@ -580,6 +582,7 @@ export async function createDepositRequest(input: {
       branch_id: input.branchId ?? null,
       received_by_user_id: input.receivedByUserId ?? null,
       company_bank_account_id: input.companyBankAccountId ?? null,
+      bangla_qr_account_id: input.banglaQrAccountId ?? null,
       deposit_date: input.depositDate ?? null,
       cheque_issued_date: input.chequeIssuedDate ?? null,
       cheque_issued_bank: input.chequeIssuedBank?.trim() || null,

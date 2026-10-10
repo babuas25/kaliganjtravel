@@ -784,7 +784,7 @@ export default function BookingCheckout({
   // takes over. `travellers` is handed down because nothing is re-fetched —
   // this component's state is the only record of the names.
   if (booking) {
-    return <BookingDetails booking={booking} travellers={travellers} />;
+    return <BookingDetails booking={booking} travellers={travellers} allowCancellation={false} />;
   }
   if (loading) {
     return (

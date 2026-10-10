@@ -42,3 +42,17 @@ export function shapontravelsCurrentStatusBlocksIssue(booking: {
   return !saved || saved.currentStatus.status !== 'on-hold' || saved.reviewRequired ||
     saved.currentStatus.reviewRequired === true;
 }
+
+/** Supplier cancellation has its own permission, independent of the Issue cutoff. */
+export function shapontravelsCurrentStatusBlocksCancel(booking: {
+  supplier?: string;
+  shapon_current_status?: unknown;
+}): boolean {
+  if (booking.supplier !== 'shapontravels' || booking.shapon_current_status == null) return false;
+  const saved = parseShapontravelsCurrentStatusProjection(booking.shapon_current_status);
+  const allowed = ['on-hold', 'pending', 'unconfirmed', 'expired'];
+  // Saved review flags may include canIssue=false after a ticketing cutoff.
+  // The Cancel route checks fresh supplier canCancel and explicit review flags.
+  return !saved || !allowed.includes(saved.effectiveStatus) ||
+    !allowed.includes(saved.currentStatus.status);
+}

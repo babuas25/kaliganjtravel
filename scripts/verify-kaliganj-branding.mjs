@@ -21,7 +21,7 @@ const runtimeFiles = ['app', 'components', 'lib', 'public'].flatMap(files)
 for (const file of runtimeFiles) {
   const identityText = read(file)
     .replace(/shapon(?:travels|[-_]?status)/gi, '')
-    .replace(/\b(?:shapon_current_status|record_shapon_booking_current_status_v1)\b/g, '');
+    .replace(/\b(?:shapon_current_status|record_shapon_booking_current_status_v1|restoreUnsentShaponCancellation|restore_shapon_cancellation_not_sent_v1|canConfirmShaponExternalTicket|canOfferShaponExternalTicketConfirmation|verifyShaponExternalTicketConfirmation|shapon_external_ticket_confirmations|confirm_shapon_external_ticket_v1)\b/g, '');
   assert.doesNotMatch(identityText, forbidden, file);
 }
 function load(file) {

@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 type DepositLedgerRow = {
   id: string;
   requestReference: string;
-  paymentMethod: 'cash' | 'bank' | 'mobile' | 'cheque';
+  paymentMethod: 'cash' | 'bank' | 'mobile' | 'cheque' | 'bangla_qr';
   paymentReference: string | null;
   attachmentUrl: string | null;
   userLabel: string;
@@ -296,6 +296,7 @@ export default function AccountLedgerDashboard() {
                 <option value="bank">Bank transfer</option>
                 <option value="mobile">Mobile banking</option>
                 <option value="cash">Cash</option>
+                <option value="bangla_qr">Bangla QR</option>
                 <option value="cheque">Cheque</option>
               </select>
               <select
@@ -337,7 +338,7 @@ export default function AccountLedgerDashboard() {
                 <tr key={row.id} className="border-t border-neutral-100 transition hover:bg-neutral-50/70">
                   <td className="whitespace-nowrap px-5 py-4 text-neutral-700">{dateTime(row.createdAt)}</td>
                   <td className="px-4 py-4">
-                    <p className="font-semibold capitalize text-navy-950">{row.paymentMethod === 'mobile' ? 'Mobile banking' : row.paymentMethod === 'bank' ? 'Bank deposit / transfer' : row.paymentMethod}</p>
+                    <p className="font-semibold capitalize text-navy-950">{row.paymentMethod === 'mobile' ? 'Mobile banking' : row.paymentMethod === 'bank' ? 'Bank deposit / transfer' : row.paymentMethod === 'bangla_qr' ? 'Bangla QR' : row.paymentMethod}</p>
                     {row.paymentReference && <p className="mt-1 max-w-[190px] truncate text-xs text-neutral-500" title={row.paymentReference}>Payment ref: {row.paymentReference}</p>}
                     {row.attachmentUrl && <a href={row.attachmentUrl} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-semibold text-navy-700 underline">View attachment</a>}
                   </td>

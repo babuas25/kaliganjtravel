@@ -11,6 +11,7 @@ import {
   beginBookingCancellation,
   readBookingByPublicRef,
   restoreBookingCancellation,
+  restoreUnsentShaponCancellation,
   syncAirTicketingDetails,
   syncPnrDetails,
 } from '@/lib/db/flight-bookings';
@@ -21,6 +22,12 @@ import {
   markReservationForReconciliation,
 } from '@/lib/db/wallet';
 import { checkActionLimit } from '@/lib/rate-limit';
+import {
+  cancelShapontravelsBooking,
+  shapontravelsCancellationIdentityReady,
+  verifyShapontravelsCancellationEligibility,
+} from '@/lib/shapontravels/cancel';
+import { isShapontravelsConfigured, shapontravelsReadBooking } from '@/lib/shapontravels/client';
 import { cancelBooking } from '@/lib/triplover/cancel';
 import { readAirTicketingDetails } from '@/lib/triplover/air-ticketing-details';
 import { isTriploverSupplier } from '@/lib/triplover/config';
@@ -30,7 +37,7 @@ import { canCancelBooking } from '@/lib/wallet/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 const schema = z.object({
   bookingReference: z.string().regex(/^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/),
@@ -59,7 +66,9 @@ export async function POST(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
-  if (booking.import_source === 'MANUAL' || booking.supplier !== 'triplover') {
+  if (booking.import_source === 'MANUAL' ||
+      !['triplover', 'shapontravels'].includes(booking.supplier) ||
+      (booking.supplier === 'shapontravels' && booking.import_source !== null)) {
     return walletFail(
       409,
       'EXTERNAL_SUPPLIER_BOOKING',
@@ -68,20 +77,37 @@ export async function POST(request: NextRequest) {
         : 'This imported booking must be managed in its external supplier system.'
     );
   }
-  if (!isTriploverSupplier(booking.supplier_account)) {
+  const triploverAccount = isTriploverSupplier(booking.supplier_account)
+    ? booking.supplier_account : null;
+  if (booking.supplier === 'shapontravels'
+      ? booking.supplier_account !== 'shapontravels'
+      : !triploverAccount) {
     return walletFail(
       409,
       'SUPPLIER_ACCOUNT_UNAVAILABLE',
       'This booking was created before supplier-account tracking. Please contact support.'
     );
   }
-  const supplierAccount = booking.supplier_account;
+  const supplierAccount = booking.supplier === 'shapontravels'
+    ? 'shapontravels' : triploverAccount!;
   if (!canCancelBooking(session, booking)) {
     return walletFail(
       409,
       'BOOKING_NOT_CANCELLABLE',
-      'Only a held, unissued booking can be cancelled.'
+      booking.supplier === 'shapontravels'
+        ? 'Only an unissued On Hold, Pending, Unconfirmed, or Expired booking can be cancelled.'
+        : 'Only a held, unissued booking can be cancelled.'
     );
+  }
+
+  if (supplierAccount === 'shapontravels' &&
+      !shapontravelsCancellationIdentityReady(booking)) {
+    return walletFail(409, 'SUPPLIER_REFERENCES_MISSING',
+      'This booking is missing verified supplier cancellation references.');
+  }
+  if (supplierAccount === 'shapontravels' && !isShapontravelsConfigured()) {
+    return walletFail(503, 'SUPPLIER_ACCOUNT_UNAVAILABLE',
+      'Shapontravels cancellation is unavailable on this server.');
   }
 
   const refs = booking.supplier_refs;
@@ -103,7 +129,23 @@ export async function POST(request: NextRequest) {
     supplier: supplierAccount,
     ...pnrLocators,
     bookingCodeRef: booking.booking_code_ref,
+    ...(supplierAccount === 'shapontravels'
+      ? { supplierPublicRef: booking.supplier_public_ref } : {}),
   };
+  if (supplierAccount === 'shapontravels') {
+    try {
+      // Cancellation has its own supplier capability. An expired issue
+      // deadline or canIssue=false must not prevent releasing an unticketed PNR.
+      const read = await shapontravelsReadBooking({ bookingId: supplierInput.bookingCodeRef });
+      if (!verifyShapontravelsCancellationEligibility(read, supplierInput)) {
+        return walletFail(409, 'SUPPLIER_CANCELLATION_UNAVAILABLE',
+          'The supplier has not verified this booking as eligible for cancellation. Refresh the supplier status or contact support.');
+      }
+    } catch {
+      return walletFail(502, 'SUPPLIER_STATUS_UNAVAILABLE',
+        'The supplier cancellation status could not be verified. Try again shortly.');
+    }
+  }
   const operationRequest = createOperationRequestIdentity({
     clientRequestNonce: parsed.data.requestId,
     action: 'cancellation',
@@ -147,7 +189,13 @@ export async function POST(request: NextRequest) {
   );
 
   try {
-    const outcome = await cancelBooking(supplierInput, supplierLifecycle);
+    const outcome = supplierAccount === 'shapontravels'
+      ? await cancelShapontravelsBooking(
+          supplierInput, operationRequest.requestKey, supplierLifecycle
+        )
+      : await cancelBooking(
+          { ...supplierInput, supplier: triploverAccount! }, supplierLifecycle
+        );
     const finalized = await finalizeBookingCancellation(
       booking.id,
       session,
@@ -163,16 +211,26 @@ export async function POST(request: NextRequest) {
         'The airline cancelled the booking, but wallet finalization needs Accounts review. Do not submit again.'
       );
     }
-    await recordSecurityAuditEvent({
-      actorUserId: session.clerkId,
-      actorRole: session.role,
-      action: 'wallet.booking.cancel',
-      targetType: 'flight_booking',
-      targetId: booking.id,
-      outcome: 'succeeded',
-      metadata: { reservationId: finalized.reservationId ?? null },
-    });
-    await dispatchBookingStatusEmails(booking.id);
+    // The atomic database finalization is already complete. Delivery or
+    // ancillary audit failures must not reopen supplier uncertainty.
+    try {
+      await recordSecurityAuditEvent({
+        actorUserId: session.clerkId,
+        actorRole: session.role,
+        action: 'wallet.booking.cancel',
+        targetType: 'flight_booking',
+        targetId: booking.id,
+        outcome: 'succeeded',
+        metadata: { reservationId: finalized.reservationId ?? null },
+      });
+    } catch (auditError) {
+      console.error('[booking] cancellation audit delivery failed:', auditError);
+    }
+    try {
+      await dispatchBookingStatusEmails(booking.id);
+    } catch (deliveryError) {
+      console.error('[booking] cancellation notification delivery failed:', deliveryError);
+    }
     return walletOk({ cancellation: outcome, wallet: finalized });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Supplier cancellation failed';
@@ -221,13 +279,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (supplierAccount === 'shapontravels') {
+      let restored: { ok: boolean; code?: string } = { ok: false };
+      if (supplierFailure.failureClass === 'not-sent') {
+        restored = await restoreUnsentShaponCancellation(
+          booking.id, session.clerkId, operationRequest, claim.operationId
+        );
+      }
+      if (!restored.ok) {
+        await markReservationForReconciliation(
+          { bookingId: booking.id }, `Cancellation could not restore a verified hold: ${message}`
+        );
+      }
+      await recordSecurityAuditEvent({
+        actorUserId: session.clerkId,
+        actorRole: session.role,
+        action: 'wallet.booking.cancel.failed',
+        targetType: 'flight_booking',
+        targetId: booking.id,
+        outcome: 'failed',
+        metadata: { reason: message.slice(0, 500), restored: restored.ok,
+          failureClass: supplierFailure.failureClass, code: restored.code ?? null },
+      });
+      await dispatchBookingStatusEmails(booking.id);
+      return restored.ok
+        ? walletFail(502, 'BOOKING_CANCEL_FAILED', 'Cancellation was not completed. Please try again shortly.')
+        : walletFail(503, 'CANCEL_RESTORE_FAILED',
+            'Cancellation was not completed, and the booking needs support review before another attempt.');
+    }
+
     // A supplier may report failure when the booking was already cancelled in
     // its portal. Reconcile that decided state before restoring our local hold.
     try {
       const details = await readAirTicketingDetails(
         refs.uniqueTransId,
         'Cancelled',
-        supplierAccount
+        triploverAccount!
       );
       if (details.supplierStatus?.toLowerCase() === 'cancelled') {
         const finalized = await finalizeBookingCancellation(
@@ -274,7 +361,7 @@ export async function POST(request: NextRequest) {
     try {
       const pnr = await readPnr({
         ...refs,
-        supplier: supplierAccount,
+        supplier: triploverAccount!,
         ...pnrLocators,
         bookingCodeRef: booking.booking_code_ref,
         carrierCode: booking.itinerary?.carrierCode,

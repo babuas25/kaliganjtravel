@@ -1,0 +1,1162 @@
+{
+  "projectRef": "ljzoizsogbirlvlsrwzi",
+  "localDate": "2026-10-11",
+  "timezone": "Asia/Dhaka",
+  "startedAt": "2026-10-10T21:00:42.837Z",
+  "status": "verified",
+  "migrations": [
+    {
+      "filename": "20261008000000_shapontravels_booking_cancellation.sql",
+      "sha256": "f53d641cf8d6a874a725da18815d2f32cba58e9826723361f063ba4dbbf70a72"
+    },
+    {
+      "filename": "20261010000000_shapon_external_ticket_confirmation.sql",
+      "sha256": "471446293a30a2bf6e85ae3fe5f5db6f8699005982a48c0a90711e0ab43c418a"
+    }
+  ],
+  "dryRunBefore": {
+    "upToDate": false,
+    "dryRun": true,
+    "migrations": [
+      "20261008000000_shapontravels_booking_cancellation.sql",
+      "20261010000000_shapon_external_ticket_confirmation.sql"
+    ],
+    "seeds": [],
+    "roles": [],
+    "message": "Finished supabase db push."
+  },
+  "dataBefore": [
+    {
+      "row_count": 26,
+      "rows_md5": "723c4e4431670c898711723c45a1c17a",
+      "table_name": "booking_issued_sms_deliveries"
+    },
+    {
+      "row_count": 139,
+      "rows_md5": "eac76de412831711aee310c798b7f63d",
+      "table_name": "booking_notification_outbox"
+    },
+    {
+      "row_count": 44,
+      "rows_md5": "1acca94cf2058ef0d780990d1e3b6527",
+      "table_name": "booking_operations"
+    },
+    {
+      "row_count": 19,
+      "rows_md5": "8ec12f5096d59975323b2b0b48bb5468",
+      "table_name": "booking_reconciliation_cases"
+    },
+    {
+      "row_count": 139,
+      "rows_md5": "b3877025e7d5da7afcc5f464e163f796",
+      "table_name": "booking_status_events"
+    },
+    {
+      "row_count": 62,
+      "rows_md5": "319b3faf46c9be2d66fbd679f6634baf",
+      "table_name": "flight_bookings"
+    },
+    {
+      "row_count": 37,
+      "rows_md5": "2fdf294951e47d6979781ab3227da240",
+      "table_name": "wallet_accounts"
+    },
+    {
+      "row_count": 5,
+      "rows_md5": "75661773649858972bf7e43744a301f6",
+      "table_name": "wallet_deposit_requests"
+    },
+    {
+      "row_count": 85,
+      "rows_md5": "e0242f6a361d8a5d54cdb86e32d32694",
+      "table_name": "wallet_ledger_entries"
+    },
+    {
+      "row_count": 28,
+      "rows_md5": "e4da60db311fe11b148ca62c6bbc6b11",
+      "table_name": "wallet_reservations"
+    },
+    {
+      "row_count": 37,
+      "rows_md5": "de5d4eaefe1f7a2cdb606abb25632719",
+      "table_name": "wallets"
+    }
+  ],
+  "viewsBefore": [
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "columns": [
+        {
+          "name": "observed_at",
+          "ordinal": 1,
+          "type": "1184"
+        },
+        {
+          "name": "open_case_count",
+          "ordinal": 2,
+          "type": "20"
+        },
+        {
+          "name": "oldest_open_case_at",
+          "ordinal": 3,
+          "type": "1184"
+        },
+        {
+          "name": "aged_operation_count",
+          "ordinal": 4,
+          "type": "20"
+        },
+        {
+          "name": "oldest_aged_operation_at",
+          "ordinal": 5,
+          "type": "1184"
+        },
+        {
+          "name": "aged_attempt_count",
+          "ordinal": 6,
+          "type": "20"
+        },
+        {
+          "name": "oldest_aged_attempt_at",
+          "ordinal": 7,
+          "type": "1184"
+        },
+        {
+          "name": "sla_breach_count",
+          "ordinal": 8,
+          "type": "20"
+        },
+        {
+          "name": "oldest_sla_breach_at",
+          "ordinal": 9,
+          "type": "1184"
+        },
+        {
+          "name": "terminal_conflict_count",
+          "ordinal": 10,
+          "type": "20"
+        },
+        {
+          "name": "wallet_inconsistency_count",
+          "ordinal": 11,
+          "type": "20"
+        }
+      ],
+      "external_settlement_guard": false,
+      "reloptions": [
+        "security_invoker=true"
+      ],
+      "view_name": "booking_lifecycle_metrics_v"
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "columns": [
+        {
+          "name": "booking_id",
+          "ordinal": 1,
+          "type": "2950"
+        },
+        {
+          "name": "public_ref",
+          "ordinal": 2,
+          "type": "25"
+        },
+        {
+          "name": "supplier",
+          "ordinal": 3,
+          "type": "25"
+        },
+        {
+          "name": "import_source",
+          "ordinal": 4,
+          "type": "25"
+        },
+        {
+          "name": "stored_status",
+          "ordinal": 5,
+          "type": "25"
+        },
+        {
+          "name": "lifecycle_status",
+          "ordinal": 6,
+          "type": "25"
+        },
+        {
+          "name": "booked_at",
+          "ordinal": 7,
+          "type": "1184"
+        },
+        {
+          "name": "booking_updated_at",
+          "ordinal": 8,
+          "type": "1184"
+        },
+        {
+          "name": "ticketing_deadline_at",
+          "ordinal": 9,
+          "type": "1184"
+        },
+        {
+          "name": "issued_at",
+          "ordinal": 10,
+          "type": "1184"
+        },
+        {
+          "name": "cancelled_at",
+          "ordinal": 11,
+          "type": "1184"
+        },
+        {
+          "name": "payment_state",
+          "ordinal": 12,
+          "type": "25"
+        },
+        {
+          "name": "payment_amount",
+          "ordinal": 13,
+          "type": "20"
+        },
+        {
+          "name": "captured_amount",
+          "ordinal": 14,
+          "type": "20"
+        },
+        {
+          "name": "refunded_amount",
+          "ordinal": 15,
+          "type": "20"
+        },
+        {
+          "name": "currency",
+          "ordinal": 16,
+          "type": "25"
+        },
+        {
+          "name": "compatibility_operation_kind",
+          "ordinal": 17,
+          "type": "25"
+        },
+        {
+          "name": "compatibility_operation_reason",
+          "ordinal": 18,
+          "type": "25"
+        },
+        {
+          "name": "compatibility_operation_started_at",
+          "ordinal": 19,
+          "type": "1184"
+        },
+        {
+          "name": "active_operation_id",
+          "ordinal": 20,
+          "type": "2950"
+        },
+        {
+          "name": "operation_id",
+          "ordinal": 21,
+          "type": "2950"
+        },
+        {
+          "name": "operation_kind",
+          "ordinal": 22,
+          "type": "25"
+        },
+        {
+          "name": "operation_state",
+          "ordinal": 23,
+          "type": "25"
+        },
+        {
+          "name": "operation_reason_code",
+          "ordinal": 24,
+          "type": "25"
+        },
+        {
+          "name": "operation_reason_detail",
+          "ordinal": 25,
+          "type": "25"
+        },
+        {
+          "name": "operation_source",
+          "ordinal": 26,
+          "type": "25"
+        },
+        {
+          "name": "operation_actor_user_id",
+          "ordinal": 27,
+          "type": "25"
+        },
+        {
+          "name": "operation_actor_role",
+          "ordinal": 28,
+          "type": "25"
+        },
+        {
+          "name": "operation_claimed_at",
+          "ordinal": 29,
+          "type": "1184"
+        },
+        {
+          "name": "supplier_call_started_at",
+          "ordinal": 30,
+          "type": "1184"
+        },
+        {
+          "name": "supplier_response_received_at",
+          "ordinal": 31,
+          "type": "1184"
+        },
+        {
+          "name": "external_action_due_at",
+          "ordinal": 32,
+          "type": "1184"
+        },
+        {
+          "name": "reconciliation_required_at",
+          "ordinal": 33,
+          "type": "1184"
+        },
+        {
+          "name": "operation_completed_at",
+          "ordinal": 34,
+          "type": "1184"
+        },
+        {
+          "name": "operation_elapsed_seconds",
+          "ordinal": 35,
+          "type": "20"
+        },
+        {
+          "name": "operation_pointer_mismatch",
+          "ordinal": 36,
+          "type": "16"
+        },
+        {
+          "name": "reservation_id",
+          "ordinal": 37,
+          "type": "2950"
+        },
+        {
+          "name": "reservation_state",
+          "ordinal": 38,
+          "type": "25"
+        },
+        {
+          "name": "reservation_amount",
+          "ordinal": 39,
+          "type": "20"
+        },
+        {
+          "name": "reservation_currency",
+          "ordinal": 40,
+          "type": "25"
+        },
+        {
+          "name": "reservation_supplier_call_started_at",
+          "ordinal": 41,
+          "type": "1184"
+        },
+        {
+          "name": "reservation_reconciliation_at",
+          "ordinal": 42,
+          "type": "1184"
+        },
+        {
+          "name": "reservation_reconciliation_reason",
+          "ordinal": 43,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_id",
+          "ordinal": 44,
+          "type": "2950"
+        },
+        {
+          "name": "primary_case_type",
+          "ordinal": 45,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_state",
+          "ordinal": 46,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_reason_code",
+          "ordinal": 47,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_reason_detail",
+          "ordinal": 48,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_assigned_team",
+          "ordinal": 49,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_assignee_user_id",
+          "ordinal": 50,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_severity",
+          "ordinal": 51,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_priority",
+          "ordinal": 52,
+          "type": "21"
+        },
+        {
+          "name": "primary_case_due_at",
+          "ordinal": 53,
+          "type": "1184"
+        },
+        {
+          "name": "primary_case_escalation_level",
+          "ordinal": 54,
+          "type": "21"
+        },
+        {
+          "name": "primary_case_evidence_latest_at",
+          "ordinal": 55,
+          "type": "1184"
+        },
+        {
+          "name": "primary_case_evidence_is_fresh",
+          "ordinal": 56,
+          "type": "16"
+        },
+        {
+          "name": "financial_disposition",
+          "ordinal": 57,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_version",
+          "ordinal": 58,
+          "type": "23"
+        },
+        {
+          "name": "open_case_count",
+          "ordinal": 59,
+          "type": "23"
+        },
+        {
+          "name": "case_sla_breached",
+          "ordinal": 60,
+          "type": "16"
+        },
+        {
+          "name": "payment_conflict_code",
+          "ordinal": 61,
+          "type": "25"
+        },
+        {
+          "name": "terminal_conflict_visible",
+          "ordinal": 62,
+          "type": "16"
+        },
+        {
+          "name": "staff_attention_required",
+          "ordinal": 63,
+          "type": "16"
+        }
+      ],
+      "external_settlement_guard": false,
+      "reloptions": [
+        "security_invoker=true"
+      ],
+      "view_name": "booking_lifecycle_staff_v"
+    }
+  ],
+  "apply": {
+    "upToDate": false,
+    "dryRun": false,
+    "migrations": [
+      "20261008000000_shapontravels_booking_cancellation.sql",
+      "20261010000000_shapon_external_ticket_confirmation.sql"
+    ],
+    "seeds": [],
+    "roles": [],
+    "message": "Finished supabase db push."
+  },
+  "appliedAt": "2026-10-10T21:00:49.557Z",
+  "historyAfter": {
+    "migrations": [
+      {
+        "local": "20260911000000",
+        "remote": "20260911000000",
+        "time": "2026-09-11 00:00:00"
+      },
+      {
+        "local": "20260911010000",
+        "remote": "20260911010000",
+        "time": "2026-09-11 01:00:00"
+      },
+      {
+        "local": "20260911020000",
+        "remote": "20260911020000",
+        "time": "2026-09-11 02:00:00"
+      },
+      {
+        "local": "20260911030000",
+        "remote": "20260911030000",
+        "time": "2026-09-11 03:00:00"
+      },
+      {
+        "local": "20260912000000",
+        "remote": "20260912000000",
+        "time": "2026-09-12 00:00:00"
+      },
+      {
+        "local": "20260912010000",
+        "remote": "20260912010000",
+        "time": "2026-09-12 01:00:00"
+      },
+      {
+        "local": "20260912020000",
+        "remote": "20260912020000",
+        "time": "2026-09-12 02:00:00"
+      },
+      {
+        "local": "20260912030000",
+        "remote": "20260912030000",
+        "time": "2026-09-12 03:00:00"
+      },
+      {
+        "local": "20260915000000",
+        "remote": "20260915000000",
+        "time": "2026-09-15 00:00:00"
+      },
+      {
+        "local": "20260926000000",
+        "remote": "20260926000000",
+        "time": "2026-09-26 00:00:00"
+      },
+      {
+        "local": "20260927000000",
+        "remote": "20260927000000",
+        "time": "2026-09-27 00:00:00"
+      },
+      {
+        "local": "20260927010000",
+        "remote": "20260927010000",
+        "time": "2026-09-27 01:00:00"
+      },
+      {
+        "local": "20260927020000",
+        "remote": "20260927020000",
+        "time": "2026-09-27 02:00:00"
+      },
+      {
+        "local": "20260927030000",
+        "remote": "20260927030000",
+        "time": "2026-09-27 03:00:00"
+      },
+      {
+        "local": "20260930000000",
+        "remote": "20260930000000",
+        "time": "2026-09-30 00:00:00"
+      },
+      {
+        "local": "20260930010000",
+        "remote": "20260930010000",
+        "time": "2026-09-30 01:00:00"
+      },
+      {
+        "local": "20261002000000",
+        "remote": "20261002000000",
+        "time": "2026-10-02 00:00:00"
+      },
+      {
+        "local": "20261003000000",
+        "remote": "20261003000000",
+        "time": "2026-10-03 00:00:00"
+      },
+      {
+        "local": "20261006000000",
+        "remote": "20261006000000",
+        "time": "2026-10-06 00:00:00"
+      },
+      {
+        "local": "20261006000100",
+        "remote": "20261006000100",
+        "time": "2026-10-06 00:01:00"
+      },
+      {
+        "local": "20261008000000",
+        "remote": "20261008000000",
+        "time": "2026-10-08 00:00:00"
+      },
+      {
+        "local": "20261008010000",
+        "remote": "20261008010000",
+        "time": "2026-10-08 01:00:00"
+      },
+      {
+        "local": "20261010000000",
+        "remote": "20261010000000",
+        "time": "2026-10-10 00:00:00"
+      }
+    ],
+    "message": "Migrations listed"
+  },
+  "dryRunAfter": {
+    "upToDate": true,
+    "dryRun": true,
+    "migrations": [],
+    "seeds": [],
+    "roles": [],
+    "message": "Remote database is up to date."
+  },
+  "dataAfter": [
+    {
+      "row_count": 26,
+      "rows_md5": "723c4e4431670c898711723c45a1c17a",
+      "table_name": "booking_issued_sms_deliveries"
+    },
+    {
+      "row_count": 139,
+      "rows_md5": "eac76de412831711aee310c798b7f63d",
+      "table_name": "booking_notification_outbox"
+    },
+    {
+      "row_count": 44,
+      "rows_md5": "1acca94cf2058ef0d780990d1e3b6527",
+      "table_name": "booking_operations"
+    },
+    {
+      "row_count": 19,
+      "rows_md5": "8ec12f5096d59975323b2b0b48bb5468",
+      "table_name": "booking_reconciliation_cases"
+    },
+    {
+      "row_count": 139,
+      "rows_md5": "b3877025e7d5da7afcc5f464e163f796",
+      "table_name": "booking_status_events"
+    },
+    {
+      "row_count": 62,
+      "rows_md5": "319b3faf46c9be2d66fbd679f6634baf",
+      "table_name": "flight_bookings"
+    },
+    {
+      "row_count": 37,
+      "rows_md5": "2fdf294951e47d6979781ab3227da240",
+      "table_name": "wallet_accounts"
+    },
+    {
+      "row_count": 5,
+      "rows_md5": "75661773649858972bf7e43744a301f6",
+      "table_name": "wallet_deposit_requests"
+    },
+    {
+      "row_count": 85,
+      "rows_md5": "e0242f6a361d8a5d54cdb86e32d32694",
+      "table_name": "wallet_ledger_entries"
+    },
+    {
+      "row_count": 28,
+      "rows_md5": "e4da60db311fe11b148ca62c6bbc6b11",
+      "table_name": "wallet_reservations"
+    },
+    {
+      "row_count": 37,
+      "rows_md5": "de5d4eaefe1f7a2cdb606abb25632719",
+      "table_name": "wallets"
+    }
+  ],
+  "businessRowsUnchanged": true,
+  "viewsAfter": [
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "columns": [
+        {
+          "name": "observed_at",
+          "ordinal": 1,
+          "type": "1184"
+        },
+        {
+          "name": "open_case_count",
+          "ordinal": 2,
+          "type": "20"
+        },
+        {
+          "name": "oldest_open_case_at",
+          "ordinal": 3,
+          "type": "1184"
+        },
+        {
+          "name": "aged_operation_count",
+          "ordinal": 4,
+          "type": "20"
+        },
+        {
+          "name": "oldest_aged_operation_at",
+          "ordinal": 5,
+          "type": "1184"
+        },
+        {
+          "name": "aged_attempt_count",
+          "ordinal": 6,
+          "type": "20"
+        },
+        {
+          "name": "oldest_aged_attempt_at",
+          "ordinal": 7,
+          "type": "1184"
+        },
+        {
+          "name": "sla_breach_count",
+          "ordinal": 8,
+          "type": "20"
+        },
+        {
+          "name": "oldest_sla_breach_at",
+          "ordinal": 9,
+          "type": "1184"
+        },
+        {
+          "name": "terminal_conflict_count",
+          "ordinal": 10,
+          "type": "20"
+        },
+        {
+          "name": "wallet_inconsistency_count",
+          "ordinal": 11,
+          "type": "20"
+        }
+      ],
+      "external_settlement_guard": true,
+      "reloptions": [
+        "security_invoker=true"
+      ],
+      "view_name": "booking_lifecycle_metrics_v"
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "columns": [
+        {
+          "name": "booking_id",
+          "ordinal": 1,
+          "type": "2950"
+        },
+        {
+          "name": "public_ref",
+          "ordinal": 2,
+          "type": "25"
+        },
+        {
+          "name": "supplier",
+          "ordinal": 3,
+          "type": "25"
+        },
+        {
+          "name": "import_source",
+          "ordinal": 4,
+          "type": "25"
+        },
+        {
+          "name": "stored_status",
+          "ordinal": 5,
+          "type": "25"
+        },
+        {
+          "name": "lifecycle_status",
+          "ordinal": 6,
+          "type": "25"
+        },
+        {
+          "name": "booked_at",
+          "ordinal": 7,
+          "type": "1184"
+        },
+        {
+          "name": "booking_updated_at",
+          "ordinal": 8,
+          "type": "1184"
+        },
+        {
+          "name": "ticketing_deadline_at",
+          "ordinal": 9,
+          "type": "1184"
+        },
+        {
+          "name": "issued_at",
+          "ordinal": 10,
+          "type": "1184"
+        },
+        {
+          "name": "cancelled_at",
+          "ordinal": 11,
+          "type": "1184"
+        },
+        {
+          "name": "payment_state",
+          "ordinal": 12,
+          "type": "25"
+        },
+        {
+          "name": "payment_amount",
+          "ordinal": 13,
+          "type": "20"
+        },
+        {
+          "name": "captured_amount",
+          "ordinal": 14,
+          "type": "20"
+        },
+        {
+          "name": "refunded_amount",
+          "ordinal": 15,
+          "type": "20"
+        },
+        {
+          "name": "currency",
+          "ordinal": 16,
+          "type": "25"
+        },
+        {
+          "name": "compatibility_operation_kind",
+          "ordinal": 17,
+          "type": "25"
+        },
+        {
+          "name": "compatibility_operation_reason",
+          "ordinal": 18,
+          "type": "25"
+        },
+        {
+          "name": "compatibility_operation_started_at",
+          "ordinal": 19,
+          "type": "1184"
+        },
+        {
+          "name": "active_operation_id",
+          "ordinal": 20,
+          "type": "2950"
+        },
+        {
+          "name": "operation_id",
+          "ordinal": 21,
+          "type": "2950"
+        },
+        {
+          "name": "operation_kind",
+          "ordinal": 22,
+          "type": "25"
+        },
+        {
+          "name": "operation_state",
+          "ordinal": 23,
+          "type": "25"
+        },
+        {
+          "name": "operation_reason_code",
+          "ordinal": 24,
+          "type": "25"
+        },
+        {
+          "name": "operation_reason_detail",
+          "ordinal": 25,
+          "type": "25"
+        },
+        {
+          "name": "operation_source",
+          "ordinal": 26,
+          "type": "25"
+        },
+        {
+          "name": "operation_actor_user_id",
+          "ordinal": 27,
+          "type": "25"
+        },
+        {
+          "name": "operation_actor_role",
+          "ordinal": 28,
+          "type": "25"
+        },
+        {
+          "name": "operation_claimed_at",
+          "ordinal": 29,
+          "type": "1184"
+        },
+        {
+          "name": "supplier_call_started_at",
+          "ordinal": 30,
+          "type": "1184"
+        },
+        {
+          "name": "supplier_response_received_at",
+          "ordinal": 31,
+          "type": "1184"
+        },
+        {
+          "name": "external_action_due_at",
+          "ordinal": 32,
+          "type": "1184"
+        },
+        {
+          "name": "reconciliation_required_at",
+          "ordinal": 33,
+          "type": "1184"
+        },
+        {
+          "name": "operation_completed_at",
+          "ordinal": 34,
+          "type": "1184"
+        },
+        {
+          "name": "operation_elapsed_seconds",
+          "ordinal": 35,
+          "type": "20"
+        },
+        {
+          "name": "operation_pointer_mismatch",
+          "ordinal": 36,
+          "type": "16"
+        },
+        {
+          "name": "reservation_id",
+          "ordinal": 37,
+          "type": "2950"
+        },
+        {
+          "name": "reservation_state",
+          "ordinal": 38,
+          "type": "25"
+        },
+        {
+          "name": "reservation_amount",
+          "ordinal": 39,
+          "type": "20"
+        },
+        {
+          "name": "reservation_currency",
+          "ordinal": 40,
+          "type": "25"
+        },
+        {
+          "name": "reservation_supplier_call_started_at",
+          "ordinal": 41,
+          "type": "1184"
+        },
+        {
+          "name": "reservation_reconciliation_at",
+          "ordinal": 42,
+          "type": "1184"
+        },
+        {
+          "name": "reservation_reconciliation_reason",
+          "ordinal": 43,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_id",
+          "ordinal": 44,
+          "type": "2950"
+        },
+        {
+          "name": "primary_case_type",
+          "ordinal": 45,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_state",
+          "ordinal": 46,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_reason_code",
+          "ordinal": 47,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_reason_detail",
+          "ordinal": 48,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_assigned_team",
+          "ordinal": 49,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_assignee_user_id",
+          "ordinal": 50,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_severity",
+          "ordinal": 51,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_priority",
+          "ordinal": 52,
+          "type": "21"
+        },
+        {
+          "name": "primary_case_due_at",
+          "ordinal": 53,
+          "type": "1184"
+        },
+        {
+          "name": "primary_case_escalation_level",
+          "ordinal": 54,
+          "type": "21"
+        },
+        {
+          "name": "primary_case_evidence_latest_at",
+          "ordinal": 55,
+          "type": "1184"
+        },
+        {
+          "name": "primary_case_evidence_is_fresh",
+          "ordinal": 56,
+          "type": "16"
+        },
+        {
+          "name": "financial_disposition",
+          "ordinal": 57,
+          "type": "25"
+        },
+        {
+          "name": "primary_case_version",
+          "ordinal": 58,
+          "type": "23"
+        },
+        {
+          "name": "open_case_count",
+          "ordinal": 59,
+          "type": "23"
+        },
+        {
+          "name": "case_sla_breached",
+          "ordinal": 60,
+          "type": "16"
+        },
+        {
+          "name": "payment_conflict_code",
+          "ordinal": 61,
+          "type": "25"
+        },
+        {
+          "name": "terminal_conflict_visible",
+          "ordinal": 62,
+          "type": "16"
+        },
+        {
+          "name": "staff_attention_required",
+          "ordinal": 63,
+          "type": "16"
+        }
+      ],
+      "external_settlement_guard": true,
+      "reloptions": [
+        "security_invoker=true"
+      ],
+      "view_name": "booking_lifecycle_staff_v"
+    }
+  ],
+  "functionPrivileges": [
+    {
+      "anon_execute": false,
+      "authenticated_execute": false,
+      "name": "begin_booking_cancellation",
+      "public_execute": false,
+      "security_definer": true,
+      "service_execute": true,
+      "signature": "begin_booking_cancellation(uuid,text,text)"
+    },
+    {
+      "anon_execute": false,
+      "authenticated_execute": false,
+      "name": "confirm_shapon_external_ticket_v1",
+      "public_execute": false,
+      "security_definer": true,
+      "service_execute": true,
+      "signature": "confirm_shapon_external_ticket_v1(uuid,text,text,uuid,boolean,jsonb,jsonb,timestamp with time zone)"
+    },
+    {
+      "anon_execute": false,
+      "authenticated_execute": false,
+      "name": "prevent_shapon_external_confirmation_mutation_v1",
+      "public_execute": false,
+      "security_definer": false,
+      "service_execute": false,
+      "signature": "prevent_shapon_external_confirmation_mutation_v1()"
+    },
+    {
+      "anon_execute": false,
+      "authenticated_execute": false,
+      "name": "restore_shapon_cancellation_not_sent_v1",
+      "public_execute": false,
+      "security_definer": true,
+      "service_execute": true,
+      "signature": "restore_shapon_cancellation_not_sent_v1(uuid,text,text,text,uuid)"
+    },
+    {
+      "anon_execute": false,
+      "authenticated_execute": false,
+      "name": "shapon_booking_has_external_paid_settlement_v1",
+      "public_execute": false,
+      "security_definer": false,
+      "service_execute": true,
+      "signature": "shapon_booking_has_external_paid_settlement_v1(uuid)"
+    }
+  ],
+  "tableChecks": {
+    "decision_count": 0,
+    "policy_count": 0,
+    "rls_enabled": true
+  },
+  "tablePrivileges": [
+    {
+      "can_mutate": false,
+      "can_select": false,
+      "role": "anon"
+    },
+    {
+      "can_mutate": false,
+      "can_select": false,
+      "role": "authenticated"
+    },
+    {
+      "can_mutate": false,
+      "can_select": true,
+      "role": "service_role"
+    }
+  ],
+  "immutableTriggers": [
+    {
+      "definition": "CREATE TRIGGER shapon_external_ticket_confirmations_immutable BEFORE DELETE OR UPDATE ON public.shapon_external_ticket_confirmations FOR EACH ROW EXECUTE FUNCTION prevent_shapon_external_confirmation_mutation_v1()",
+      "tgenabled": "O",
+      "tgname": "shapon_external_ticket_confirmations_immutable",
+      "tgtype": 27
+    }
+  ],
+  "verifiedAt": "2026-10-10T21:00:59.092Z",
+  "restVerification": {
+    "verifiedAt": "2026-10-10T21:01:24.868Z",
+    "serviceTableRead": "passed_empty",
+    "anonymousTableRead": "denied",
+    "anonymousStatus": 401,
+    "schemaCacheRpcPaths": {
+      "begin_booking_cancellation": true,
+      "restore_shapon_cancellation_not_sent_v1": true,
+      "confirm_shapon_external_ticket_v1": true,
+      "shapon_booking_has_external_paid_settlement_v1": true
+    }
+  },
+  "localValidation": [
+    "npm run verify:shapontravels-cancel",
+    "npm run verify:shapontravels-external-confirmation",
+    "npm run typecheck"
+  ]
+}

@@ -109,6 +109,18 @@ type SmsPreview = {
   canSend: boolean;
 };
 
+type ExternalTicketConfirmation = {
+  bookingReference: string;
+  amount: number;
+  currency: string;
+};
+
+type ExternalTicketConfirmationAttempt = {
+  bookingReference: string;
+  requestId: string;
+  chargeWallet: boolean;
+};
+
 const ISSUE_POST_TIMEOUT_MS = 130_000;
 const ISSUE_STATUS_TIMEOUT_MS = 15_000;
 // Supplier deadlines normally propagate within 5–15 seconds of Book. Check
@@ -126,6 +138,8 @@ const DEADLINE_AUTO_REFRESH_DELAYS_MS = [
 ] as const;
 const CHECKING_TICKETING_RESULT_MESSAGE =
   'Checking ticketing result / Needs Reconciliation — do not submit again.';
+const CHECKING_CANCELLATION_RESULT_MESSAGE =
+  'Checking cancellation result / Needs Reconciliation — do not submit again.';
 
 function clearCreatedBookingMarker(): void {
   const url = new URL(window.location.href);
@@ -152,6 +166,39 @@ const ISSUE_RECONCILIATION_CODES = new Set([
   'OPERATION_IN_PROGRESS',
   'SUPPLIER_CALL_ALREADY_STARTED',
   'HOLD_RELEASE_FAILED',
+]);
+
+const CANCEL_RECONCILIATION_CODES = new Set([
+  'CANCEL_OUTCOME_UNKNOWN',
+  'CANCEL_RECONCILIATION_REQUIRED',
+  'CANCEL_RESTORE_FAILED',
+  'CANCEL_IN_PROGRESS',
+  ...Array.from(ISSUE_RECONCILIATION_CODES),
+]);
+
+// These explicit preflight rejections guarantee that confirmation and debit
+// did not happen. Every other failure retains the original financial choice.
+const EXTERNAL_CONFIRMATION_DEFINITE_CODES = new Set([
+  'INSUFFICIENT_FUNDS',
+  'WALLET_FROZEN',
+  'WALLET_NOT_FOUND',
+  'WALLET_ACCOUNT_NOT_FOUND',
+  'INVALID_BOOKING_AMOUNT',
+  'SUPPLIER_TICKET_NOT_CONFIRMED',
+  'BOOKING_NOT_ELIGIBLE',
+  'SUPPLIER_IDENTITY_UNVERIFIED',
+  'BOOKING_OWNER_REQUIRED',
+  'CONFIRM_FORBIDDEN',
+  'INVALID_CONFIRMATION_REQUEST',
+  'RATE_LIMITED',
+  'BOOKING_NOT_FOUND',
+  'CONFIRMATION_FORBIDDEN',
+  'ACTOR_ROLE_MISMATCH',
+  'SUPPLIER_BOOKING_UNSUPPORTED',
+  'BOOKING_CONFIRMATION_CONFLICT',
+  'TICKET_EVIDENCE_UNVERIFIED',
+  'TICKET_ALREADY_ASSIGNED',
+  'BOOKING_STATE_CHANGED',
 ]);
 
 async function responseJson<T>(response: Response): Promise<T> {
@@ -255,6 +302,7 @@ export default function BookingActions({
   allowedPostTicketActions = [],
   allowSupplierRefresh = false,
   allowShaponStatusCheck = false,
+  allowExternalTicketConfirmation = false,
   refreshingTicketingTime = false,
   onSupplierActionBusyChange,
   autoRefreshDeadline = false,
@@ -290,6 +338,7 @@ export default function BookingActions({
   allowedPostTicketActions?: readonly TicketManagementAction[];
   allowSupplierRefresh?: boolean;
   allowShaponStatusCheck?: boolean;
+  allowExternalTicketConfirmation?: boolean;
   refreshingTicketingTime?: boolean;
   onSupplierActionBusyChange?: (busy: boolean) => void;
   autoRefreshDeadline?: boolean;
@@ -307,7 +356,9 @@ export default function BookingActions({
   allowSmsShare?: boolean;
   children?: ReactNode;
 }) {
-  const ticketed = status === 'confirmed';
+  const [externalConfirmedReference, setExternalConfirmedReference] =
+    useState<string | null>(null);
+  const ticketed = status === 'confirmed' || externalConfirmedReference === bookingReference;
   const cancelled = status === 'cancelled';
   const requestOnly = Boolean(
     !importedBooking &&
@@ -316,17 +367,61 @@ export default function BookingActions({
   );
   const importedConfirmEligible = allowImportedConfirmation && status === 'on-hold';
   const issueEligible = importedConfirmEligible ||
-    (!requestOnly && allowTicketing && (status === 'on-hold' || status === 'pending'));
+    (!ticketed && !requestOnly && allowTicketing && (status === 'on-hold' || status === 'pending'));
   const cancellable =
-    allowCancellation && status === 'on-hold' && !directTicketing;
+    !ticketed && allowCancellation && ['on-hold', 'pending', 'unconfirmed', 'expired'].includes(status) &&
+    !directTicketing;
   const router = useRouter();
   const [preview, setPreview] = useState<IssuePreview | null>(null);
   const [loading, setLoading] = useState(issueEligible);
   const [issuing, setIssuing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [cancellationResultUncertain, setCancellationResultUncertain] = useState(false);
+  useEffect(() => {
+    setCancellationResultUncertain(false);
+  }, [bookingReference]);
   const [requestingTimeLimit, setRequestingTimeLimit] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [completingImported, setCompletingImported] = useState(false);
+  const [externalTicketConfirmation, setExternalTicketConfirmation] =
+    useState<ExternalTicketConfirmation | null>(null);
+  const externalTicketConfirmationRef = useRef<ExternalTicketConfirmation | null>(null);
+  const [externalConfirmationOpen, setExternalConfirmationOpen] = useState(false);
+  const [confirmingExternal, setConfirmingExternal] = useState(false);
+  const [externalConfirmationUncertain, setExternalConfirmationUncertain] = useState(false);
+  const [externalConfirmationError, setExternalConfirmationError] = useState<string | null>(null);
+  const [externalConfirmationAttempt, setExternalConfirmationAttempt] =
+    useState<ExternalTicketConfirmationAttempt | null>(null);
+  const externalConfirmationAttemptRef = useRef<ExternalTicketConfirmationAttempt | null>(null);
+  const externalConfirmationInFlight = useRef(false);
+  const activeBookingReference = useRef(bookingReference);
+  activeBookingReference.current = bookingReference;
+  useEffect(() => {
+    setExternalConfirmedReference(null);
+    setExternalTicketConfirmation(null);
+    externalTicketConfirmationRef.current = null;
+    setExternalConfirmationOpen(false);
+    setConfirmingExternal(false);
+    setExternalConfirmationUncertain(false);
+    setExternalConfirmationError(null);
+    setExternalConfirmationAttempt(null);
+    externalConfirmationAttemptRef.current = null;
+    externalConfirmationInFlight.current = false;
+  }, [bookingReference]);
+  useEffect(() => {
+    if (status === 'confirmed' || status === 'cancelled') {
+      setExternalConfirmedReference(null);
+    }
+  }, [bookingReference, status]);
+  useEffect(() => {
+    if (!ticketed) return;
+    setExternalTicketConfirmation(null);
+    externalTicketConfirmationRef.current = null;
+    setExternalConfirmationOpen(false);
+    setExternalConfirmationUncertain(false);
+    setExternalConfirmationAttempt(null);
+    externalConfirmationAttemptRef.current = null;
+  }, [ticketed]);
   const [syncRequestId, setSyncRequestId] = useState<string | null>(null);
   const [completionRequestId, setCompletionRequestId] = useState<string | null>(null);
   const [importedVerification, setImportedVerification] =
@@ -337,8 +432,8 @@ export default function BookingActions({
     presentation: ShapontravelsStatusMessage;
   } | null>(null);
   useEffect(() => {
-    onSupplierActionBusyChange?.(issuing || cancelling || refreshing || completingImported);
-  }, [issuing, cancelling, refreshing, completingImported, onSupplierActionBusyChange]);
+    onSupplierActionBusyChange?.(issuing || cancelling || refreshing || completingImported || confirmingExternal);
+  }, [issuing, cancelling, refreshing, completingImported, confirmingExternal, onSupplierActionBusyChange]);
   const showFeedback = useStatusFeedback();
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('created') !== '1') return;
@@ -500,6 +595,29 @@ export default function BookingActions({
   const insufficient =
     preview !== null &&
     preview.wallet.availableBalance < preview.requiredAmount;
+  const assignedWalletBalanceWarning = issuingForAssignedOwner && insufficient && preview ? (
+    <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+      <p className="flex items-start gap-1.5 font-semibold">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        Insufficient user wallet balance
+      </p>
+      <dl className="mt-2 space-y-1">
+        <div className="flex flex-wrap justify-between gap-x-3">
+          <dt>Available balance</dt>
+          <dd className="font-semibold tabular-nums">{money(preview.wallet.availableBalance, preview.wallet.currency)}</dd>
+        </div>
+        <div className="flex flex-wrap justify-between gap-x-3">
+          <dt>Payable amount</dt>
+          <dd className="font-semibold tabular-nums">{money(preview.requiredAmount, preview.wallet.currency)}</dd>
+        </div>
+        <div className="flex flex-wrap justify-between gap-x-3">
+          <dt>Shortfall</dt>
+          <dd className="font-semibold tabular-nums">{money(preview.requiredAmount - preview.wallet.availableBalance, preview.wallet.currency)}</dd>
+        </div>
+      </dl>
+      <p className="mt-2">Add funds to the booking owner’s wallet before proceeding with a wallet charge.</p>
+    </div>
+  ) : null;
   const frozen = preview?.wallet.status === 'frozen';
   // The SSR booking props can be one action behind a supplier write. For
   // normal Triplover ticketing, only a fresh read-only server response may
@@ -510,11 +628,19 @@ export default function BookingActions({
     checkingTicketingResult ||
     issueActionStatus?.reconciliationRequired === true ||
     Boolean(issueActionStatus?.operationState);
+  const externalTicketConfirmationReady =
+    allowExternalTicketConfirmation && allowShaponStatusCheck &&
+    !ticketed && ['on-hold', 'pending', 'expired', 'unconfirmed'].includes(status) && !directTicketing &&
+    !importedBooking && !manualBooking &&
+    externalTicketConfirmation?.bookingReference === bookingReference;
   const issueInteractionLocked =
     issuing ||
     cancelling ||
     refreshingTicketingTime ||
     refreshingIssueState ||
+    externalTicketConfirmationReady ||
+    confirmingExternal ||
+    externalConfirmationUncertain ||
     reconciliationActive ||
     !serverCanSubmit;
   // Cancellation is independent from Issue Ticket's wallet preview and
@@ -523,12 +649,26 @@ export default function BookingActions({
   const cancelInteractionLocked =
     issuing ||
     cancelling ||
+    cancellationResultUncertain ||
+    externalTicketConfirmationReady ||
+    confirmingExternal ||
+    externalConfirmationUncertain ||
     refreshingTicketingTime ||
     issueActionStatus?.reconciliationRequired === true ||
     Boolean(issueActionStatus?.operationState);
+  const cancellationLockMessage = cancellationResultUncertain
+    ? CHECKING_CANCELLATION_RESULT_MESSAGE : CHECKING_TICKETING_RESULT_MESSAGE;
 
   async function issue() {
-    if (issuing || cancelling) return;
+    if (issuing || cancelling || confirmingExternal || externalConfirmationUncertain) return;
+    if (externalTicketConfirmationReady) {
+      setMessage('The supplier ticket is already issued. Confirm the issued ticket below.');
+      return;
+    }
+    if (insufficient && preview) {
+      setMessage(`${issuingForAssignedOwner ? 'Insufficient user wallet balance.' : 'Insufficient wallet balance.'} Add ${money(preview.requiredAmount - preview.wallet.availableBalance, preview.wallet.currency)} to ${issuingForAssignedOwner ? 'the booking owner’s' : 'your'} wallet before proceeding.`);
+      return;
+    }
     if (!serverCanSubmit) {
       setCheckingTicketingResult(true);
       setMessage(CHECKING_TICKETING_RESULT_MESSAGE);
@@ -648,8 +788,12 @@ export default function BookingActions({
   }
 
   async function cancel() {
+    if (!cancellable) {
+      setMessage('Only an unissued On Hold, Pending, Unconfirmed, or Expired booking can be cancelled.');
+      return;
+    }
     if (cancelInteractionLocked) {
-      setMessage(CHECKING_TICKETING_RESULT_MESSAGE);
+      setMessage(cancellationLockMessage);
       return;
     }
     setCancelling(true);
@@ -663,20 +807,43 @@ export default function BookingActions({
           requestId: crypto.randomUUID(),
         }),
       });
-      const body = (await response.json()) as {
+      const body = await responseJson<{
         success?: boolean;
-        error?: { errorMessage?: string };
-      };
+        error?: { errorCode?: string; errorMessage?: string };
+      }>(response);
       if (!response.ok || !body.success) {
-        throw new Error(body.error?.errorMessage || 'Booking cancellation failed.');
+        throw issueRequestError(
+          body.error?.errorMessage || 'Booking cancellation failed.',
+          body.error?.errorCode
+        );
       }
       setMessage('Booking cancelled. No wallet balance was required.');
       showFeedback({ title: 'Booking Cancelled', description: 'Your booking has been cancelled successfully.', tone: 'neutral', reference: bookingReference });
-      router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Booking cancellation failed.');
+      const typedError = error as IssueRequestError;
+      if (!typedError.code || CANCEL_RECONCILIATION_CODES.has(typedError.code)) {
+        setCancellationResultUncertain(true);
+        setMessage(CHECKING_CANCELLATION_RESULT_MESSAGE);
+      } else {
+        setMessage(error instanceof Error ? error.message : 'Booking cancellation failed.');
+      }
     } finally {
-      setCancelling(false);
+      // An error can arrive after the supplier accepted Cancel. Refresh both
+      // saved booking props and the operation snapshot before another action.
+      router.refresh();
+      try {
+        if (useIssueStatus) {
+          const refreshed = await refreshIssueStatus();
+          if (refreshed.reconciliationRequired || refreshed.operationState) {
+            setCancellationResultUncertain(true);
+            setMessage(CHECKING_CANCELLATION_RESULT_MESSAGE);
+          }
+        }
+      } catch {
+        // Keep an ambiguous cancellation locked while read-only status is unavailable.
+      } finally {
+        setCancelling(false);
+      }
     }
   }
 
@@ -690,8 +857,17 @@ export default function BookingActions({
   const refreshSupplierDetails = useCallback(async (
     automatic = false
   ): Promise<boolean> => {
-    if (supplierRefreshInFlight.current) return false;
+    if (
+      supplierRefreshInFlight.current || externalConfirmationInFlight.current ||
+      externalConfirmationAttemptRef.current
+    ) return false;
     supplierRefreshInFlight.current = true;
+    if (!automatic) {
+      setExternalTicketConfirmation(null);
+      externalTicketConfirmationRef.current = null;
+      setExternalConfirmationOpen(false);
+      setExternalConfirmationError(null);
+    }
     const retryIdentity = syncRequestId ?? crypto.randomUUID();
     if (allowImportedSync) setSyncRequestId(retryIdentity);
     setRefreshing(true);
@@ -723,10 +899,19 @@ export default function BookingActions({
             result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
             ticketCount?: number;
           } | null;
+          supplierCancellation?: {
+            result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
+          } | null;
+          externalTicketConfirmation?: {
+            eligible: boolean;
+            amount: number;
+            currency: string;
+          } | null;
         };
         error?: string | { errorMessage?: string };
         verification?: ImportedTicketVerification | null;
       };
+      if (activeBookingReference.current !== bookingReference) return false;
       if (!response.ok || !body.success) {
         throw new Error(
           (typeof body.error === 'string'
@@ -742,8 +927,28 @@ export default function BookingActions({
         setImportedVerification(body.verification ?? null);
       }
       if (!automatic) {
+        const externalConfirmation = body.data?.externalTicketConfirmation;
+        const canConfirmExternal =
+          allowExternalTicketConfirmation && allowShaponStatusCheck &&
+          ['on-hold', 'pending', 'expired', 'unconfirmed'].includes(status) &&
+          !directTicketing && !importedBooking && !manualBooking &&
+          externalConfirmation?.eligible === true &&
+          Number.isFinite(externalConfirmation.amount) && externalConfirmation.amount > 0 &&
+          externalConfirmation.currency === 'BDT';
+        if (canConfirmExternal) {
+          const confirmation = {
+            bookingReference,
+            amount: externalConfirmation.amount,
+            currency: externalConfirmation.currency,
+          };
+          externalTicketConfirmationRef.current = confirmation;
+          setExternalTicketConfirmation(confirmation);
+        }
         const ticketFinding = body.data?.supplierTicket;
-        const ticketMessage = ticketFinding?.result === 'verified'
+        const cancellationFinding = body.data?.supplierCancellation;
+        const ticketMessage = canConfirmExternal
+          ? 'Supplier ticket is issued and paid. Confirm the booking below and choose whether to charge the booking owner’s wallet.'
+          : ticketFinding?.result === 'verified'
           ? ` Supplier ticket evidence matches ${ticketFinding.ticketCount} passenger(s); staff must reconcile the local booking.`
           : ticketFinding?.result === 'pending'
             ? ' Supplier ticketing is still pending; do not issue again.'
@@ -752,12 +957,21 @@ export default function BookingActions({
               : ticketFinding
                 ? ' Supplier ticket evidence could not be verified; staff must investigate.'
                 : '';
+        const cancellationMessage = cancellationFinding?.result === 'verified'
+          ? 'Supplier cancellation evidence matches this booking; staff must reconcile the local booking and wallet. Do not cancel again.'
+          : cancellationFinding?.result === 'pending'
+            ? 'Supplier cancellation is still pending; do not cancel again.'
+            : cancellationFinding?.result === 'not_found'
+              ? 'No saved cancellation was found. This is inconclusive; do not cancel again until staff investigate.'
+              : cancellationFinding
+                ? 'Supplier cancellation evidence could not be verified; do not cancel again until staff investigate.'
+                : '';
         if (allowShaponStatusCheck) {
           setShaponStatusMessage({
             bookingReference,
             presentation: formatShapontravelsBookingStatus(body.data),
           });
-          setMessage(ticketMessage.trim() || null);
+          setMessage(cancellationMessage || ticketMessage.trim() || null);
         } else {
           setMessage(allowImportedSync
             ? importedOutcomeMessage(body.verification)
@@ -779,7 +993,7 @@ export default function BookingActions({
       }
       return Boolean(body.data?.ticketingDeadlineAt) || body.data?.complete === true;
     } catch (error) {
-      if (!automatic) {
+      if (!automatic && activeBookingReference.current === bookingReference) {
         setMessage(
           error instanceof Error
             ? error.message
@@ -793,7 +1007,108 @@ export default function BookingActions({
       supplierRefreshInFlight.current = false;
       setRefreshing(false);
     }
-  }, [allowImportedSync, allowShaponStatusCheck, bookingReference, router, syncRequestId]);
+  }, [allowExternalTicketConfirmation, allowImportedSync, allowShaponStatusCheck, bookingReference, directTicketing, importedBooking, manualBooking, router, status, syncRequestId]);
+
+  async function confirmExternalTicket(chargeWallet: boolean): Promise<void> {
+    if (
+      activeBookingReference.current !== bookingReference ||
+      !externalTicketConfirmationReady || !externalTicketConfirmation ||
+      externalTicketConfirmationRef.current !== externalTicketConfirmation ||
+      externalConfirmationInFlight.current || supplierRefreshInFlight.current ||
+      issuing || cancelling || completingImported || refreshingTicketingTime
+    ) return;
+    const priorAttempt = externalConfirmationAttemptRef.current;
+    if (priorAttempt && (
+      priorAttempt.bookingReference !== bookingReference ||
+      priorAttempt.chargeWallet !== chargeWallet
+    )) return;
+    const attempt = priorAttempt ?? {
+      bookingReference,
+      requestId: crypto.randomUUID(),
+      chargeWallet,
+    };
+    // Retain both the request identity and the financial choice until the
+    // server confirms the result. A disconnected response may follow a debit.
+    externalConfirmationAttemptRef.current = attempt;
+    externalConfirmationInFlight.current = true;
+    setExternalConfirmationAttempt(attempt);
+    setConfirmingExternal(true);
+    setExternalConfirmationError(null);
+    setMessage(null);
+    let definiteRejection = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), ISSUE_POST_TIMEOUT_MS);
+    try {
+      const response = await fetch('/api/flights/booking/confirm-external-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(attempt),
+        signal: controller.signal,
+      });
+      const body = await responseJson<IssueResponseEnvelope<{
+        confirmed: boolean;
+        charged: boolean;
+        replay?: boolean;
+      }>>(response);
+      if (activeBookingReference.current !== bookingReference) return;
+      if (!response.ok || !body.success || body.data?.confirmed !== true ||
+        body.data.charged !== attempt.chargeWallet) {
+        definiteRejection = response.status >= 400 && response.status < 500 &&
+          EXTERNAL_CONFIRMATION_DEFINITE_CODES.has(body.error?.errorCode ?? '');
+        throw issueRequestError(
+          body.error?.errorMessage || 'The issued ticket could not be confirmed.',
+          body.error?.errorCode,
+        );
+      }
+      const description = body.data.charged
+        ? 'Booking confirmed. The booking owner’s wallet was charged.'
+        : 'Booking confirmed without a wallet charge.';
+      setExternalConfirmedReference(bookingReference);
+      setExternalTicketConfirmation(null);
+      externalTicketConfirmationRef.current = null;
+      setExternalConfirmationOpen(false);
+      setExternalConfirmationAttempt(null);
+      externalConfirmationAttemptRef.current = null;
+      setExternalConfirmationUncertain(false);
+      setMessage(description);
+      showFeedback({ title: 'Booking Confirmed', description, reference: bookingReference });
+    } catch (error) {
+      if (activeBookingReference.current !== bookingReference) return;
+      const detail = error instanceof Error ? error.message : 'The confirmation response is unavailable.';
+      if (definiteRejection) {
+        externalConfirmationAttemptRef.current = null;
+        setExternalConfirmationAttempt(null);
+        setExternalConfirmationUncertain(false);
+        setExternalConfirmationError(detail);
+        if ((error as IssueRequestError).code === 'BOOKING_STATE_CHANGED') {
+          externalTicketConfirmationRef.current = null;
+          setExternalTicketConfirmation(null);
+          setExternalConfirmationOpen(false);
+          setMessage(detail);
+        }
+      } else {
+        setExternalConfirmationUncertain(true);
+        setExternalConfirmationError(
+          `The confirmation result is not yet verified. Retry the same option to check it safely. ${detail}`,
+        );
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (activeBookingReference.current === bookingReference) {
+        externalConfirmationInFlight.current = false;
+        setConfirmingExternal(false);
+        router.refresh();
+        if (useIssueStatus) {
+          try {
+            await refreshIssueStatus();
+          } catch {
+            // The retained confirmation request remains safe to retry even
+            // when the independent wallet/status snapshot is unavailable.
+          }
+        }
+      }
+    }
+  }
 
   useEffect(() => {
     if (
@@ -1122,7 +1437,7 @@ export default function BookingActions({
     setPrintWithFare(null);
   }
 
-  const cancellationAction = (
+  const cancellationAction = cancellable ? (
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <button
@@ -1130,10 +1445,10 @@ export default function BookingActions({
           disabled={!cancellable || cancelInteractionLocked}
           title={
             cancelInteractionLocked
-              ? CHECKING_TICKETING_RESULT_MESSAGE
+              ? cancellationLockMessage
               : cancellable
-                ? 'Release this held booking with the airline'
-                : 'Only a held, unissued booking can be cancelled'
+                ? 'Cancel this unissued booking with the supplier'
+                : 'Only an unissued On Hold, Pending, Unconfirmed, or Expired booking can be cancelled'
           }
           className={buttonClass}
         >
@@ -1155,7 +1470,7 @@ export default function BookingActions({
               Cancel this booking?
             </AlertDialogTitle>
             <AlertDialogDescription className="leading-6 text-neutral-600">
-              This will ask the airline to release the held PNR. The action
+              This will ask the supplier to cancel the unissued booking. The action
               cannot be undone after the supplier confirms it.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1171,7 +1486,7 @@ export default function BookingActions({
           </div>
           <p className="flex gap-2 text-xs leading-5 text-neutral-600">
             <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-brand-orange" aria-hidden />
-            No wallet balance is required to cancel an On Hold booking.
+            No wallet balance is required to cancel an unissued booking.
           </p>
           <AlertDialogFooter className="gap-2 sm:space-x-0">
             <AlertDialogCancel className="border-neutral-300 text-navy-950">
@@ -1188,7 +1503,7 @@ export default function BookingActions({
         </div>
       </AlertDialogContent>
     </AlertDialog>
-  );
+  ) : null;
 
   return (
     <aside className="w-full shrink-0 lg:sticky lg:top-4 lg:w-[260px]">
@@ -1446,7 +1761,7 @@ export default function BookingActions({
             <button
               type="button"
               onClick={() => void refreshSupplierDetails()}
-              disabled={refreshing || refreshingTicketingTime || completingImported || issuing || cancelling}
+              disabled={refreshing || refreshingTicketingTime || completingImported || issuing || cancelling || confirmingExternal || externalConfirmationUncertain}
               className={buttonClass}
             >
               <RefreshCw
@@ -1457,6 +1772,107 @@ export default function BookingActions({
                 ? allowImportedSync ? 'Syncing…' : allowShaponStatusCheck ? 'Checking…' : 'Refreshing…'
                 : allowImportedSync ? 'Sync Imported Booking' : allowShaponStatusCheck ? 'Verify Supplier Status' : 'Refresh Ticket Details'}
             </button>
+            {externalTicketConfirmationReady && externalTicketConfirmation && (
+              <AlertDialog
+                open={externalConfirmationOpen}
+                onOpenChange={(open) => {
+                  if (!open && (confirmingExternal || externalConfirmationUncertain)) return;
+                  setExternalConfirmationOpen(open);
+                }}
+              >
+                <AlertDialogTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={refreshing || refreshingTicketingTime || completingImported || issuing || cancelling || confirmingExternal}
+                    className={buttonClass}
+                  >
+                    {confirmingExternal ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-brand-orange" aria-hidden />
+                    ) : (
+                      <Ticket className="h-4 w-4 text-brand-orange" aria-hidden />
+                    )}
+                    {confirmingExternal ? 'Confirming…' : 'Confirm Issued Ticket'}
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto border-0 p-0 shadow-2xl">
+                  <div className="border-b border-brand-orange/15 bg-brand-orange-light px-6 py-5">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-brand-orange shadow-sm ring-1 ring-brand-orange/15">
+                      <Wallet className="h-5 w-5" aria-hidden />
+                    </span>
+                    <AlertDialogHeader className="mt-4 text-left">
+                      <AlertDialogTitle className="text-xl font-bold text-navy-950">
+                        Charge the booking owner’s wallet?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription className="leading-6 text-neutral-600">
+                        The supplier has verified this ticket as issued and paid.
+                        Both options will confirm this booking.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                  </div>
+                  <div className="space-y-4 px-6 pb-6">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-md border border-neutral-200 bg-navy-50 px-4 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                          Booking reference
+                        </p>
+                        <p className="mt-1 break-all font-bold tracking-wide text-navy-950">
+                          {bookingReference}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-neutral-200 bg-navy-50 px-4 py-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                          Owner wallet charge
+                        </p>
+                        <p className="mt-1 font-bold text-brand-orange">
+                          {money(externalTicketConfirmation.amount * 100, externalTicketConfirmation.currency)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs leading-5 text-neutral-600">
+                      Charge &amp; Confirm deducts the saved payable amount from the booking owner’s wallet.
+                      Confirm Without Charge confirms the booking without deducting wallet funds.
+                    </p>
+                    {externalConfirmationError && (
+                      <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                        {externalConfirmationError}
+                      </p>
+                    )}
+                    <AlertDialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+                      <AlertDialogAction
+                        disabled={confirmingExternal || (externalConfirmationUncertain && externalConfirmationAttempt?.chargeWallet !== true)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void confirmExternalTicket(true);
+                        }}
+                        className="w-full bg-brand-orange text-navy-950 hover:bg-brand-orange-dark hover:text-white"
+                      >
+                        {confirmingExternal && externalConfirmationAttempt?.chargeWallet === true
+                          ? 'Confirming…'
+                          : 'Charge & Confirm'}
+                      </AlertDialogAction>
+                      <AlertDialogAction
+                        disabled={confirmingExternal || (externalConfirmationUncertain && externalConfirmationAttempt?.chargeWallet !== false)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void confirmExternalTicket(false);
+                        }}
+                        className="w-full border border-neutral-300 bg-white text-navy-950 hover:bg-navy-50"
+                      >
+                        {confirmingExternal && externalConfirmationAttempt?.chargeWallet === false
+                          ? 'Confirming…'
+                          : 'Confirm Without Charge'}
+                      </AlertDialogAction>
+                      <AlertDialogCancel
+                        disabled={confirmingExternal || externalConfirmationUncertain}
+                        className="w-full border-neutral-300 text-navy-950"
+                      >
+                        Not Now
+                      </AlertDialogCancel>
+                    </AlertDialogFooter>
+                  </div>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             {allowShaponStatusCheck &&
               shaponStatusMessage?.bookingReference === bookingReference && (
               <div role="status" className="space-y-1 rounded-md bg-white/20 p-3 text-xs leading-relaxed text-black">
@@ -1520,13 +1936,15 @@ export default function BookingActions({
             )}
             {cancellationAction}
           </div>
-        ) : ticketed || cancelled || !issueEligible ? (
-          <div className="px-4 pb-4">
+        ) : ticketed || cancelled || !issueEligible || externalTicketConfirmationReady ? (
+          <div className="space-y-3 px-4 pb-4">
             <p className="rounded-md bg-white/20 p-3 text-xs leading-relaxed text-black">
               {ticketed
                 ? 'This booking is ticketed. Nothing further is payable.'
                 : cancelled
                   ? 'This booking has been cancelled.'
+                  : externalTicketConfirmationReady
+                    ? 'Confirm the issued ticket above.'
                   : importedBooking && status === 'in-progress'
                     ? statusMessage ?? IMPORTED_MANUAL_TICKETING_MESSAGE
                     : importedBooking && status === 'on-hold'
@@ -1539,11 +1957,12 @@ export default function BookingActions({
                     ? statusMessage ??
                       'We are verifying the latest booking details with the airline.'
                   : status === 'unconfirmed'
-                      ? 'The airline PNR must be verified before ticketing or cancellation.'
+                      ? 'The airline PNR must be verified before ticketing.'
                       : supplierIssueUnavailable && (status === 'on-hold' || status === 'pending')
                         ? 'Ticket issue is currently unavailable for this booking.'
                       : 'The ticketing deadline has passed.'}
             </p>
+            {cancellationAction}
           </div>
         ) : (
           <div className="space-y-2 px-4 pb-4">
@@ -1563,6 +1982,8 @@ export default function BookingActions({
                     : '--'}
               </span>
             </div>
+
+            {assignedWalletBalanceWarning}
 
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -1655,12 +2076,13 @@ export default function BookingActions({
                         : 'After the hold is placed, authorized operations staff must manually process the ticket and verify the supplier result.'
                       : 'Confirm only when you are ready to issue. The airline may not allow the ticketing request to be reversed.'}
                   </p>
+                  {assignedWalletBalanceWarning}
                   <AlertDialogFooter className="gap-2 sm:space-x-0">
                     <AlertDialogCancel className="border-neutral-300 text-navy-950">
                       Not Now
                     </AlertDialogCancel>
                     <AlertDialogAction
-                      disabled={issueInteractionLocked}
+                      disabled={loading || issueInteractionLocked || !preview || insufficient || frozen}
                       onClick={() => void issue()}
                       className="bg-brand-orange text-navy-950 hover:bg-brand-orange-dark hover:text-white"
                     >

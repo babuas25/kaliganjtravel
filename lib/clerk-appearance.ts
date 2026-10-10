@@ -4,6 +4,8 @@
  * The card, its border and its header are all stripped out: the surrounding
  * panel already supplies a white surface, a shadow and a title, and leaving
  * Clerk's own would stack two cards and two headings on top of each other.
+ * Use style objects here: Clerk's unlayered styles override normal Tailwind v4
+ * utilities, which can leave its default card visible after its padding is gone.
  * Everything else is pulled onto the site's orange/black palette.
  *
  * `colorPrimary` is not set here — `ClerkProvider` in `app/layout.tsx` already
@@ -29,32 +31,90 @@ export const authAppearance = {
     fontFamily: 'inherit',
   },
   elements: {
-    rootBox: 'w-full',
-    cardBox: 'w-full rounded-none border-none shadow-none',
-    card: 'w-full bg-transparent !p-0 !gap-4 rounded-none border-none shadow-none',
-    main: '!gap-4',
-    form: '!gap-4',
-    formFieldRow: '!gap-4',
-    formFieldInputGroup: '!gap-1.5',
-    formField: '!gap-1.5',
-    header: 'hidden',
+    rootBox: { width: '100%', minWidth: 0 },
+    cardBox: {
+      width: '100%',
+      maxWidth: '100%',
+      border: 'none',
+      borderRadius: 0,
+      boxShadow: 'none',
+      backgroundColor: 'transparent',
+      overflow: 'visible',
+    },
+    card: {
+      width: '100%',
+      margin: 0,
+      padding: 0,
+      gap: '1rem',
+      border: 'none',
+      borderRadius: 0,
+      boxShadow: 'none',
+      backgroundColor: 'transparent',
+    },
+    main: { gap: '1rem' },
+    form: { gap: '1rem' },
+    formFieldRow: { gap: '1rem' },
+    formFieldInputGroup: { gap: '0.375rem' },
+    formField: { gap: '0.375rem' },
+    // Later steps need Clerk's verification and password-reset instructions.
+    header: {
+      '.cl-signIn-start &, .cl-signUp-start &': { display: 'none' },
+    },
     // The floating badge is clipped by the compact auth card. Keep the social
     // button clean instead of rendering a partial label above its border.
     lastAuthenticationStrategyBadge: { display: 'none' },
-    formButtonPrimary:
-      '!min-h-11 !rounded-xl !bg-brand-orange !text-navy-950 hover:!bg-brand-orange-dark hover:!text-white text-sm font-semibold normal-case tracking-normal !shadow-none',
-    formFieldLabel: 'font-medium text-navy-950',
-    formFieldInput: '!min-h-11 !rounded-xl !border-neutral-200 !bg-neutral-50 !shadow-none focus:!border-brand-orange focus:!ring-brand-orange/20',
-    // `bg-none` as well as `bg-transparent`: Clerk tints the footer with a
-    // background *image* (a near-black linear-gradient), which a colour alone
-    // leaves in place as a grey band across the white panel.
-    footer: 'bg-transparent bg-none !p-0 !pt-3',
-    footerAction: 'bg-transparent',
-    footerActionText: 'text-neutral-600',
-    footerActionLink: 'font-semibold text-brand-orange hover:text-brand-orange-dark',
-    dividerLine: 'bg-neutral-200',
-    dividerText: 'text-neutral-500',
-    socialButtonsBlockButtonText: 'text-sm font-medium',
+    formButtonPrimary: {
+      minHeight: '44px',
+      borderRadius: '12px',
+      backgroundColor: '#f68712',
+      color: '#171717',
+      fontSize: '0.875rem',
+      fontWeight: 600,
+      textTransform: 'none',
+      letterSpacing: 'normal',
+      boxShadow: 'none',
+      '&:hover:not(:disabled)': { backgroundColor: '#ad4f08', color: '#ffffff' },
+    },
+    formFieldLabel: { fontWeight: 500, color: '#171717' },
+    formFieldInput: {
+      minHeight: '44px',
+      borderRadius: '12px',
+      border: '1px solid #e5e5e5',
+      backgroundColor: '#fafafa',
+      color: '#171717',
+      boxShadow: 'none',
+      // Match Clerk's variant selectors so its simulated borders cannot hide
+      // the focus ring or the validation state.
+      '&[data-variant="default"]': {
+        border: '1px solid #e5e5e5',
+        boxShadow: 'none',
+      },
+      '&:focus, &[data-variant="default"]:focus-within': {
+        borderColor: '#f68712',
+        boxShadow: '0 0 0 3px rgba(246, 135, 18, 0.2)',
+      },
+      '&[aria-invalid="true"]': { borderColor: '#dc2626' },
+      '&[aria-invalid="true"]:focus-within': {
+        borderColor: '#dc2626',
+        boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.2)',
+      },
+    },
+    // Clerk also tints the footer with a background image.
+    footer: {
+      backgroundColor: 'transparent',
+      backgroundImage: 'none',
+      padding: '0.75rem 0 0',
+    },
+    footerAction: { backgroundColor: 'transparent' },
+    footerActionText: { color: '#525252' },
+    footerActionLink: {
+      fontWeight: 600,
+      color: '#ad4f08',
+      '&:hover': { color: '#171717' },
+    },
+    dividerLine: { backgroundColor: '#e5e5e5' },
+    dividerText: { color: '#737373' },
+    socialButtonsBlockButtonText: { fontSize: '0.875rem', fontWeight: 500 },
     // Clerk lays the buttons out on an auto-fit grid whose minimum column is
     // almost exactly half the panel — so whether the two share a row came down
     // to a sub-pixel difference in font metrics, and they stacked on some

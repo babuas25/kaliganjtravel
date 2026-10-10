@@ -61,6 +61,8 @@ export type BookingRow = {
   supplier: string;
   /** Credential account fixed when this booking was first searched. */
   supplier_account: import('@/lib/flights/supplier').FlightReadSupplier | null;
+  /** Supplier STR identity retained separately from the local KTT reference. */
+  supplier_public_ref?: string | null;
   user_id: string | null;
   audience: 'b2c' | 'agency' | 'superadmin';
   agency_code: string | null;
@@ -1482,6 +1484,27 @@ export async function beginBookingCancellation(
         operationState?: string;
         operationResult?: Record<string, unknown>;
       });
+}
+
+/** Clears an exact Shapontravels cancellation claim only when no supplier call began. */
+export async function restoreUnsentShaponCancellation(
+  bookingId: string,
+  actorUserId: string,
+  operationRequest: OperationRequestIdentity,
+  operationId: string
+): Promise<{ ok: boolean; code?: string }> {
+  const supabase = supabaseAdmin();
+  if (!supabase) return { ok: false, code: 'STORAGE_ERROR' };
+  const { data, error } = await supabase.rpc('restore_shapon_cancellation_not_sent_v1', {
+    p_booking_id: bookingId,
+    p_actor_user_id: actorUserId,
+    p_request_key: operationRequest.requestKey,
+    p_request_payload_hash: operationRequest.requestPayloadHash,
+    p_operation_id: operationId,
+  });
+  if (error) console.error('[db] restoreUnsentShaponCancellation failed:', error.message);
+  return error ? { ok: false, code: 'STORAGE_ERROR' }
+    : (data as { ok: boolean; code?: string });
 }
 
 /** Restores a cancellation claim only after a fresh PNR read proved a live hold. */

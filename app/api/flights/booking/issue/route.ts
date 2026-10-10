@@ -334,19 +334,24 @@ export async function POST(request: NextRequest) {
   );
 
   try {
-    const outcome = supplierAccount === 'shapontravels'
-      ? await issueShapontravelsTicket(
-          { ...supplierInput, expectedPassengerCount: supplierInput.expectedPassengerCount ?? 0 },
-          operationRequest.requestKey,
-          supplierLifecycle
-        )
-      : await issueTicket(
-          { ...supplierInput, supplier: triploverAccount! }, supplierLifecycle
+    const { outcome: enrichedOutcome, ticketDetails } = supplierAccount === 'shapontravels'
+      ? {
+          outcome: await issueShapontravelsTicket(
+            {
+              ...supplierInput,
+              expectedPassengerCount: supplierInput.expectedPassengerCount ?? 0,
+              itinerary: booking.itinerary,
+            },
+            operationRequest.requestKey,
+            supplierLifecycle
+          ),
+          ticketDetails: null,
+        }
+      : await enrichIssuedTicket(
+          await issueTicket({ ...supplierInput, supplier: triploverAccount! }, supplierLifecycle),
+          refs.uniqueTransId,
+          triploverAccount!
         );
-    const { outcome: enrichedOutcome, ticketDetails } =
-      supplierAccount === 'shapontravels'
-        ? { outcome: { ...outcome, airlinesPnr: [outcome.pnr] }, ticketDetails: null }
-        : await enrichIssuedTicket(outcome, refs.uniqueTransId, triploverAccount!);
     const captured = manuallyQueued
       ? await finalizeManualIssue(
           booking.id,

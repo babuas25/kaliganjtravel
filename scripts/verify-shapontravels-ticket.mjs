@@ -110,6 +110,88 @@ for (const item1 of [
 supplierResponse = { ...receipt, item2: { isSuccess: false } };
 await assert.rejects(issue(), error => error.kind === 'protocol');
 
+// Shapon independently verifies IndiGo issuance, then annotates its airline PNR
+// receipt. A shared locator must retain each passenger's place in the receipt.
+const indigoInput = {
+  ...refs,
+  itinerary: { carrierCode: '6E', legs: [{ segments: [{ airlineCode: '6E' }] }] },
+};
+const pnrReceipt = {
+  ...receipt,
+  publicReceipt: { status: 'confirmed', pendingReview: false, pnr: refs.pnr },
+  item1: { ...receipt.item1, airlinesPNR: ['XY1234'],
+    ticketInfoes: [{ ticketNumbers: ['XY1234'], ticketNumberSource: 'airline_pnr' }] },
+};
+supplierResponse = pnrReceipt;
+const pnrIssued = await ticket.issueShapontravelsTicket(indigoInput, 'operation:v1:fixed', {});
+assert.deepEqual(Array.from(pnrIssued.ticketNumbers), ['XY1234']);
+assert.deepEqual(Array.from(pnrIssued.airlinesPnr), ['XY1234']);
+assert.equal(pnrIssued.pnr, refs.pnr, 'Keep the booking PNR distinct from the airline locator');
+assert.deepEqual(JSON.parse(JSON.stringify(request.payload)), {
+  PNR: refs.pnr, BookingRefNumber: refs.pnr,
+  UniqueTransID: refs.uniqueTransId, PriceCodeRef: refs.priceCodeRef,
+  ItemCodeRef: refs.itemCodeRef, BookingCodeRef: refs.bookingCodeRef,
+}, 'The saved itinerary is local validation context, never a supplier Issue field');
+const sharedReceipt = { ...pnrReceipt, item1: { ...pnrReceipt.item1,
+  ticketInfoes: [pnrReceipt.item1.ticketInfoes[0], pnrReceipt.item1.ticketInfoes[0]] } };
+assert.deepEqual(Array.from(ticket.parseShapontravelsTicketReceipt(sharedReceipt,
+  { ...indigoInput, expectedPassengerCount: 2 }).ticketNumbers), ['XY1234', 'XY1234']);
+const mixedReceipt = { ...sharedReceipt, item1: { ...sharedReceipt.item1,
+  ticketInfoes: [pnrReceipt.item1.ticketInfoes[0], ticketInfoes[0]] } };
+assert.deepEqual(Array.from(ticket.parseShapontravelsTicketReceipt(mixedReceipt,
+  { ...indigoInput, expectedPassengerCount: 2 }).ticketNumbers), ['XY1234', '1234567890123']);
+for (const invalidInput of [
+  refs, { ...indigoInput, itinerary: null },
+  { ...indigoInput, itinerary: { ...indigoInput.itinerary, carrierCode: 'BG' } },
+  { ...indigoInput, itinerary: { carrierCode: '6E', legs: [] } },
+  { ...indigoInput, itinerary: { carrierCode: '6E', legs: [null] } },
+  { ...indigoInput, itinerary: { carrierCode: '6E', legs: [{ segments: [] }] } },
+  { ...indigoInput, itinerary: { carrierCode: '6E', legs: [{ segments: [null] }] } },
+  { ...indigoInput, itinerary: { carrierCode: '6E', legs: [
+    { segments: [{ airlineCode: '6E' }, { airlineCode: 'BG' }] }] } },
+  { ...indigoInput, expectedPassengerCount: 0 },
+  { ...indigoInput, expectedPassengerCount: 2 },
+]) {
+  assert.equal(ticket.parseShapontravelsTicketReceipt(pnrReceipt, invalidInput), null,
+    'PNR receipt requires a complete, saved all-IndiGo itinerary and passenger count');
+}
+for (const status of ['on-hold', 'active', 'unconfirmed', 'cancelled', 'expired']) {
+  assert.equal(ticket.parseShapontravelsTicketReceipt({ ...pnrReceipt,
+    publicReceipt: { ...pnrReceipt.publicReceipt, status } }, indigoInput), null,
+  `${status} must never authorize a PNR ticket receipt`);
+}
+for (const publicReceipt of [undefined, null, [], 'confirmed',
+  { ...pnrReceipt.publicReceipt, pendingReview: true },
+  { ...pnrReceipt.publicReceipt, pendingReview: undefined },
+  { ...pnrReceipt.publicReceipt, pnr: 'OTHER1' },
+]) {
+  assert.equal(ticket.parseShapontravelsTicketReceipt({ ...pnrReceipt, publicReceipt }, indigoInput), null);
+}
+for (const item1 of [
+  { ...pnrReceipt.item1, airlinesPNR: [] },
+  { ...pnrReceipt.item1, airlinesPNR: ['XY1234', 'XY1234'] },
+  { ...pnrReceipt.item1, airlinesPNR: ['xy1234'] },
+  { ...pnrReceipt.item1, pnr: 'OTHER1' },
+  ...['uniqueTransID', 'itemCodeRef', 'priceCodeRef', 'bookingCodeRef', 'ticketCodeRef']
+    .map(field => ({ ...pnrReceipt.item1, [field]: 'not-the-saved-reference' })),
+  ...[
+    { ticketNumbers: ['XY1234'] },
+    { ticketNumbers: ['XY1234'], ticketNumberSource: 'unknown' },
+    { ticketNumbers: ['OTHER1'], ticketNumberSource: 'airline_pnr' },
+    { ticketNumbers: ['1234567890123'], ticketNumberSource: 'airline_pnr' },
+    { ticketNumbers: ['XY1234', 'XY1234'], ticketNumberSource: 'airline_pnr' },
+  ].map(row => ({ ...pnrReceipt.item1, ticketInfoes: [row] })),
+]) {
+  assert.equal(ticket.parseShapontravelsTicketReceipt({ ...pnrReceipt, item1 }, indigoInput), null,
+    'PNR identifiers require explicit source, verified airline locator and exact saved references');
+}
+assert.equal(ticket.parseShapontravelsTicketReceipt({ ...pnrReceipt,
+  item2: { isSuccess: false } }, indigoInput), null);
+assert.equal(ticket.parseShapontravelsTicketReceipt({ ...pnrReceipt, item1: {
+  ...pnrReceipt.item1, ticketInfoes: [pnrReceipt.item1.ticketInfoes[0], ticketInfoes[0], ticketInfoes[0]],
+} }, { ...indigoInput, expectedPassengerCount: 3 }), null,
+'Numeric ticket identifiers remain unique even when a passenger has a PNR identifier');
+
 async function transport(status) {
   let issueCalls = 0;
   const events = [];
@@ -195,4 +277,4 @@ for (const status of [200, 202, 404]) {
     error => error.code === 'INVALID_BOOKING_LOOKUP');
   assert.equal(reads, 1);
 }
-console.log('Shapontravels held-ticket payload, evidence and one-shot transport passed');
+console.log('Shapontravels numeric/verified IndiGo PNR receipts, passenger order and one-shot transport passed');

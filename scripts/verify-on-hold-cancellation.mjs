@@ -24,7 +24,7 @@ assert.doesNotMatch(
   /serverCanSubmit|insufficient|availableBalance|requiredAmount|frozen|preview/,
   'Cancel remains coupled to wallet or Issue Ticket eligibility'
 );
-assert.match(actions, /No wallet balance is required to cancel an On Hold booking/);
+assert.match(actions, /No wallet balance is required to cancel an unissued booking/);
 assert.match(
   actions,
   /\{requestOnly \? \([\s\S]*?\{cancellationAction\}[\s\S]*?<\/div>/,

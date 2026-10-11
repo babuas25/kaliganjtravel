@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import ts from 'typescript';
+import { lccModule } from './helpers/lcc.mjs';
 
 const projectRoot = new URL('../', import.meta.url);
 const currentSource = await readFile(new URL('lib/markup.ts', projectRoot), 'utf8');
@@ -16,6 +17,7 @@ function loadMarkup(source) {
   }).outputText;
   const module = { exports: {} };
   const requireStub = (id) => {
+    if (id === '@/lib/airlines/lcc') return lccModule;
     if (id === '@/lib/agency') {
       return { isAgencyCode: (value) => typeof value === 'string' && value.length > 0 };
     }

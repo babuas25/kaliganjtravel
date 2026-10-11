@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
+import { lccModule } from './helpers/lcc.mjs';
 
 // Exercise the actual pricing engine with in-memory fixtures only. No database,
 // credentials, supplier calls, or generated files are needed.
@@ -11,6 +12,7 @@ const output = ts.transpileModule(source, {
 const module = { exports: {} };
 Function('require', 'module', 'exports', output)((id) => {
   if (id === '@/lib/agency') return { isAgencyCode: (value) => typeof value === 'string' && value.length > 0 };
+  if (id === '@/lib/airlines/lcc') return lccModule;
   throw new Error(`Unexpected pricing dependency: ${id}`);
 }, module, module.exports);
 const { selectMarkupRules, priceOffer, NO_MARKUP_RULES } = module.exports;

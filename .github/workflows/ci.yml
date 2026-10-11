@@ -37,6 +37,8 @@ jobs:
       - run: npm run verify:tailwind-compatibility
       - run: npm run verify:ci
       - run: npm run verify:markup-priority
+      - run: npm run verify:lcc-markup
+      - run: npm run verify:lcc-display
       - run: npm run verify:shapontravels-pricing
       - run: npm run verify:canonical-pricing-regression
 

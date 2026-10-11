@@ -34,6 +34,7 @@ import { agencyOptionLabel, type AgencyOption } from '@/lib/agency';
 import {
   markupRuleScope,
   priceOffer,
+  ruleUsesLccServiceMargin,
   type MarkupRule,
   type MarkupRuleInput,
   validateMarkupRuleInput,
@@ -259,6 +260,14 @@ function percentageBasisLabel(lccServiceMargin = false) {
   return lccServiceMargin ? 'base fare' : 'supplier payable';
 }
 
+function percentageBasisForRule(rule: MarkupRuleInput) {
+  if (ruleUsesLccServiceMargin(rule, rule.airlineCode)) return 'base fare';
+  if (!rule.airlineCode && rule.value > 0 && rule.markupType === 'percentage') {
+    return 'supplier payable (LCC: base fare)';
+  }
+  return percentageBasisLabel();
+}
+
 function ruleValueLabel(rule: MarkupRule) {
   if (rule.markupType === 'fixed') {
     if (rule.value < 0) {
@@ -269,7 +278,7 @@ function ruleValueLabel(rule: MarkupRule) {
   if (rule.markupType === 'margin_share') {
     return `${percent(rule.value)} of available supplier margin`;
   }
-  const basis = percentageBasisLabel(rule.lccServiceMargin);
+  const basis = percentageBasisForRule(rule);
   if (rule.value < 0) {
     return `${percent(rule.value)} discount on ${basis}`;
   }
@@ -323,7 +332,7 @@ function PriceExample() {
               LCC service margin
             </p>
             <p className="text-xs text-navy-700/60">
-              Explicit exception above gross
+              Automatic service margin above gross
             </p>
           </div>
         </div>
@@ -353,14 +362,14 @@ function RulePreview({
   draft: RuleDraft;
   summary: string;
 }) {
-  const lccServiceMargin =
-    draft.lccServiceMargin && draft.value > 0;
+  const input = inputForDraft(draft);
+  const lccServiceMargin = ruleUsesLccServiceMargin(input, input.airlineCode);
   const supplier = lccServiceMargin ? EXAMPLE_GROSS : EXAMPLE_SUPPLIER;
   const previewRule: MarkupRule = {
     id: 'preview',
     audience: 'b2c',
     agencyCode: null,
-    airlineCode: draft.airlineCode || null,
+    airlineCode: input.airlineCode,
     origin: null,
     destination: null,
     bidirectional: false,
@@ -374,8 +383,8 @@ function RulePreview({
     createdAt: '',
     updatedAt: '',
   };
-  const preview = priceOffer({
-    audience: { kind: 'b2c' },
+  const previewInput = {
+    audience: { kind: 'b2c' } as const,
     rulesAvailable: true,
     rules: { rule: previewRule },
     supplierTotalPrice: supplier,
@@ -384,7 +393,7 @@ function RulePreview({
     ait: 0,
     fares: [
       {
-        passengerType: 'ADT',
+        passengerType: 'ADT' as const,
         count: 1,
         basePrice: EXAMPLE_BASE,
         taxes: EXAMPLE_GROSS - EXAMPLE_BASE,
@@ -394,7 +403,20 @@ function RulePreview({
       },
     ],
     passengerCount: 1,
-  });
+  };
+  const preview = priceOffer(previewInput);
+  const lccPreview =
+    !input.airlineCode && input.value > 0 && input.markupType !== 'margin_share'
+      ? priceOffer({
+          ...previewInput,
+          rules: { rule: previewRule, lccServiceMargin: true },
+          supplierTotalPrice: EXAMPLE_GROSS,
+          fares: previewInput.fares.map((fare) => ({
+            ...fare,
+            supplierTotalPrice: EXAMPLE_GROSS,
+          })),
+        })
+      : null;
   const requested = preview.snapshot.requestedMarkupAmount;
   const applied = preview.snapshot.markupAmount;
   const selling = preview.totalPrice;
@@ -462,6 +484,13 @@ function RulePreview({
         {lccServiceMargin &&
           ' This service margin is added above gross.'}
       </p>
+      {lccPreview && (
+        <p className="mt-2 text-xs font-semibold text-amber-800">
+          LCC example: {money(EXAMPLE_GROSS)} gross +{' '}
+          {money(lccPreview.serviceMargin)} service margin ={' '}
+          {money(lccPreview.totalPrice)} payable. This total is shown as the flight price.
+        </p>
+      )}
     </div>
   );
 }
@@ -526,9 +555,13 @@ export default function MarkupManager({
         : draft.scope === 'all-route'
           ? `every airline on ${routeLabel}`
           : `${draft.airlineCode || 'the selected airline'} on ${routeLabel}`;
-  const draftPercentageBasis = percentageBasisLabel(
-    draft.lccServiceMargin && draft.value > 0
+  const draftInput = inputForDraft(draft);
+  const effectiveDraftLcc = ruleUsesLccServiceMargin(draftInput, draftInput.airlineCode);
+  const automaticDraftLcc = ruleUsesLccServiceMargin(
+    { ...draftInput, lccServiceMargin: false },
+    draftInput.airlineCode
   );
+  const draftPercentageBasis = percentageBasisForRule(draftInput);
   const markupLabel =
     draft.markupType === 'fixed'
       ? draft.value < 0
@@ -634,6 +667,15 @@ export default function MarkupManager({
             {routeCount} route-specific
           </span>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p className="font-semibold">LCC service margin above gross is enabled automatically.</p>
+        <p className="mt-1 text-xs leading-relaxed">
+          Known low-cost carriers use the winning rule&apos;s positive fixed or percentage
+          amount above gross, including all-airline and route rules. LCC percentages use
+          base fare. The displayed flight price is gross plus service margin.
+        </p>
       </div>
 
       <details className="group overflow-hidden rounded-lg border border-navy-100 bg-white">
@@ -994,7 +1036,7 @@ export default function MarkupManager({
               <span className="text-xs font-medium text-navy-700/55">
                 {!draft.active
                   ? 'Rule paused'
-                  : draft.lccServiceMargin
+                  : effectiveDraftLcc
                     ? 'LCC margin enabled'
                     : 'Status and LCC options'}
               </span>
@@ -1026,15 +1068,15 @@ export default function MarkupManager({
               {(draft.scope === 'airline' || draft.scope === 'route') && (
                 <label
                   className={`flex items-start gap-3 rounded-md border p-3 text-sm ${
-                    draft.lccServiceMargin
+                    effectiveDraftLcc
                       ? 'border-amber-300 bg-amber-50 text-amber-950'
                       : 'border-navy-100 bg-white text-navy-800'
                   }`}
                 >
                   <input
                     type="checkbox"
-                    checked={draft.lccServiceMargin}
-                    disabled={pending}
+                    checked={effectiveDraftLcc}
+                    disabled={pending || automaticDraftLcc}
                     onChange={(event) => {
                       const lccServiceMargin = event.target.checked;
                       setDraft((current) => ({
@@ -1058,7 +1100,9 @@ export default function MarkupManager({
                       LCC service margin above gross
                     </span>
                     <span className="mt-0.5 block text-xs opacity-70">
-                      Use only for an LCC airline. Examples: {LCC_EXAMPLES}.
+                      {automaticDraftLcc
+                        ? 'Enabled automatically for this LCC airline.'
+                        : `Use for an additional LCC airline. Known LCCs are enabled automatically. Examples: ${LCC_EXAMPLES}.`}
                     </span>
                   </span>
                 </label>
@@ -1205,6 +1249,9 @@ export default function MarkupManager({
                       rule.agencyCode ??
                       'Unknown agency';
               const deleting = confirmDeleteId === rule.id;
+              const effectiveLcc = ruleUsesLccServiceMargin(rule, rule.airlineCode);
+              const includesAutomaticLcc =
+                rule.airlineCode === null && rule.value > 0 && rule.markupType !== 'margin_share';
 
                 return (
                   <article
@@ -1242,9 +1289,9 @@ export default function MarkupManager({
                       >
                         {rule.active ? 'Active' : 'Paused'}
                       </span>
-                      {rule.lccServiceMargin && (
+                      {(effectiveLcc || includesAutomaticLcc) && (
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                          LCC · above gross
+                          {includesAutomaticLcc ? 'LCC · automatic' : 'LCC · above gross'}
                         </span>
                       )}
                     </div>
@@ -1255,9 +1302,11 @@ export default function MarkupManager({
                       {ruleValueLabel(rule)}
                     </p>
                     <p className="mt-0.5 text-xs text-navy-700/60">
-                      {rule.lccServiceMargin
-                        ? 'Explicit service margin added above gross'
-                        : 'Prices from supplier payable; capped at gross, floored at taxes and AIT'}
+                      {effectiveLcc
+                        ? 'Service margin added above gross; total payable is shown'
+                        : includesAutomaticLcc
+                          ? 'LCC: gross plus service margin; other airlines: capped at gross'
+                          : 'Prices from supplier payable; capped at gross, floored at taxes and AIT'}
                     </p>
                   </div>
 

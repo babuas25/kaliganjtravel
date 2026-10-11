@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import { lccModule } from './helpers/lcc.mjs';
 
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
@@ -19,6 +20,7 @@ function loadModule(path, dependencies) {
   return module.exports;
 }
 const markup = loadModule('../lib/markup.ts', {
+  '@/lib/airlines/lcc': lccModule,
   '@/lib/agency': { isAgencyCode: (value) => typeof value === 'string' && value.length > 0 },
 });
 const { shapontravelsPricedOffer } = loadModule('../lib/shapontravels/pricing.ts', { '@/lib/markup': markup });

@@ -1,5 +1,6 @@
 import type { FareBreakdown, SearchRoute } from '@/lib/flights/types';
 import { isAgencyCode } from '@/lib/agency';
+import { isLccAirline } from '@/lib/airlines/lcc';
 import type { Role } from '@/lib/roles';
 
 export const MARKUP_AUDIENCES = ['b2c', 'b2b', 'agency'] as const;
@@ -284,11 +285,30 @@ function routeMatchIndex(
  */
 export type MarkupRuleSelection = {
   rule: MarkupRule | null;
+  /** Effective mode for the offer carrier, including all-airline rules. */
+  lccServiceMargin?: boolean;
 };
 
 export const NO_MARKUP_RULES: MarkupRuleSelection = {
   rule: null,
 };
+
+/**
+ * Every known LCC adds a positive fixed/base-percentage service margin above
+ * gross, using the same winning rule and amount as other airlines. A manual
+ * flag remains available for an LCC missing from the directory. Discounts and
+ * margin-share rules retain their normal pricing bounds.
+ */
+export function ruleUsesLccServiceMargin(
+  rule: Pick<MarkupRule, 'markupType' | 'value' | 'lccServiceMargin'>,
+  airlineCode: string | null | undefined
+): boolean {
+  return (
+    rule.value > 0 &&
+    (rule.markupType === 'fixed' || rule.markupType === 'percentage') &&
+    (rule.lccServiceMargin || isLccAirline(airlineCode))
+  );
+}
 
 /**
  * Picks the first matching rule in priority order: a rule for one agency beats
@@ -347,8 +367,12 @@ export function selectMarkupRules(
     return b.rule.updatedAt.localeCompare(a.rule.updatedAt);
   });
 
+  const rule = candidates[0]?.rule ?? null;
   return {
-    rule: candidates[0]?.rule ?? null,
+    rule,
+    ...(rule && ruleUsesLccServiceMargin(rule, airlineCode)
+      ? { lccServiceMargin: true }
+      : {}),
   };
 }
 
@@ -482,8 +506,8 @@ function componentFor(
  * consume only the available supplier-to-gross margin; a discount never removes
  * taxes or AIT, and both bounds apply to that one calculation.
  * B2C with no rule at all stays at gross; an agency with no rule stays at
- * supplier payable. A Super Admin always sees supplier payable. An explicitly
- * flagged LCC service rule replaces the calculation rather than adjusting it,
+ * supplier payable. A Super Admin always sees supplier payable. For a known
+ * LCC or a manually flagged service rule, service margin replaces the calculation
  * and is the only path allowed above gross. If the rules table cannot be read,
  * customer-facing audiences fall back to gross.
  */
@@ -541,10 +565,20 @@ export function priceOffer({
   const clampSelling = (value: number) =>
     Math.max(minimumSellingMinor, Math.min(value, safeGrossMinor));
 
-  // Only the winning rule can request an LCC service margin, whose percentage
-  // stays a percentage of base fare and whose baseline is safe gross.
+  // Resolve LCC mode after scope priority: all-airline route/agency rules must
+  // also add service margin for the actual LCC offer carrier.
   const lccRule =
-    selectedRule?.lccServiceMargin === true ? selectedRule : null;
+    selectedRule &&
+    ruleUsesLccServiceMargin(
+      {
+        ...selectedRule,
+        lccServiceMargin:
+          selectedRule.lccServiceMargin || rules.lccServiceMargin === true,
+      },
+      selectedRule.airlineCode
+    )
+      ? selectedRule
+      : null;
   const lccAmount = lccRule
     ? lccServiceAmount(lccRule, baseMinor, availableMarginMinor, passengerCount)
     : null;

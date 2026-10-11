@@ -95,7 +95,7 @@ export type FareBreakdown = {
   taxes: number;
   /** Advance Income Tax — a third money component, NOT inside `taxes`. */
   ait: number;
-  /** Explicit LCC service margin. Zero for every gross-capped normal fare. */
+  /** LCC service margin. Zero for every gross-capped normal fare. */
   serviceMargin: number;
   totalPrice: number;
 };
@@ -121,7 +121,7 @@ export type FlightFareOption = {
   basePrice: number;
   taxes: number;
   ait: number;
-  /** Explicit LCC-only amount charged above gross. */
+  /** LCC-only amount charged above gross. */
   serviceMargin: number;
   carrierCode: string;
   carrierName: string;

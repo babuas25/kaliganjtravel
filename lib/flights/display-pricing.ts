@@ -16,7 +16,7 @@ export function agencyPayableExceedsGross(option: FlightFareOption): boolean {
   );
 }
 
-/** Price used by result-level UI such as airline minimum-price tabs. */
+/** Primary card price, also used by airline minimum-price tabs. */
 export function resultDisplayPrice(
   option: FlightFareOption,
   showAuditFares: boolean,

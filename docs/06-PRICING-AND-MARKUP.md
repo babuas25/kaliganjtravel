@@ -36,7 +36,7 @@ The pricing system transforms supplier fares into selling prices for different c
 
 5. **Gross Cap and Tax Floor**: Positive markup cannot exceed supplier-to-gross margin; discounts cannot remove taxes or AIT. Both bounds are enforced on the selected ordinary rule.
 
-6. **LCC Exception**: A selected rule with explicitly enabled LCC service-margin mode adds its amount above safe gross. It follows the same selection priority as other rules.
+6. **LCC Exception**: A positive fixed/percentage winning rule automatically adds service margin above safe gross for known LCC carrier codes. All-airline and route rules share this behavior and keep the same priority. The displayed flight price includes the service margin.
 
 ### Pricing Flow
 
@@ -309,7 +309,7 @@ For the selected ordinary rule:
 
 ## 7. LCC Service Margin Mode
 
-LCC (Low-Cost Carrier) service-margin mode is an explicit exception that allows pricing above the gross price.
+LCC (Low-Cost Carrier) service-margin mode allows pricing above the gross price. The owner's policy enables it automatically for known LCC carriers in `lib/airlines/lcc.ts`.
 
 ### Purpose
 
@@ -317,10 +317,12 @@ Low-cost carriers often have supplier payables equal to gross prices. Normal mar
 
 ### Activation
 
-A rule has `lccServiceMargin = true` when:
-- It targets a specific airline (airline_code is not NULL)
-- It uses fixed or percentage markup (not margin_share)
-- The value is positive (cannot be used for discounts)
+After the normal priority selection, effective LCC mode applies when the winning
+rule uses a positive fixed or percentage amount and the offer's carrier code is
+in the reviewed LCC directory. It applies to specific-airline, all-airline,
+route and agency rules. The raw stored rule, its amount and its priority remain
+unchanged. An explicit `lccServiceMargin = true` flag can also target an
+additional LCC outside the directory.
 
 ### Calculation
 
@@ -337,11 +339,13 @@ if (lccServiceRule) {
 
 ### Constraints
 
-- LCC service-margin rules must target a specific airline (validation enforces this)
+- Explicit persisted LCC flags must target a specific airline; automatic offer-carrier detection also supports all-airline rules
 - Cannot be combined with margin_share markup type
 - Must have positive value
 - Uses safe gross as the baseline when the LCC rule wins the normal selection priority
 - Adds fixed markup per passenger or a percentage of supplier base fare
+- B2B and B2C display gross plus service margin as the complete payable price
+- Super Admin audit pricing, negative discounts, margin-share and no-rule fallbacks retain their existing behavior
 
 ### Example
 

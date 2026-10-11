@@ -10,7 +10,7 @@ its payable and gross through a validated decimal `fareBreakdown`; the adapter
 applies the same local rules while preserving supplier payable separately
 from the customer's selling price.
 
-Last reviewed against the implementation: 2026-10-04.
+Last reviewed against the implementation: 2026-10-11.
 
 ## 1. The short version
 
@@ -26,8 +26,9 @@ Last reviewed against the implementation: 2026-10-04.
   gross. Discounts stop at the taxes-and-AIT floor.
 - Negative fixed or percentage values are discounts. They may go below supplier
   payable, but cannot remove taxes or AIT.
-- The explicitly enabled LCC service-margin mode replaces the calculation
-  rather than adjusting it, and is the only rule allowed above safe gross,
+- LCC service-margin mode is automatically enabled for known low-cost carriers
+  with a positive fixed or percentage winning rule. It replaces the calculation
+  and is the only rule allowed above safe gross,
   which is the greater of calculated gross and supplier payable.
 - Search and RePrice run the same rule selection and price calculation.
 - Commercial rules and complete pricing snapshots remain server-only.
@@ -58,6 +59,7 @@ responds. Rule selection is performed locally for each normalized itinerary.
 | [`app/(dashboard)/dashboard/markup/page.tsx`](<./app/(dashboard)/dashboard/markup/page.tsx>) | Super Admin page guard and initial rule/agency loading |
 | [`app/(dashboard)/dashboard/markup/actions.ts`](<./app/(dashboard)/dashboard/markup/actions.ts>) | Role-checked, rate-limited server mutations and input validation |
 | [`lib/markup.ts`](./lib/markup.ts) | Client-safe types, validation, audience mapping, rule selection, and exact pricing arithmetic |
+| [`lib/airlines/lcc.ts`](./lib/airlines/lcc.ts) | Reviewed worldwide LCC carrier codes for automatic service-margin pricing |
 | [`lib/db/markup-rules.ts`](./lib/db/markup-rules.ts) | Server-only Supabase reads and writes |
 | [`lib/triplover/search.ts`](./lib/triplover/search.ts) | Applies markup to normalized Search offers and stores private snapshots |
 | [`lib/triplover/reprice.ts`](./lib/triplover/reprice.ts) | Re-runs current markup against the live RePrice result |
@@ -245,7 +247,14 @@ does not create those stages or recalculate stored booking snapshots.
 
 ### LCC service-margin exception
 
-An explicitly enabled `lcc_service_margin` rule uses safe gross as the baseline
+The owner's policy enables service margin automatically for known LCC carriers.
+After selecting the winning rule, `selectMarkupRules()` resolves the effective
+LCC mode using the offer's carrier code from `lib/airlines/lcc.ts`. This also
+applies to all-airline and route rules, without changing rule priority, the
+configured amount, or stored rules. An explicit `lcc_service_margin` flag
+remains available for an additional LCC carrier outside the directory.
+
+An effective LCC service-margin rule uses safe gross as the baseline
 and adds the requested amount above it. Safe gross is the higher of calculated
 gross and supplier payable:
 
@@ -255,14 +264,19 @@ sellingPrice = max(gross, supplierPayable) + requestedServiceMargin
 
 This mode:
 
-- must target a specific airline;
-- applies only when that LCC rule wins the normal rule-selection priority;
+- uses the actual LCC offer carrier, including when the winning rule targets all airlines;
+- applies only to the winning rule under the normal rule-selection priority;
 - uses safe gross plus a fixed per-passenger amount or a percentage of base fare;
 - accepts only a positive fixed or percentage value;
 - does not accept margin share or discounts; and
 - is the only pricing path intentionally allowed above gross.
 
-The application does not automatically identify an LCC from the carrier code.
+The displayed LCC flight price is the complete payable amount (gross plus
+service margin), including B2B cards, fare options, airline tabs and filters.
+The Super Admin audit view retains its supplier gross/net presentation.
+Discounts, margin-share rules, no-rule fallbacks and unavailable-rule fallbacks
+do not acquire automatic service margins. Historical booking snapshots are
+preserved; Search, RePrice and supplier imports use the current policy.
 The Super Admin must deliberately enable the switch for the rule.
 
 ## 9. Worked examples
@@ -445,7 +459,7 @@ Do not:
 - expose service-role credentials, supplier references, or full pricing
   snapshots to the browser;
 - allow ordinary positive markup above gross;
-- silently enable LCC mode based only on an airline list; or
+- expand the reviewed LCC directory to full-service or uncertain carriers; or
 - remove the discount floor without explicit commercial approval.
 
 ## 15. Verification checklist
@@ -457,6 +471,8 @@ npm run typecheck
 npm run lint
 npm run build
 npm run verify:markup-priority
+npm run verify:lcc-markup
+npm run verify:lcc-display
 npm run verify:shapontravels-pricing
 npm run verify:canonical-pricing-regression
 ```
@@ -529,7 +545,7 @@ Manual UI smoke test:
 | Agency receives the all-B2B value | No active matching specific-agency rule was found |
 | An all-airlines route rule beats an airline-wide rule | Expected: route specificity outranks airline specificity |
 | A route-overlap error appears | A one-way or bidirectional rule already covers that route in the same audience and airline scope |
-| LCC rule does not add above gross | Confirm it is positive, fixed/percentage, targets one airline, and has `lcc_service_margin = true` |
+| LCC rule does not add above gross | Confirm the winning rule is positive fixed/percentage, and the offer carrier is in the LCC directory or has an explicit service-margin flag |
 | All customer-facing prices show safe gross | Rule storage may be unavailable; check server logs and Supabase configuration |
 | Client and server validation disagree | `draftValidationMessage()`, `validateMarkupRuleInput()`, or database constraints have drifted; align all three layers |
 

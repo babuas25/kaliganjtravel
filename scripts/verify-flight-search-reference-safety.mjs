@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { performance } from 'node:perf_hooks';
 import { currencyModule } from './helpers/currency.mjs';
+import { lccModule } from './helpers/lcc.mjs';
 
 const require = createRequire(import.meta.url);
 const typescript = require('typescript');
@@ -110,6 +111,7 @@ function loadUpsellModule() {
 
 const { groupUpsellOptions } = loadUpsellModule();
 const markup = compileModule(await readFile('lib/markup.ts', 'utf8'), 'lib/markup.ts', (id) => {
+  if (id === '@/lib/airlines/lcc') return lccModule;
   if (id === '@/lib/agency') return { isAgencyCode: () => true };
   throw new Error(`Unexpected markup import in verifier: ${id}`);
 });

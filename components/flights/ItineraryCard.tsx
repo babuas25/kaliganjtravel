@@ -53,7 +53,10 @@ import AirlineLogo from '@/components/flights/AirlineLogo';
 import SendItineraryMenu from '@/components/flights/SendItineraryMenu';
 import { itineraryShareOffer } from '@/lib/flights/share-offer';
 import { itineraryShareText } from '@/lib/flights/share-text';
-import { agencyPayableExceedsGross } from '@/lib/flights/display-pricing';
+import {
+  agencyPayableExceedsGross,
+  resultDisplayPrice,
+} from '@/lib/flights/display-pricing';
 
 type RepriceEnvelope =
   | { success: true; data: FlightRepriceResult }
@@ -599,6 +602,11 @@ export default function ItineraryCard({
     reportedSeats.length > 0 ? Math.min(...reportedSeats) : null;
   const showAgencyPayableOnly =
     showAgencyFares && agencyPayableExceedsGross(itinerary);
+  const primaryDisplayPrice = resultDisplayPrice(
+    itinerary,
+    showAuditFares,
+    showAgencyFares
+  );
   const hasUpsells = itinerary.upsellOptions.length > 0;
   const lowestUpsellDifference = hasUpsells
     ? Math.max(
@@ -1143,10 +1151,7 @@ export default function ItineraryCard({
                   }
                   className={`inline-flex items-center justify-center gap-0.5 whitespace-nowrap font-bold text-navy-950 transition hover:text-brand-orange-dark ${priceTextSize}`}
                 >
-                  {formatPrice(
-                    itinerary.auditPricing.grossPrice,
-                    currency
-                  )}
+                  {formatPrice(primaryDisplayPrice, currency)}
                   <ChevronDown
                     className={`h-3.5 w-3.5 transition-transform ${
                       showAlternateFare ? 'rotate-180' : ''
@@ -1164,7 +1169,7 @@ export default function ItineraryCard({
               <p
                 className={`whitespace-nowrap px-2 font-bold text-brand-orange-dark md:text-center ${priceTextSize}`}
               >
-                {formatPrice(itinerary.agencyPricing.agentFare, currency)}
+                {formatPrice(primaryDisplayPrice, currency)}
               </p>
             ) : showAgencyFares && itinerary.agencyPricing ? (
               <div className="px-2 text-center">
@@ -1179,10 +1184,7 @@ export default function ItineraryCard({
                   }
                   className={`inline-flex items-center justify-center gap-0.5 whitespace-nowrap font-bold text-navy-950 transition hover:text-brand-orange-dark ${priceTextSize}`}
                 >
-                  {formatPrice(
-                    itinerary.agencyPricing.grossPrice,
-                    currency
-                  )}
+                  {formatPrice(primaryDisplayPrice, currency)}
                   <ChevronDown
                     className={`h-3.5 w-3.5 transition-transform ${
                       showAlternateFare ? 'rotate-180' : ''
@@ -1203,7 +1205,7 @@ export default function ItineraryCard({
               <p
                 className={`whitespace-nowrap font-bold text-brand-orange-dark md:text-center ${priceTextSize}`}
               >
-                {formatPrice(itinerary.totalPrice, currency)}
+                {formatPrice(primaryDisplayPrice, currency)}
               </p>
             )}
             {bookingAvailable && !itinerary.bookable && (

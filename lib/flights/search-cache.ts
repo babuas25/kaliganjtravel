@@ -422,6 +422,7 @@ function compactReferenceGraph(refs: Map<string, ItineraryRefs>): {
   refs: Record<string, CompactItineraryRefs>;
 } | null {
   let sharedContext: CompactSearchContext | null = null;
+  let sharedContextIdentity: string | null = null;
   const compact: Record<string, CompactItineraryRefs> = {};
   const itineraries: CompactSelectionItinerary[] = [];
   const itineraryIndexes = new Map<string, number>();
@@ -433,9 +434,10 @@ function compactReferenceGraph(refs: Map<string, ItineraryRefs>): {
       return;
     }
     const context = compactContext(value.context);
+    const contextIdentity = canonicalJson(context);
     if (
-      sharedContext &&
-      canonicalJson(sharedContext) !== canonicalJson(context)
+      sharedContextIdentity !== null &&
+      sharedContextIdentity !== contextIdentity
     ) {
       // Search input is shared by every fare. A mismatch would make the
       // compact graph ambiguous, so reject it rather than picking one.
@@ -443,6 +445,7 @@ function compactReferenceGraph(refs: Map<string, ItineraryRefs>): {
       return;
     }
     sharedContext ??= context;
+    sharedContextIdentity ??= contextIdentity;
     const compactItineraryValue = compactSelectionSignature(value.selection);
     const itineraryIdentity = canonicalJson(compactItineraryValue);
     let itineraryIndex = itineraryIndexes.get(itineraryIdentity);
@@ -1414,24 +1417,28 @@ export function createRedisFlightQuoteStore(
       const serializedBytes = Buffer.byteLength(serialized, 'utf8');
       const encoded = encodeQuote(serialized);
       const storedBytes = encoded.value.byteLength;
-      const sectionBytes = {
-        context: Buffer.byteLength(canonicalJson(compactGraph.context), 'utf8'),
-        signatures: Buffer.byteLength(canonicalJson(compactGraph.itineraries), 'utf8'),
-        dictionary: Buffer.byteLength(canonicalJson(compactGraph.repeatedStrings), 'utf8'),
-        refs: Buffer.byteLength(canonicalJson(compactGraph.refs), 'utf8'),
-      };
-      emitSearchTrace(trace, {
-        name: 'redis_quote_size_checked',
-        details: {
-          serializedBytes,
-          compressedBytes: encoded.compressedBytes,
-          storedBytes,
-          maxBytes: config.maxBytes,
-          signatureCount: compactGraph.itineraries.length,
-          repeatedStringCount: compactGraph.repeatedStrings.length,
-          sectionBytes: canonicalJson(sectionBytes),
-        },
-      });
+      if (trace) {
+        // These per-section sizes are diagnostics only. Avoid serializing the
+        // same graph again when the supplier has no active trace observer.
+        const sectionBytes = {
+          context: Buffer.byteLength(canonicalJson(compactGraph.context), 'utf8'),
+          signatures: Buffer.byteLength(canonicalJson(compactGraph.itineraries), 'utf8'),
+          dictionary: Buffer.byteLength(canonicalJson(compactGraph.repeatedStrings), 'utf8'),
+          refs: Buffer.byteLength(canonicalJson(compactGraph.refs), 'utf8'),
+        };
+        emitSearchTrace(trace, {
+          name: 'redis_quote_size_checked',
+          details: {
+            serializedBytes,
+            compressedBytes: encoded.compressedBytes,
+            storedBytes,
+            maxBytes: config.maxBytes,
+            signatureCount: compactGraph.itineraries.length,
+            repeatedStringCount: compactGraph.repeatedStrings.length,
+            sectionBytes: canonicalJson(sectionBytes),
+          },
+        });
+      }
       if (storedBytes > config.maxBytes || serializedBytes > MAX_QUOTE_INFLATED_BYTES) {
         throw new SearchQuoteTooLargeError();
       }
@@ -1734,6 +1741,17 @@ async function runtimeRedisClient(): Promise<RuntimeRedisClient> {
     return await redisConnectPromise;
   } finally {
     redisConnectPromise = null;
+  }
+}
+
+/** Overlap the connection handshake with Search; persistence still confirms every quote. */
+export async function warmFlightQuoteStore(): Promise<void> {
+  try {
+    runtimeConfig();
+    await runtimeRedisClient();
+  } catch {
+    // Warm-up has no quote authority. The later SET must still establish a
+    // working connection and confirm the complete quote before exposure.
   }
 }
 

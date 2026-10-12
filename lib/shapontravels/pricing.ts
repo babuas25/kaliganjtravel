@@ -70,22 +70,31 @@ export function shapontravelsPricedOffer(
     if (amount === null || tax === null || passengerAit === null || passengerServiceCharge === null ||
         amount < tax + passengerAit ||
         (row.gross !== undefined && (passengerGross === null || passengerGross < tax + passengerAit + passengerServiceCharge))) return null;
-    farePayable += amount;
-    fareTaxes += tax;
-    fareAit += passengerAit;
-    fareServiceCharge += passengerServiceCharge;
-    fareGross += passengerGross ?? 0;
+    // The supplier's passenger rows contain per-person money. Our fare rows
+    // contain totals for each passenger type, so multiply in integer cents
+    // before reconciling against the supplier's whole-party totals.
+    const count = Number(row.count);
+    const typePayable = amount * count;
+    const typeTaxes = tax * count;
+    const typeAit = passengerAit * count;
+    const typeServiceCharge = passengerServiceCharge * count;
+    const typeGross = passengerGross === null ? null : passengerGross * count;
+    if (![typePayable, typeTaxes, typeAit, typeServiceCharge, typeGross ?? 0].every(Number.isSafeInteger)) return null;
+    farePayable += typePayable;
+    fareTaxes += typeTaxes;
+    fareAit += typeAit;
+    fareServiceCharge += typeServiceCharge;
+    fareGross += typeGross ?? 0;
     allPassengerGrossAvailable &&= passengerGross !== null;
-    passengerCount += Number(row.count);
+    passengerCount += count;
     fares.push({
       passengerType: type as FareBreakdown['passengerType'],
-      count: Number(row.count),
-      // Rows are already totals for this passenger type, including its count.
-      basePrice: major(Math.max(0, (passengerGross ?? amount) - tax - passengerAit - passengerServiceCharge)),
-      taxes: major(tax),
-      ait: major(passengerAit),
-      serviceCharge: major(passengerServiceCharge),
-      supplierTotalPrice: major(amount),
+      count,
+      basePrice: major(Math.max(0, (typeGross ?? typePayable) - typeTaxes - typeAit - typeServiceCharge)),
+      taxes: major(typeTaxes),
+      ait: major(typeAit),
+      serviceCharge: major(typeServiceCharge),
+      supplierTotalPrice: major(typePayable),
     });
   }
   if (fares.length === 0 || farePayable !== payable || fareTaxes !== taxes || fareAit !== ait ||

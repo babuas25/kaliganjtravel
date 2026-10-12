@@ -161,7 +161,10 @@ type RouteTiming = Partial<FlightSearchExecutionTiming> & {
   supplierControlsMs?: number;
   validationMs?: number;
   authorizationMs?: number;
+  usageStartMs?: number;
   rateLimitMs?: number;
+  historyWriteMs?: number;
+  usageFinishMs?: number;
   serializationMs?: number;
   /** Redis confirmation through the final SSE result enqueue. */
   redisConfirmedToFinalSseResultMs?: number;
@@ -211,12 +214,14 @@ const SERVER_TIMING_FIELDS: ReadonlyArray<{
   { key: 'supplierControlsMs', name: 'supplier-controls', description: 'Supplier operational-control lookup' },
   { key: 'validationMs', name: 'validation', description: 'Body parsing and validation' },
   { key: 'authorizationMs', name: 'authorization', description: 'Session and pricing-principal lookup' },
+  { key: 'usageStartMs', name: 'usage-start', description: 'Search usage registration beside the rate-limit check' },
   { key: 'rateLimitMs', name: 'rate-limit', description: 'Shared flight-search rate-limit check' },
-  { key: 'tokenMs', name: 'token', description: 'Triplover token acquisition' },
-  { key: 'apiRequestMs', name: 'triplover', description: 'Triplover API request and body transfer' },
-  { key: 'apiTtfbMs', name: 'triplover-ttfb', description: 'Triplover time to response headers' },
-  { key: 'responseReadMs', name: 'response-read', description: 'Triplover response body transfer' },
-  { key: 'responseParseMs', name: 'response-parse', description: 'Triplover response JSON parsing' },
+  { key: 'tokenMs', name: 'token', description: 'Supplier token acquisition' },
+  { key: 'apiRequestMs', name: 'triplover', description: 'Supplier API request and body transfer' },
+  { key: 'supplierRoundTripMs', name: 'supplier-round-trip', description: 'Full supplier call including token and JSON parsing' },
+  { key: 'apiTtfbMs', name: 'triplover-ttfb', description: 'Supplier time to response headers' },
+  { key: 'responseReadMs', name: 'response-read', description: 'Supplier response body transfer' },
+  { key: 'responseParseMs', name: 'response-parse', description: 'Supplier response JSON parsing' },
   { key: 'markupRulesMs', name: 'markup-rules', description: 'Markup-rule lookup running beside supplier Search' },
   { key: 'postSupplierMarkupWaitMs', name: 'markup-tail', description: 'Markup-rule wait after supplier Search completes' },
   { key: 'mappingMs', name: 'mapping', description: 'Offer mapping and normalization' },
@@ -224,6 +229,8 @@ const SERVER_TIMING_FIELDS: ReadonlyArray<{
   { key: 'redisPersistenceMs', name: 'redis-persist', description: 'Redis quote persistence confirmation' },
   { key: 'supplierCompleteToRedisConfirmedMs', name: 'supplier-to-redis', description: 'Supplier response complete through Redis confirmation' },
   { key: 'redisConfirmedToFinalSseResultMs', name: 'redis-to-sse', description: 'Redis confirmation through final SSE result enqueue' },
+  { key: 'historyWriteMs', name: 'history-write', description: 'Search history recording beside usage finalization' },
+  { key: 'usageFinishMs', name: 'usage-finish', description: 'Search usage finalization beside history recording' },
   { key: 'serializationMs', name: 'serialize', description: 'Browser response JSON serialization' },
   { key: 'totalMs', name: 'total', description: 'Total route execution' },
 ];
@@ -548,6 +555,30 @@ function streamEvent(event: string, payload: unknown): Uint8Array {
   return new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
+async function timedSearchTask<T>(
+  timing: RouteTiming,
+  key: 'usageStartMs' | 'historyWriteMs' | 'usageFinishMs',
+  trace: SearchTrace,
+  task: () => Promise<T>
+): Promise<T> {
+  const startedAt = performance.now();
+  trace.mark({ name: `${key}_start` });
+  try {
+    return await task();
+  } finally {
+    timing[key] = performance.now() - startedAt;
+    trace.mark({ name: `${key}_settled` });
+  }
+}
+
+/** Keep every write alive through settlement, even if a sibling throws. */
+async function settleSearchWrites(tasks: Promise<void>[]): Promise<void> {
+  const results = await Promise.allSettled(tasks);
+  for (const result of results) {
+    if (result.status === 'rejected') throw result.reason;
+  }
+}
+
 /**
  * The supplier's Search endpoint currently answers with one complete JSON
  * envelope. This stream makes the *search request* immediately observable and
@@ -655,7 +686,7 @@ function streamedSearch(request: NextRequest): Response {
             httpStatus: status,
             errorCode,
             totalMs: timing.totalMs,
-            supplierMs: timing.apiRequestMs,
+            supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs,
           });
           // Persist the terminal outcome before sending the final event:
           // consumers may disconnect as soon as they receive it.
@@ -719,8 +750,12 @@ function streamedSearch(request: NextRequest): Response {
           const principal = await pricingPrincipal();
           timing.authorizationMs = performance.now() - authorizationStartedAt;
           const audience = pricingAudienceForPrincipal(principal);
+          trace.mark({ name: 'authorization_complete', details: { audience: audience.kind } });
+          trace.mark({ name: 'usage_registration_start' });
           const actorKey = requestActorKey(request, principal.userId);
-          usageEventId = await beginFlightSearchUsage({
+          // Neither task depends on the other. Both still finish before daily
+          // budget admission, including registration of rate-limited attempts.
+          const usageStartPromise = timedSearchTask(timing, 'usageStartMs', trace, () => beginFlightSearchUsage({
             traceId: trace.id,
             actorUserId: principal.userId,
             actorKey,
@@ -729,19 +764,32 @@ function streamedSearch(request: NextRequest): Response {
             supplier: supplierControls.activeSupplier,
             requestMode: 'stream',
             search: parsed.data as FlightSearchInput,
-          });
-          trace.mark({
-            name: 'authorization_complete',
-            details: { audience: audience.kind },
+          }, {
+            actorRegistryStrategy: principal.audience === 'agency' ? 'insert-first' : 'ensure-first',
+          })).then((eventId) => {
+            usageEventId = eventId;
+            trace.mark({
+              name: 'usage_registration_complete',
+              details: { audience: audience.kind },
+            });
           });
           trace.mark({ name: 'rate_limit_start' });
           const rateLimitStartedAt = performance.now();
-          const limit = await checkActionLimit(
+          const rateLimitPromise = checkActionLimit(
             'flightSearch',
             actorKey
-          );
-          timing.rateLimitMs = performance.now() - rateLimitStartedAt;
-          trace.mark({ name: 'rate_limit_complete', details: { allowed: limit.ok } });
+          ).then((limit) => {
+            timing.rateLimitMs = performance.now() - rateLimitStartedAt;
+            trace.mark({ name: 'rate_limit_complete', details: { allowed: limit.ok } });
+            return limit;
+          });
+          const [usageStart, rateLimitCheck] = await Promise.allSettled([
+            usageStartPromise,
+            rateLimitPromise,
+          ]);
+          if (usageStart.status === 'rejected') throw usageStart.reason;
+          if (rateLimitCheck.status === 'rejected') throw rateLimitCheck.reason;
+          const limit = rateLimitCheck.value;
           if (!limit.ok) {
             await streamFailure(
               429,
@@ -798,21 +846,27 @@ function streamedSearch(request: NextRequest): Response {
           );
           Object.assign(timing, execution.timing);
 
-          await recordFlightSearch(
-            principal.userId,
-            parsed.data as FlightSearchInput
-          );
-
           timing.totalMs = performance.now() - routeStartedAt;
-          await finishFlightSearchUsage({
-            eventId: usageEventId,
-            outcome: 'success',
-            httpStatus: 200,
-            itineraryCount: execution.result.itineraries.length,
-            partial: execution.result.partial,
-            totalMs: timing.totalMs,
-            supplierMs: timing.apiRequestMs,
-          });
+          // Quote persistence is already confirmed. Independent accounting
+          // writes overlap, and both settle before the terminal result.
+          await settleSearchWrites([
+            timedSearchTask(timing, 'historyWriteMs', trace, () => recordFlightSearch(
+              principal.userId,
+              parsed.data as FlightSearchInput,
+              { userRegistered: usageEventId !== null }
+            )),
+            timedSearchTask(timing, 'usageFinishMs', trace, () => finishFlightSearchUsage({
+              eventId: usageEventId,
+              outcome: 'success',
+              httpStatus: 200,
+              itineraryCount: execution.result.itineraries.length,
+              partial: execution.result.partial,
+              // Accounting duration is excluded here; the final route log
+              // measures the complete response, including both writes.
+              totalMs: timing.totalMs,
+              supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs,
+            })),
+          ]);
           const serializationStartedAt = performance.now();
           const resultEnqueued = send('result', { data: execution.result });
           timing.serializationMs = performance.now() - serializationStartedAt;
@@ -967,8 +1021,10 @@ export async function POST(request: NextRequest) {
   const principal = await pricingPrincipal();
   timing.authorizationMs = performance.now() - authorizationStartedAt;
   const audience = pricingAudienceForPrincipal(principal);
+  trace.mark({ name: 'authorization_complete', details: { audience: audience.kind } });
+  trace.mark({ name: 'usage_registration_start' });
   const actorKey = requestActorKey(request, principal.userId);
-  const usageEventId = await beginFlightSearchUsage({
+  const usageStartPromise = timedSearchTask(timing, 'usageStartMs', trace, () => beginFlightSearchUsage({
     traceId: trace.id,
     actorUserId: principal.userId,
     actorKey,
@@ -977,19 +1033,33 @@ export async function POST(request: NextRequest) {
     supplier: supplierControls.activeSupplier,
     requestMode: 'json',
     search: parsed.data as FlightSearchInput,
-  });
-  trace.mark({
-    name: 'authorization_complete',
-    details: { audience: audience.kind },
+  }, {
+    actorRegistryStrategy: principal.audience === 'agency' ? 'insert-first' : 'ensure-first',
+  })).then((eventId) => {
+    trace.mark({
+      name: 'usage_registration_complete',
+      details: { audience: audience.kind },
+    });
+    return eventId;
   });
   trace.mark({ name: 'rate_limit_start' });
   const rateLimitStartedAt = performance.now();
-  const limit = await checkActionLimit(
+  const rateLimitPromise = checkActionLimit(
     'flightSearch',
     actorKey
-  );
-  timing.rateLimitMs = performance.now() - rateLimitStartedAt;
-  trace.mark({ name: 'rate_limit_complete', details: { allowed: limit.ok } });
+  ).then((limit) => {
+    timing.rateLimitMs = performance.now() - rateLimitStartedAt;
+    trace.mark({ name: 'rate_limit_complete', details: { allowed: limit.ok } });
+    return limit;
+  });
+  const [usageStart, rateLimitCheck] = await Promise.allSettled([
+    usageStartPromise,
+    rateLimitPromise,
+  ]);
+  if (usageStart.status === 'rejected') throw usageStart.reason;
+  if (rateLimitCheck.status === 'rejected') throw rateLimitCheck.reason;
+  const usageEventId = usageStart.value;
+  const limit = rateLimitCheck.value;
   if (!limit.ok) {
     await finishFlightSearchUsage({
       eventId: usageEventId,
@@ -1077,19 +1147,23 @@ export async function POST(request: NextRequest) {
       { trace: trace.mark }
     );
     Object.assign(timing, execution.timing);
-    await recordFlightSearch(
-      principal.userId,
-      parsed.data as FlightSearchInput
-    );
-    await finishFlightSearchUsage({
-      eventId: usageEventId,
-      outcome: 'success',
-      httpStatus: 200,
-      itineraryCount: execution.result.itineraries.length,
-      partial: execution.result.partial,
-      totalMs: performance.now() - routeStartedAt,
-      supplierMs: timing.apiRequestMs,
-    });
+    timing.totalMs = performance.now() - routeStartedAt;
+    await settleSearchWrites([
+      timedSearchTask(timing, 'historyWriteMs', trace, () => recordFlightSearch(
+        principal.userId,
+        parsed.data as FlightSearchInput,
+        { userRegistered: usageEventId !== null }
+      )),
+      timedSearchTask(timing, 'usageFinishMs', trace, () => finishFlightSearchUsage({
+        eventId: usageEventId,
+        outcome: 'success',
+        httpStatus: 200,
+        itineraryCount: execution.result.itineraries.length,
+        partial: execution.result.partial,
+        totalMs: timing.totalMs,
+        supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs,
+      })),
+    ]);
     return timedJson(
       { success: true, data: execution.result },
       200,
@@ -1108,7 +1182,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof ShapontravelsReadError) {
       console.error('[shapontravels] Search failed:', error.code, error.status, error.requestId);
       const status = error.code === 'READ_NETWORK' ? 504 : 502;
-      await finishFlightSearchUsage({ eventId: usageEventId, outcome: 'failed', httpStatus: status, errorCode: 'SEARCH_FAILED', totalMs: performance.now() - routeStartedAt, supplierMs: timing.apiRequestMs });
+      await finishFlightSearchUsage({ eventId: usageEventId, outcome: 'failed', httpStatus: status, errorCode: 'SEARCH_FAILED', totalMs: performance.now() - routeStartedAt, supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs });
       return fail(status, 'SEARCH_FAILED', 'The supplier could not complete this search. Please try again.', routeStartedAt, timing, traceHeaders, trace);
     }
     if (error instanceof SearchReferenceStoreError) {
@@ -1120,7 +1194,7 @@ export async function POST(request: NextRequest) {
         httpStatus: failure.status,
         errorCode: failure.errorCode,
         totalMs: performance.now() - routeStartedAt,
-        supplierMs: timing.apiRequestMs,
+        supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs,
       });
       return fail(
         failure.status,
@@ -1139,7 +1213,7 @@ export async function POST(request: NextRequest) {
         httpStatus: 502,
         errorCode: error.code,
         totalMs: performance.now() - routeStartedAt,
-        supplierMs: timing.apiRequestMs,
+        supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs,
       });
       return fail(502, error.code, error.message, routeStartedAt, timing, traceHeaders, trace);
     }
@@ -1152,7 +1226,7 @@ export async function POST(request: NextRequest) {
         httpStatus: failure.status,
         errorCode: failure.errorCode,
         totalMs: performance.now() - routeStartedAt,
-        supplierMs: timing.apiRequestMs,
+        supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs,
       });
       return fail(
         failure.status,
@@ -1171,7 +1245,7 @@ export async function POST(request: NextRequest) {
       httpStatus: 500,
       errorCode: 'SEARCH_FAILED',
       totalMs: performance.now() - routeStartedAt,
-      supplierMs: timing.apiRequestMs,
+      supplierMs: timing.supplierRoundTripMs ?? timing.apiRequestMs,
     });
     return fail(
       500,

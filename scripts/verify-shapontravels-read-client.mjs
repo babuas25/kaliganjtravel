@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { performance } from 'node:perf_hooks';
 
 const sourcePath = 'lib/shapontravels/client.ts';
 const compiled = ts.transpileModule(fs.readFileSync(sourcePath, 'utf8'), {
@@ -13,7 +14,7 @@ assert.equal(
   0
 );
 
-function createClient(fetchImpl) {
+function createClient(fetchImpl, performanceImpl = performance) {
   const module = { exports: {} };
   const env = {
     SHAPONTRAVELS_SEARCH_BASE_URL: 'https://supplier.example.test/',
@@ -29,6 +30,7 @@ function createClient(fetchImpl) {
     },
     process: { env },
     fetch: fetchImpl,
+    performance: performanceImpl,
     Response,
     URL,
     Buffer,
@@ -48,6 +50,56 @@ function json(body, status = 200) {
     status,
     headers: { 'content-type': 'application/json', 'x-request-id': 'fixture-request' },
   });
+}
+
+// A controlled clock separates token, headers, body and parse boundaries
+// without fragile elapsed-time thresholds or real supplier requests.
+async function supplierTimingHasRealBoundaries() {
+  let clock = 0;
+  const measured = [];
+  const client = createClient(async (url) => {
+    const login = url.pathname === '/auth/token';
+    clock += login ? 40 : 100;
+    const bytes = Buffer.from(JSON.stringify(login
+      ? { access_token: 'stm_timed', token_type: 'Bearer', expires_in: 1800 }
+      : { item1: { ok: true } }));
+    let consumed = false;
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      body: { getReader: () => ({
+        async read() {
+          clock += login ? 5 : 10;
+          if (consumed) return { done: true };
+          consumed = true;
+          return { done: false, value: bytes };
+        },
+        releaseLock() {},
+      }) },
+    };
+  }, { now: () => clock++ });
+  await client.shapontravelsRead('Search', {}, { onTiming: value => measured.push(value) });
+  assert.equal(measured.length, 1);
+  assert.deepEqual({ ...measured[0] }, {
+    tokenMs: 51,
+    tokenSource: 'shapontravels:login',
+    tokenLoginAttempts: 1,
+    apiRequestMs: 122,
+    apiTtfbMs: 101,
+    responseReadMs: 21,
+    responseParseMs: 1,
+    attempts: 1,
+  });
+  await client.shapontravelsRead('Search', {}, { onTiming: value => measured.push(value) });
+  assert.equal(measured[1].tokenSource, 'shapontravels:memory');
+  assert.equal(measured[1].tokenLoginAttempts, 0);
+  assert.equal(measured[1].apiRequestMs, measured[1].apiTtfbMs + measured[1].responseReadMs);
+  // Operational diagnostics cannot turn a valid supplier response into failure.
+  const result = await client.shapontravelsRead('Search', {}, {
+    onTiming() { throw new Error('observer failure'); },
+  });
+  assert.equal(result.item1.ok, true);
 }
 
 async function tokenIsSharedAndCached() {
@@ -88,6 +140,7 @@ async function tokenIsSharedAndCached() {
 async function unauthorizedReadRenewsOnce() {
   let logins = 0;
   let reads = 0;
+  let timing;
   const client = createClient(async (url, init) => {
     if (url.pathname === '/auth/token') {
       logins++;
@@ -97,9 +150,13 @@ async function unauthorizedReadRenewsOnce() {
     assert.equal(init.headers.authorization, `Bearer stm_fixture_${reads}`);
     return reads === 1 ? json({ error: 'INVALID_CREDENTIALS' }, 401) : json({ item1: {} });
   });
-  await client.shapontravelsRead('Search', {});
+  await client.shapontravelsRead('Search', {}, { onTiming: value => { timing = value; } });
   assert.equal(logins, 2);
   assert.equal(reads, 2);
+  assert.equal(timing.attempts, 2);
+  assert.equal(timing.tokenLoginAttempts, 2);
+  assert.equal(timing.tokenSource, 'shapontravels:login+login');
+  assert.equal(timing.apiRequestMs, timing.apiTtfbMs + timing.responseReadMs);
 }
 
 async function errorsStayRedacted() {
@@ -274,6 +331,7 @@ async function bookMapperRequiresTheAcceptedHold() {
 }
 
 await tokenIsSharedAndCached();
+await supplierTimingHasRealBoundaries();
 await unauthorizedReadRenewsOnce();
 await errorsStayRedacted();
 await bookNeverReplaysAnUnknownOutcome();

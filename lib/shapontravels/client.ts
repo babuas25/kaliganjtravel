@@ -3,6 +3,21 @@ import 'server-only';
 /** Shapontravels uses issued machine credentials, not the Triplover login. */
 export type ShapontravelsRead = 'Search' | 'FareRules' | 'Reprice' | 'Accept' | 'Airlines';
 
+export type ShapontravelsReadTiming = {
+  tokenMs: number;
+  tokenSource: string;
+  tokenLoginAttempts: number;
+  apiRequestMs: number;
+  apiTtfbMs: number;
+  responseReadMs: number;
+  responseParseMs: number;
+  attempts: number;
+};
+
+type ShapontravelsReadOptions = {
+  onTiming?: (timing: Readonly<ShapontravelsReadTiming>) => void;
+};
+
 const PATHS: Record<ShapontravelsRead, string> = {
   Search: 'api/Search',
   FareRules: 'api/FareRules',
@@ -88,7 +103,12 @@ function responseCode(body: unknown): string {
     : 'HTTP_ERROR';
 }
 
-async function boundedJson(response: Response, limit: number): Promise<unknown> {
+async function boundedJson(
+  response: Response,
+  limit: number,
+  onTiming?: (timing: { readMs: number; parseMs: number }) => void
+): Promise<unknown> {
+  const readStartedAt = onTiming ? performance.now() : 0;
   const length = response.headers.get('content-length');
   if (length && Number(length) > limit) {
     throw new ShapontravelsReadError('RESPONSE_TOO_LARGE', response.status);
@@ -108,7 +128,13 @@ async function boundedJson(response: Response, limit: number): Promise<unknown> 
       }
       chunks.push(Buffer.from(value));
     }
-    return JSON.parse(Buffer.concat(chunks, size).toString('utf8')) as unknown;
+    const readCompletedAt = onTiming ? performance.now() : 0;
+    const parsed = JSON.parse(Buffer.concat(chunks, size).toString('utf8')) as unknown;
+    onTiming?.({
+      readMs: readCompletedAt - readStartedAt,
+      parseMs: performance.now() - readCompletedAt,
+    });
+    return parsed;
   } catch (error) {
     if (error instanceof ShapontravelsReadError) throw error;
     throw new ShapontravelsReadError('INVALID_RESPONSE', response.status);
@@ -174,47 +200,89 @@ async function accessToken(config: Credentials): Promise<Token> {
 
 /** Reprice acceptance is safe to repeat for the same private price reference. */
 export function shapontravelsRead(operation: 'Airlines'): Promise<unknown>;
-export function shapontravelsRead(operation: Exclude<ShapontravelsRead, 'Airlines'>, payload: unknown): Promise<unknown>;
+export function shapontravelsRead(operation: Exclude<ShapontravelsRead, 'Airlines'>, payload: unknown, options?: ShapontravelsReadOptions): Promise<unknown>;
 export async function shapontravelsRead(
   operation: ShapontravelsRead,
-  payload?: unknown
+  payload?: unknown,
+  options: ShapontravelsReadOptions = {}
 ): Promise<unknown> {
   const config = credentials();
   const endpoint = new URL(PATHS[operation], config.base);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await accessToken(config);
-    let response: Response;
-    try {
-      response = await fetch(endpoint, {
-        method: operation === 'Airlines' ? 'GET' : 'POST',
-        headers: {
-          authorization: `Bearer ${token.value}`,
-          ...(operation === 'Airlines' ? {} : { 'content-type': 'application/json' }),
-        },
-        ...(operation === 'Airlines' ? {} : { body: JSON.stringify(payload) }),
-        cache: 'no-store',
-        redirect: 'error',
-        signal: AbortSignal.timeout(READ_TIMEOUT_MS[operation]),
-      });
-    } catch {
-      throw new ShapontravelsReadError('READ_NETWORK');
+  const timing: ShapontravelsReadTiming | null = options.onTiming ? {
+    tokenMs: 0,
+    tokenSource: '',
+    tokenLoginAttempts: 0,
+    apiRequestMs: 0,
+    apiTtfbMs: 0,
+    responseReadMs: 0,
+    responseParseMs: 0,
+    attempts: 0,
+  } : null;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const tokenStartedAt = timing ? performance.now() : 0;
+      if (timing) {
+        const identity = `${config.base.origin}|${config.base.pathname}|${config.clientId}`;
+        const source = cachedToken?.identity === identity && cachedToken.expiresAt > Date.now() + TOKEN_MARGIN_MS
+          ? 'memory'
+          : tokenInFlight?.identity === identity ? 'shared-login' : 'login';
+        timing.tokenSource += `${timing.tokenSource ? '+' : 'shapontravels:'}${source}`;
+        if (source === 'login') timing.tokenLoginAttempts += 1;
+      }
+      const token = await accessToken(config);
+      if (timing) timing.tokenMs += performance.now() - tokenStartedAt;
+      const requestStartedAt = timing ? performance.now() : 0;
+      if (timing) timing.attempts += 1;
+      let response: Response;
+      try {
+        response = await fetch(endpoint, {
+          method: operation === 'Airlines' ? 'GET' : 'POST',
+          headers: {
+            authorization: `Bearer ${token.value}`,
+            ...(operation === 'Airlines' ? {} : { 'content-type': 'application/json' }),
+          },
+          ...(operation === 'Airlines' ? {} : { body: JSON.stringify(payload) }),
+          cache: 'no-store',
+          redirect: 'error',
+          signal: AbortSignal.timeout(READ_TIMEOUT_MS[operation]),
+        });
+      } catch {
+        throw new ShapontravelsReadError('READ_NETWORK');
+      }
+      if (timing) {
+        const ttfbMs = performance.now() - requestStartedAt;
+        timing.apiTtfbMs += ttfbMs;
+        timing.apiRequestMs += ttfbMs;
+      }
+      if (response.status === 401 && attempt === 0) {
+        if (cachedToken?.value === token.value) cachedToken = null;
+        await response.body?.cancel();
+        continue;
+      }
+      const body = await boundedJson(response, BODY_LIMIT[operation], timing ? ({ readMs, parseMs }) => {
+        timing.responseReadMs += readMs;
+        timing.responseParseMs += parseMs;
+        timing.apiRequestMs += readMs;
+      } : undefined);
+      if (!response.ok) {
+        throw new ShapontravelsReadError(
+          responseCode(body),
+          response.status,
+          response.headers.get('x-request-id')
+        );
+      }
+      return body;
     }
-    if (response.status === 401 && attempt === 0) {
-      if (cachedToken?.value === token.value) cachedToken = null;
-      await response.body?.cancel();
-      continue;
+    throw new ShapontravelsReadError('AUTH_FAILED');
+  } finally {
+    if (timing) {
+      try {
+        options.onTiming?.({ ...timing });
+      } catch {
+        // Diagnostic observers must not affect a supplier operation.
+      }
     }
-    const body = await boundedJson(response, BODY_LIMIT[operation]);
-    if (!response.ok) {
-      throw new ShapontravelsReadError(
-        responseCode(body),
-        response.status,
-        response.headers.get('x-request-id')
-      );
-    }
-    return body;
   }
-  throw new ShapontravelsReadError('AUTH_FAILED');
 }
 
 export class ShapontravelsWriteError extends Error {

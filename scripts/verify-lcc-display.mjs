@@ -35,6 +35,20 @@ const upsells = compile('lib/flights/upsells.ts');
 const emptyChild = () => null;
 let state = [];
 let stateIndex = 0;
+let memoValues = [];
+let memoIndex = 0;
+function remembered(factory, dependencies) {
+  const index = memoIndex++;
+  const previous = memoValues[index];
+  if (previous && dependencies && previous.dependencies &&
+      dependencies.length === previous.dependencies.length &&
+      dependencies.every((value, position) => Object.is(value, previous.dependencies[position]))) {
+    return previous.value;
+  }
+  const value = factory();
+  memoValues[index] = { dependencies, value };
+  return value;
+}
 const hooks = {
   ...React,
   useState(initial) {
@@ -46,7 +60,8 @@ const hooks = {
   },
   useRef: current => ({ current }),
   useEffect() {},
-  useCallback: callback => callback,
+  useCallback: (callback, dependencies) => remembered(() => callback, dependencies),
+  useMemo: remembered,
   useId: () => 'fixture-filters',
 };
 const sharedImports = {
@@ -113,6 +128,7 @@ function text(tree) {
 }
 function cardTree(itinerary, flags = {}) {
   stateIndex = 0;
+  memoIndex = 0;
   return Card({
     itinerary, currency: 'BDT', searchId: 'fixture',
     bookingAvailable: true, holdOnly: false, showSendItinerary: false,
@@ -174,11 +190,12 @@ const FilterBar = emptyChild;
 const Filters = () => null;
 const SortBar = () => null;
 const ResultCard = () => null;
+let fixtureRole = 'b2b';
 const Results = compile('components/flights/FlightResults.tsx', {
   ...sharedImports,
   'date-fns': dates,
   '@clerk/nextjs': { useUser: () => ({
-    isLoaded: true, isSignedIn: true, user: { publicMetadata: { role: 'b2b' } },
+    isLoaded: true, isSignedIn: true, user: { publicMetadata: { role: fixtureRole } },
   }) },
   '@/lib/roles': { resolveRole: value => value },
   '@/lib/flights/search-params': { encodeSearchParams: () => '' },
@@ -194,11 +211,17 @@ const input = { tripType: 'oneway', routes: [{
 }], adults: 1, children: 0, infants: 0, childrenAges: [], cabinClass: 1, preferredCarriers: [] };
 const results = { searchId: 'fixture', currency: 'BDT', bookingAvailable: true,
   itineraries: [option('6E', 400), option('G9', 200)] };
+const airportCities = { DAC: 'Dhaka', CCU: 'Kolkata' };
 function resultTree() {
   stateIndex = 0;
-  return Results({ input, airportCities: {} });
+  memoIndex = 0;
+  return Results({ input, airportCities });
+}
+function resultCards(tree) {
+  return nodes(tree).filter(node => node.type === ResultCard || node.type?.type === ResultCard);
 }
 state = [results, null, false];
+memoValues = [];
 tree = resultTree();
 const resultNodes = nodes(tree);
 const airlineTabs = resultNodes.find(node => node.type === FilterBar).props.airlines;
@@ -208,13 +231,100 @@ assert.ok(text(tree).includes('from BDT 13,056.85'), 'results minimum includes t
 const filterNode = resultNodes.find(node => node.type === Filters);
 assert.equal(filterNode.props.options.priceBounds.min, 13056);
 assert.equal(filterNode.props.options.priceBounds.max, 13257);
+// Opening filters must reuse derived data and the unchanged props of every
+// memoized card. Booking and role changes must still propagate below.
+const originalCards = resultCards(tree);
+assert.equal(resultNodes.find(node => node.type === SortBar).props.value, 'none', 'KTT starts in supplier order');
+assert.deepEqual(originalCards.map(node => node.props.itinerary.id), results.itineraries.map(itinerary => itinerary.id));
+assert.ok(originalCards.every(node => node.type.type === ResultCard), 'cards use React memo');
+filterNode.props.onMobileOpenChange(true);
+let updatedTree = resultTree();
+let updatedFilters = nodes(updatedTree).find(node => node.type === Filters);
+assert.equal(updatedFilters.props.options, filterNode.props.options);
+assert.equal(updatedFilters.props.value, filterNode.props.value);
+assert.equal(nodes(updatedTree).find(node => node.type === FilterBar).props.airlines, airlineTabs);
+resultCards(updatedTree).forEach((node, index) => {
+  for (const key of Object.keys(node.props)) {
+    assert.equal(node.props[key], originalCards[index].props[key], `unchanged ${key} stays stable for card memoization`);
+  }
+});
+resultNodes.find(node => node.type === SortBar).props.onChange('price-high-low');
+assert.equal(resultCards(resultTree())[0].props.itinerary.carrierCode, '6E');
 resultNodes.find(node => node.type === SortBar).props.onChange('price-low-high');
-assert.equal(nodes(resultTree()).filter(node => node.type === ResultCard)[0].props.itinerary.carrierCode, 'G9');
+assert.equal(resultCards(resultTree())[0].props.itinerary.carrierCode, 'G9');
 filterNode.props.onChange({ ...filterNode.props.value, price: { min: 13200, max: 13300 } });
-assert.equal(nodes(resultTree()).filter(node => node.type === ResultCard).length, 1);
-assert.equal(nodes(resultTree()).find(node => node.type === ResultCard).props.itinerary.carrierCode, '6E',
+assert.equal(resultCards(resultTree()).length, 1);
+assert.equal(resultCards(resultTree())[0].props.itinerary.carrierCode, '6E',
   'the price filter uses the full payable');
+
+// A fresh result and a changed pricing role must invalidate cached bounds,
+// airline prices, ordering and card flags instead of retaining the old search.
+const replacement = {
+  ...results, searchId: 'replacement', bookingAvailable: false, holdOnly: true,
+  itineraries: [
+    option('BG', 0, { id: 'replacement-bg', totalPrice: 5000,
+      agencyPricing: { grossPrice: 6000, agentFare: 5000 },
+      auditPricing: { grossPrice: 9000, netFare: 4000 } }),
+    option('6E', 200, { id: 'replacement-6e', auditPricing: { grossPrice: 3500, netFare: 3000 } }),
+  ],
+};
+state[0] = replacement;
+state[5] = null;
+updatedTree = resultTree();
+updatedFilters = nodes(updatedTree).find(node => node.type === Filters);
+assert.equal(updatedFilters.props.options.priceBounds.min, 5000);
+assert.equal(updatedFilters.props.options.priceBounds.max, 13057);
+assert.ok(text(updatedTree).includes('from BDT 5,000'), 'KTT result minimum retains total-price semantics');
+assert.equal(resultCards(updatedTree)[0].props.itinerary.id, 'replacement-bg');
+assert.ok(resultCards(updatedTree).every(node =>
+  node.props.searchId === 'replacement' && node.props.bookingAvailable === false && node.props.holdOnly === true));
+fixtureRole = 'superadmin';
+state[7] = { id: 'assignee-new', name: 'Updated assignee', email: 'test@example.test' };
+updatedTree = resultTree();
+assert.ok(text(updatedTree).includes('from BDT 5,000'), 'changing role does not change KTT total-price sorting or minimum');
+assert.equal(resultCards(updatedTree)[0].props.itinerary.id, 'replacement-bg');
+assert.equal(nodes(updatedTree).find(node => node.type === FilterBar).props.airlines
+  .find(airline => airline.airlineCode === 'BG').minPrice, 9000);
+assert.ok(resultCards(updatedTree).every(node =>
+  node.props.showAuditFares === true && node.props.showAgencyFares === false &&
+  node.props.requiresBookingAssignee === true && node.props.bookingAssigneeId === 'assignee-new'));
+fixtureRole = 'customer';
+updatedTree = resultTree();
+assert.ok(text(updatedTree).includes('from BDT 5,000'));
+assert.equal(resultCards(updatedTree)[0].props.itinerary.id, 'replacement-bg');
+assert.ok(resultCards(updatedTree).every(node =>
+  node.props.showAuditFares === false && node.props.showAgencyFares === false && node.props.requiresBookingAssignee === false));
+
+fixtureRole = 'b2b';
+state[0] = { ...results, itineraries: Array.from({ length: 138 }, (_, index) =>
+  option('6E', index + 200, { id: `large-result-${index}` })) };
+state[5] = null;
+updatedTree = resultTree();
+assert.equal(resultCards(updatedTree).length, 138, 'memoization keeps every matching flight mounted');
+assert.equal(nodes(updatedTree).find(node => node.type === Filters).props.resultCount, 138);
+assert.equal(nodes(updatedTree).find(node => node.type === FilterBar).props.airlines[0].totalFlights, 138);
+
+// The existing branded loader still renders all four truthful stages with its
+// route animation, backdrop, and automatic-result message.
+for (const [stage, label] of [
+  ['accepted', 'Preparing your live search'],
+  ['searching', 'Contacting airline systems'],
+  ['processing', 'Comparing available flights'],
+  ['finalizing', 'Getting your results ready'],
+]) {
+  state = [null, null, true, stage];
+  const html = renderToStaticMarkup(resultTree());
+  assert.ok(html.includes('Kaliganj Tours &amp; Travel'));
+  assert.ok(html.includes('flight-search-route-traveller'));
+  assert.ok(html.includes('backdrop-blur-[3px]'));
+  assert.ok(html.includes('Your results will appear here automatically'));
+  assert.ok(html.includes(label));
+  assert.ok(html.includes('DAC') && html.includes('CCU'));
+  assert.equal((html.match(/aria-current="step"/g) ?? []).length, 1);
+}
 
 console.log(JSON.stringify({ checks: 'passed', payablePrimary: true, oldGrossHidden: true,
   allCarrierPresentation: true, fareOptions: true, airlineTabs: true,
-  resultMinimumFiltersAndSorting: true, superAdminAuditPreserved: true }, null, 2));
+  resultMinimumFiltersAndSorting: true, superAdminAuditPreserved: true,
+  stableDerivedDataAndCardProps: true, roleAndResultUpdates: true, allMatchingFlightsPreserved: true,
+  supplierOrderAndTotalPricePreserved: true, brandedAnimatedLoaderPreserved: true }, null, 2));

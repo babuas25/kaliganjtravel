@@ -149,23 +149,28 @@ export async function beginFlightSearchUsage(input: {
   supplier: FlightReadSupplier;
   requestMode: 'stream' | 'json';
   search: FlightSearchInput;
-}): Promise<string | null> {
+}, options: { actorRegistryStrategy?: 'ensure-first' | 'insert-first' } = {}): Promise<string | null> {
   const supabase = supabaseAdmin();
   if (!supabase) return null;
-  if (input.actorUserId) {
+  const ensureActor = async (): Promise<boolean> => {
+    if (!input.actorUserId) return true;
     const { error: userError } = await supabase.from('app_users').upsert(
       { clerk_id: input.actorUserId },
       { onConflict: 'clerk_id', ignoreDuplicates: true }
     );
     if (userError) {
       console.error('[flight-search-usage] user stub failed:', userError.message);
-      return null;
+      return false;
     }
-  }
+    return true;
+  };
+  const insertFirst = options.actorRegistryStrategy === 'insert-first' &&
+    input.actorRole === 'agency' && Boolean(input.actorUserId && input.agencyCode);
+  if (!insertFirst && !(await ensureActor())) return null;
   const actorKeyHash = `sha256:${createHash('sha256')
     .update(input.actorKey, 'utf8')
     .digest('hex')}`;
-  const { data, error } = await supabase
+  const insertEvent = () => supabase
     .from('flight_search_usage_events')
     .insert({
       trace_id: input.traceId,
@@ -184,6 +189,17 @@ export async function beginFlightSearchUsage(input: {
     })
     .select('id')
     .maybeSingle();
+  let { data, error } = await insertEvent();
+  if (
+    insertFirst && error?.code === '23503' &&
+    error.message.includes('"flight_search_usage_events_actor_user_id_fkey"')
+  ) {
+    // An agency session normally just read this registry row. Repair a
+    // definitively missing FK target once; uncertain insert outcomes are never
+    // replayed because they may already have committed a usage event.
+    if (!(await ensureActor())) return null;
+    ({ data, error } = await insertEvent());
+  }
   if (error) {
     if (!usageTableMissing(error)) {
       console.error('[flight-search-usage] event start failed:', error.message);

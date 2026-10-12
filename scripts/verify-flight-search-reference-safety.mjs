@@ -35,7 +35,7 @@ const [cacheSource, searchSource, upsellsSource, repriceSource, shaponPricingSou
     ].map((path) => readFile(path, 'utf8'))
   );
 
-function loadQuoteStore() {
+function loadQuoteStore({ createRedisClient, environment = {} } = {}) {
   const compiled = typescript.transpileModule(cacheSource, {
     compilerOptions: {
       target: typescript.ScriptTarget.ES2022,
@@ -52,6 +52,7 @@ function loadQuoteStore() {
     if (id === 'redis') {
       return {
         createClient() {
+          if (createRedisClient) return createRedisClient();
           throw new Error('Runtime Redis client must not be used by this verifier.');
         },
       };
@@ -85,7 +86,7 @@ function loadQuoteStore() {
     performance,
     setTimeout,
     clearTimeout,
-    process: { env: {} },
+    process: { env: environment },
   }, { filename: cachePath });
   return module.exports;
 }
@@ -586,6 +587,9 @@ function loadSearchModule({
   storedRefs,
   canonicalizer = canonicalBookingSnapshot,
   maxStoredOptions = Infinity,
+  warmup = async () => {},
+  supplierCall = async () => {},
+  selectRules = () => ({ rule: null }),
 }) {
   const localRequire = (id) => {
     if (id === 'server-only') return {};
@@ -596,6 +600,7 @@ function loadSearchModule({
         bookingSnapshotDigestFor,
         canonicalBookingSnapshot: canonicalizer,
         selectionSignatureForItinerary,
+        warmFlightQuoteStore: warmup,
         storeSearch: async (_transaction, refsByItineraryId, supplier) => {
           if (refsByItineraryId.size > maxStoredOptions) {
             throw new SearchQuoteTooLargeError();
@@ -638,17 +643,20 @@ function loadSearchModule({
             basis: 'test',
           },
         }),
-        selectMarkupRules: () => ({ rule: null }),
+        selectMarkupRules: selectRules,
       };
     }
     if (id === '@/lib/triplover/client') {
       return {
-        triploverCall: async () => ({
-          data: response,
-          uniqueTransId: 'supplier-trans',
-          partial: false,
-          timing: {},
-        }),
+        triploverCall: async () => {
+          await supplierCall();
+          return {
+            data: response,
+            uniqueTransId: 'supplier-trans',
+            partial: false,
+            timing: {},
+          };
+        },
       };
     }
     if (id === '@/lib/shapontravels/client') return { shapontravelsRead: async () => { throw new Error('Unexpected Shapontravels call'); } };
@@ -1842,5 +1850,158 @@ assert.equal(
   ),
   null
 );
+
+// A connection warmed during Search is shared by concurrent warmers and the
+// mandatory quote SET. A connected socket alone must never confirm a quote.
+const runtimeEnvironment = { FLIGHT_QUOTE_STORE: 'redis', REDIS_URL: 'redis://test.invalid' };
+{
+  let connectComplete;
+  const connecting = new Promise((resolve) => { connectComplete = resolve; });
+  const calls = { create: 0, connect: 0, set: 0 };
+  const client = {
+    isReady: false,
+    on() {},
+    disconnect() { this.isReady = false; },
+    async connect() { calls.connect += 1; await connecting; this.isReady = true; },
+    async sendCommand(args) {
+      assert.equal(this.isReady, true);
+      assert.equal(args[0], 'SET');
+      calls.set += 1;
+      assert.ok(args.includes('NX'));
+      assert.ok(args.includes('PX'));
+      assert.ok(Buffer.isBuffer(args[2]));
+      return 'OK';
+    },
+  };
+  const runtime = loadQuoteStore({
+    environment: runtimeEnvironment,
+    createRedisClient: () => { calls.create += 1; return client; },
+  });
+  const first = runtime.warmFlightQuoteStore();
+  const second = runtime.warmFlightQuoteStore();
+  let confirmed = false;
+  const write = runtime.storeSearch('supplier-trans', refs(), 'shapontravels').then((result) => {
+    confirmed = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(calls, { create: 1, connect: 1, set: 0 });
+  assert.equal(confirmed, false, 'warm-up cannot expose an unpersisted quote');
+  connectComplete();
+  await Promise.all([first, second]);
+  assert.equal((await write).timing.redisPersistenceOutcome, 'success');
+  await runtime.warmFlightQuoteStore();
+  assert.deepEqual(calls, { create: 1, connect: 1, set: 1 });
+}
+
+// A failed speculative connection is handled and can recover at the normal
+// persistence boundary. A persistent failure still fails closed there.
+for (const recovers of [true, false]) {
+  let attempts = 0;
+  let writes = 0;
+  const runtime = loadQuoteStore({
+    environment: runtimeEnvironment,
+    createRedisClient: () => {
+      const attempt = ++attempts;
+      return {
+        isReady: false,
+        on() {},
+        disconnect() {},
+        async connect() {
+          if (attempt === 1 || !recovers) throw new Error('private transport failure');
+          this.isReady = true;
+        },
+        async sendCommand() { writes += 1; return 'OK'; },
+      };
+    },
+  });
+  await assert.doesNotReject(() => runtime.warmFlightQuoteStore());
+  assert.equal(writes, 0);
+  if (recovers) {
+    assert.equal((await runtime.storeSearch('supplier-trans', refs(), 'shapontravels')).timing.redisPersistenceOutcome, 'success');
+    assert.equal(writes, 1);
+  } else {
+    await assert.rejects(() => runtime.storeSearch('supplier-trans', refs(), 'shapontravels'),
+      (error) => error instanceof runtime.SearchReferenceStoreError && error.kind === 'unavailable');
+    assert.equal(writes, 0, 'warm-up failure must not create a quote fallback');
+  }
+}
+
+// Diagnostic traces cannot change quote bytes, and all compact fares must
+// still agree on their shared Search context after identity deduplication.
+{
+  const clock = { now: 8_000_000 };
+  const tracedRedis = new FakeRedis(clock), quietRedis = new FakeRedis(clock);
+  const tracedStore = storeFor(tracedRedis, clock), quietStore = storeFor(quietRedis, clock);
+  const events = [];
+  await tracedStore.storeSearch('supplier-trans', refs(), 'takeoff', { trace: (event) => events.push(event) });
+  await quietStore.storeSearch('supplier-trans', refs(), 'takeoff');
+  assert.ok(tracedRedis.entry(`flight:quote:v4:{${searchId}}`).value.equals(quietRedis.entry(`flight:quote:v4:{${searchId}}`).value));
+  assert.ok(events.some((event) => event.name === 'redis_quote_size_checked' && event.details.sectionBytes));
+  const inconsistent = refs();
+  inconsistent.set('itn-other', { ...inconsistent.get('itn-0-0'), context: {
+    ...inconsistent.get('itn-0-0').context,
+    routes: [{ origin: 'DAC', destination: 'BKK', departureDate: '2026-08-23' }],
+  } });
+  const priorWrites = quietRedis.calls.set;
+  await expectStoreError(() => quietStore.storeSearch('supplier-trans', inconsistent, 'takeoff'), 'integrity');
+  assert.equal(quietRedis.calls.set, priorWrites);
+}
+
+// Search starts warm-up beside its supplier call, without waiting for it. The
+// mapper still writes the quote through storeSearch before returning results.
+{
+  const calls = [];
+  let finishWarmup;
+  const warmup = new Promise((resolve) => { finishWarmup = resolve; });
+  const storedRefs = new Map();
+  const mapper = loadSearchModule({
+    response: { airSearchResponses: [groupedOffer(0, 'Y', 1000)] },
+    storedRefs,
+    warmup: () => { calls.push('warmup'); return warmup; },
+    supplierCall: async () => { calls.push('supplier'); },
+  });
+  const result = await mapper.searchFlights({
+    tripType: 'round', routes: [
+      { origin: 'DAC', destination: 'JFK', departureDate: '2026-09-10' },
+      { origin: 'JFK', destination: 'DAC', departureDate: '2026-09-30' },
+    ], adults: 1, children: 0, infants: 0, childrenAges: [], cabinClass: 1, preferredCarriers: [],
+  }, 'takeoff');
+  assert.deepEqual(calls, ['warmup', 'supplier']);
+  assert.equal(result.result.itineraries.length, 1);
+  assert.equal(storedRefs.get('refs').size, 1);
+  finishWarmup();
+}
+
+// FirstTrip uses the same request-local rule selection and fixed child-age
+// fallback, preserving any passenger counts explicitly returned by Search.
+{
+  const selectedCarriers = [];
+  const storedRefs = new Map();
+  const offers = ['QR', 'QR', 'BG'].map((carrierCode, index) => {
+    const offer = groupedOffer(index, 'Y', 1000 + index);
+    offer.platingCarrier = carrierCode;
+    offer.directions[0][0].segments[0].flightNumber = `${carrierCode}-${index}`;
+    if (index === 2) {
+      offer.passengerCounts = { chd: 7 };
+      offer.passengerFares = { chd: { basePrice: 10, totalPrice: 10 } };
+    }
+    return offer;
+  });
+  const mapper = loadSearchModule({
+    response: { airSearchResponses: offers }, storedRefs,
+    selectRules: (_rules, _audience, carrierCode) => { selectedCarriers.push(carrierCode); return { rule: null }; },
+  });
+  await mapper.searchFlights({
+    tripType: 'round', routes: [
+      { origin: 'DAC', destination: 'JFK', departureDate: '2026-09-10' },
+      { origin: 'JFK', destination: 'DAC', departureDate: '2026-09-30' },
+    ], adults: 1, children: 3, infants: 1, childrenAges: [4, 5, 9], cabinClass: 1, preferredCarriers: [],
+  }, 'firsttrip');
+  assert.deepEqual(selectedCarriers, ['QR', 'BG']);
+  for (const [id, refs] of storedRefs.get('refs')) {
+    assert.deepEqual(JSON.parse(JSON.stringify(refs.context.passengerCounts)), { adt: 1, chd: id === 'itn-2-0' ? 7 : 2, cnn: 1, inf: 1 });
+  }
+}
 
 console.log('flight-search Redis reference safety verification passed');

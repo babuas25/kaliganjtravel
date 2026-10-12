@@ -18,6 +18,7 @@ const paths = {
   pricing: 'lib/shapontravels/pricing.ts',
   search: 'lib/triplover/search.ts',
   reprice: 'lib/triplover/reprice.ts',
+  prepare: 'app/api/flights/booking/prepare/route.ts',
 };
 const compiled = Object.fromEntries(Object.entries(paths).map(([name, path]) => [
   name,
@@ -176,29 +177,31 @@ function supplierOffer(breakdown = initialBreakdown, carrierCode = 'BG', searchI
     refundable: true,
     fareBreakdown: plain(breakdown),
     directions: offerDirections,
-    passengerCounts: { adt: 1 },
-    passengerFares: {
-      adt: {
-        basePrice: Number(breakdown.payable) - Number(breakdown.taxes) - Number(breakdown.ait),
-        taxes: Number(breakdown.taxes),
-        ait: Number(breakdown.ait),
-        totalPrice: Number(breakdown.payable),
-      },
-    },
+    passengerCounts: Object.fromEntries(Object.entries(breakdown.passengers).map(([type, row]) => [type, row.count])),
+    passengerFares: Object.fromEntries(Object.entries(breakdown.passengers).map(([type, row]) => [type, {
+      basePrice: Number(row.payable) - Number(row.taxes) - Number(row.ait),
+      taxes: Number(row.taxes),
+      ait: Number(row.ait),
+      totalPrice: Number(row.payable),
+    }])),
   };
 }
 
-function harness({ principal, initialRules = rules, rulesAvailable = true, breakdown = initialBreakdown, carrierCode = 'BG', searchInput = input }) {
+function harness({ principal, initialRules = rules, rulesAvailable = true, breakdown = initialBreakdown, carrierCode = 'BG', searchInput = input, searchId = 'search-ref', quoteStore = null }) {
   const state = {
     search: null,
     searchResponse: { item1: { currency: 'BDT', airSearchResponses: [supplierOffer(breakdown, carrierCode, searchInput)] }, item2: { isSuccess: true } },
     repriceResponse: { item1: { ...supplierOffer(breakdown, carrierCode, searchInput), priceCodeRef: 'price-ref', isPriceChanged: false }, item2: { isSuccess: true } },
     rulesResult: { ok: rulesAvailable, rules: initialRules },
     selections: new Map(),
-    calls: { rules: [], supplier: [], searchWrites: [], selectionReads: [], selectionWrites: [], pricing: [] },
+    calls: { rules: [], ruleSelections: [], supplier: [], searchWrites: [], selectionReads: [], selectionWrites: [], pricing: [] },
   };
   const trackedMarkup = {
     ...markup,
+    selectMarkupRules(availableRules, audience, selectedCarrier, routes) {
+      state.calls.ruleSelections.push({ carrierCode: selectedCarrier, audience: plain(audience) });
+      return markup.selectMarkupRules(availableRules, audience, selectedCarrier, routes);
+    },
     priceOffer(value) {
       state.calls.pricing.push(value);
       return markup.priceOffer(value);
@@ -217,28 +220,41 @@ function harness({ principal, initialRules = rules, rulesAvailable = true, break
     },
     '@/lib/flights/search-cache': {
       ...quote,
+      warmFlightQuoteStore: async () => {},
       storeSearch: async (transaction, refsByItineraryId, supplier) => {
         state.calls.searchWrites.push({ transaction, refsByItineraryId, supplier });
+        if (quoteStore) {
+          const stored = await quoteStore.storeSearch(transaction, refsByItineraryId, supplier);
+          state.search = await quoteStore.readSearch(stored.searchId);
+          return stored;
+        }
         state.search = { uniqueTransId: transaction, refsByItineraryId, supplierAccount: supplier };
-        return { searchId: 'search-ref', timing: { redisPersistenceMs: 0, redisPersistenceOutcome: 'success' } };
+        return { searchId, timing: { redisPersistenceMs: 0, redisPersistenceOutcome: 'success' } };
       },
-      readSearch: async (searchId, options) => {
-        assert.equal(searchId, 'search-ref');
+      readSearch: async (requestedSearchId, options) => {
+        assert.equal(requestedSearchId, searchId);
         assert.equal(options.consistency, 'durable');
+        if (quoteStore) return quoteStore.readSearch(requestedSearchId, options);
         return state.search;
       },
-      readRepricedSelection: async (searchId, itineraryId, identity) => {
-        assert.equal(searchId, 'search-ref');
+      readRepricedSelection: async (requestedSearchId, itineraryId, identity) => {
+        assert.equal(requestedSearchId, searchId);
         state.calls.selectionReads.push({ itineraryId, principal: identity });
+        if (quoteStore) return quoteStore.readRepricedSelection(requestedSearchId, itineraryId, identity);
         return state.selections.get(JSON.stringify([itineraryId, identity])) ?? null;
       },
-      storeRepricedSelection: async (searchId, itineraryId, selection, identity, expectedVersion) => {
-        assert.equal(searchId, 'search-ref');
+      storeRepricedSelection: async (requestedSearchId, itineraryId, selection, identity, expectedVersion) => {
+        assert.equal(requestedSearchId, searchId);
         assert.deepEqual(plain(identity), plain(principal), 'RePrice must persist for the verified caller');
         const key = JSON.stringify([itineraryId, identity]);
         const previous = state.selections.get(key);
         assert.equal(expectedVersion, previous?.quoteStoreVersion ?? 0, 'principal-bound CAS revision must be preserved');
         state.calls.selectionWrites.push({ itineraryId, selection, principal: identity, expectedVersion });
+        if (quoteStore) {
+          const saved = await quoteStore.storeRepricedSelection(requestedSearchId, itineraryId, selection, identity, expectedVersion);
+          if (saved) state.selections.set(key, await quoteStore.readRepricedSelection(requestedSearchId, itineraryId, identity));
+          return saved;
+        }
         state.selections.set(key, { ...selection, quoteStoreVersion: expectedVersion + 1 });
         return true;
       },
@@ -261,7 +277,7 @@ function harness({ principal, initialRules = rules, rulesAvailable = true, break
       triploverCall: async () => { throw new Error('A Shapontravels flow must never call another supplier.'); },
     },
   };
-  return { state, input: searchInput, ...load('search', imports), ...load('reprice', imports) };
+  return { state, input: searchInput, searchId, cache: imports['@/lib/flights/search-cache'], ...load('search', imports), ...load('reprice', imports) };
 }
 
 function expectedPrice(breakdown, audience, availableRules, rulesAvailable = true, carrierCode = 'BG', searchInput = input) {
@@ -295,7 +311,7 @@ async function searchWith(h, principal, expected) {
   assert.equal(result.itineraries.length, 1);
   const card = result.itineraries[0];
   assertPublicPrice(card, expected);
-  const refs = h.state.search.refsByItineraryId.get(card.id);
+  const refs = h.state.calls.searchWrites[0].refsByItineraryId.get(card.id);
   assert.deepEqual(plain(refs.pricing), plain(expected.snapshot), 'Search must store marked pricing privately');
   assert.deepEqual(h.state.calls.rules, [plain(audience)], 'Search must load current rules for Shapontravels');
   assert.deepEqual(h.state.calls.supplier.map((call) => call.operation), ['Search']);
@@ -309,7 +325,7 @@ async function searchWith(h, principal, expected) {
 }
 
 async function repriceWith(h, principal, card, expected) {
-  const result = await h.repriceFlight({ searchId: 'search-ref', itineraryId: card.id, principal });
+  const result = await h.repriceFlight({ searchId: h.searchId, itineraryId: card.id, principal });
   assertPublicPrice(result, expected);
   const persisted = h.state.calls.selectionWrites.at(-1);
   assert.deepEqual(plain(persisted.selection.pricing), plain(expected.snapshot), 'RePrice must persist the current marked snapshot');
@@ -321,6 +337,73 @@ async function repriceWith(h, principal, card, expected) {
   assert.equal(h.state.calls.rules.length, h.state.calls.supplier.length, 'every Search/RePrice must read rules once');
   assert.equal(h.state.calls.pricing.length, h.state.calls.supplier.length);
   return result;
+}
+
+// The production quote codec and principal-bound selection persistence run
+// against this local Redis protocol double; no network connection is created.
+function localQuoteStore(searchId) {
+  const entries = new Map();
+  return quote.createRedisFlightQuoteStore({
+    createSearchId: () => searchId,
+    client: {
+      async set(key, value, options) {
+        if (options.NX && entries.has(key)) return null;
+        entries.set(key, value);
+        return 'OK';
+      },
+      async get(key) { return entries.get(key) ?? null; },
+      async eval(_script, { keys, arguments: args }) {
+        if (!entries.has(keys[0])) return ['missing'];
+        const [expectedVersion, digest, candidateJson, maxBytes] = args;
+        const existing = entries.has(keys[1]) ? JSON.parse(entries.get(keys[1])) : null;
+        if (existing?.quoteStoreDigest === digest) return ['replay'];
+        if (Number(existing?.quoteStoreVersion ?? 0) !== Number(expectedVersion)) return ['conflict'];
+        if (Buffer.byteLength(candidateJson, 'utf8') > Number(maxBytes)) return ['oversized'];
+        entries.set(keys[1], candidateJson);
+        return ['updated', String(JSON.parse(candidateJson).quoteStoreVersion)];
+      },
+    },
+  });
+}
+
+async function prepareWith(h, principal, card) {
+  const attempts = [];
+  const acceptanceCalls = [];
+  const route = load('prepare', {
+    'next/server': { NextResponse: { json: (body, init = {}) => ({ status: init.status ?? 200, body }) } },
+    zod: require('zod'),
+    '@/lib/airports/country': { passportRequiredFor: () => true },
+    '@/lib/dashboard/session': { getDashboardSession: async () => ({ clerkId: principal.userId, role: 'customer' }) },
+    '@/lib/db/booking-attempts': {
+      createBookingAttempt: async (attempt) => {
+        attempts.push(attempt);
+        return { attemptId: 'local-six-adult-attempt', offerSnapshot: attempt.offerSnapshot };
+      },
+    },
+    '@/lib/flights/search-cache': h.cache,
+    '@/lib/flights/staff-booking.server': {
+      canCreateBookingOnBehalf: () => false,
+      resolveBookingActorContext: async () => ({ principal, ownerUserId: principal.userId, createdByUserId: principal.userId, staffOnBehalf: false }),
+    },
+    '@/lib/http/actor-key': { requestActorKey: () => 'local-six-adult-prepare' },
+    '@/lib/rate-limit': { checkActionLimit: async () => ({ ok: true }), rateLimitMessage: () => '' },
+    '@/lib/wallet/permissions': { canCreateOwnBooking: () => true },
+    '@/lib/shapontravels/client': {
+      ShapontravelsReadError: class extends Error {},
+      shapontravelsRead: async (operation, payload) => {
+        assert.equal(operation, 'Accept', 'Prepare can only accept the already repriced fare');
+        acceptanceCalls.push(payload);
+        return { accepted: true, priceCodeRef: payload.priceCodeRef, pricingVersion: 1 };
+      },
+    },
+    '@/lib/db/supplier-controls': { getSupplierOperationalControls: async () => ({ bookingEnabled: true }) },
+  });
+  const response = await route.POST({ json: async () => ({ searchId: h.searchId, itineraryId: card.id, acceptedRepricedAt: null, itinerary: types.bookingItinerarySnapshotFor(card) }) });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.success, true);
+  assert.equal(attempts.length, 1);
+  assert.deepEqual(plain(acceptanceCalls), [{ priceCodeRef: 'price-ref' }]);
+  return attempts[0];
 }
 
 const audienceCases = [
@@ -347,6 +430,103 @@ for (const scenario of audienceCases) {
 
 const customer = { userId: 'customer', audience: 'b2c', agencyCode: null };
 const customerAudience = { kind: 'b2c' };
+
+// Sanitized DAC→KUL supplier evidence: every ADT monetary field is per person,
+// while the top-level breakdown covers all six adults. Run the complete local
+// Search→grouped public fare→Redis round trip→RePrice→Prepare handoff.
+{
+  const partyInput = {
+    ...plain(input),
+    adults: 6,
+    routes: [{ origin: 'DAC', destination: 'KUL', departureDate: '2026-10-21' }],
+  };
+  const partyBreakdown = {
+    currency: 'BDT', payable: '209662.62', gross: '219618.00', taxes: '74334.00', ait: '0.00', serviceCharge: '0.00',
+    passengers: { adt: { count: 6, payable: '34943.77', gross: '36603.00', taxes: '12389.00', ait: '0.00', serviceCharge: '0.00' } },
+  };
+  const partyRules = [rule('six-adult-fixed', { destination: 'KUL', value: 100 })];
+  const expected = markup.priceOffer({
+    audience: customerAudience,
+    rulesAvailable: true,
+    rules: markup.selectMarkupRules(partyRules, customerAudience, 'BG', partyInput.routes),
+    supplierTotalPrice: 209662.62,
+    basePrice: 145284,
+    taxes: 74334,
+    ait: 0,
+    fares: [{ passengerType: 'ADT', count: 6, basePrice: 145284, taxes: 74334, ait: 0, serviceCharge: 0, supplierTotalPrice: 209662.62 }],
+    passengerCount: 6,
+  });
+  assert.equal(expected.totalPrice, 210262.62);
+  assert.equal(expected.snapshot.requestedMarkupAmount, 600, 'BDT 100 fixed markup applies once to each of six adults');
+  const searchId = '00000000-0000-4000-8000-000000000006';
+  const h = harness({ principal: customer, initialRules: partyRules, breakdown: partyBreakdown, searchInput: partyInput, searchId, quoteStore: localQuoteStore(searchId) });
+  const card = await searchWith(h, customer, expected);
+  assert.deepEqual(plain(h.state.calls.supplier[0].payload), {
+    routes: partyInput.routes, adults: 6, childs: 0, infants: 0, cabinClass: 1,
+    preferredCarriers: [], prohibitedCarriers: [], childrenAges: [],
+  }, 'Search preserves the requested route and all six adults');
+  assert.deepEqual(plain(h.input), partyInput, 'the supplied search parameters remain unchanged');
+  assert.equal(card.upsellOptions.length, 0, 'the valid six-adult fare survives public grouping');
+  assert.equal(card.fares[0].count, 6);
+  assert.equal(card.taxes, 74334);
+  const refs = h.state.search.refsByItineraryId.get(card.id);
+  assert.equal(h.state.search.durableConfirmed, true, 'Search references survive the production Redis quote codec');
+  assert.equal(refs.context.passengerCounts.adt, 6);
+  assert.equal(refs.context.passengerCount, 6);
+  assert.equal(refs.pricing.supplierTotalPrice, 209662.62);
+  assert.equal(h.state.calls.searchWrites[0].refsByItineraryId.get(card.id).pricing.grossPrice, 219618);
+  assert.equal(refs.pricing.sellingPrice, 210262.62);
+  const repriced = await repriceWith(h, customer, card, expected);
+  assert.equal(repriced.supplierPriceChanged, false);
+  assert.equal(repriced.sellingPriceChanged, false);
+  assert.equal(repriced.requiresConfirmation, false);
+  const selection = h.state.selections.get(JSON.stringify([card.id, customer]));
+  assert.equal(selection.quoteStoreVersion, 1, 'the verified six-adult selection survives Redis persistence');
+  assert.equal(selection.pricing.requestedMarkupAmount, 600);
+  assert.equal(selection.fares[0].count, 6);
+  const prepared = await prepareWith(h, customer, card);
+  assert.equal(prepared.supplierAccount, 'shapontravels');
+  assert.deepEqual(plain(prepared.offerSnapshot.passengerCounts), { ADT: 6 });
+  assert.deepEqual(plain(prepared.offerSnapshot.fares), plain(expected.fares));
+  assert.equal(prepared.offerSnapshot.pricing.supplierTotalPrice, 209662.62);
+  assert.equal(prepared.offerSnapshot.pricing.grossPrice, 219618);
+  assert.equal(prepared.offerSnapshot.pricing.sellingPrice, 210262.62);
+  assert.equal(prepared.offerSnapshot.directTicketing, false);
+  assert.deepEqual(h.state.calls.supplier.map(({ operation }) => operation), ['Search', 'Reprice'], 'no booking or ticketing request is made');
+}
+
+// Repeated fares use the same carrier's rule selection, while different
+// carriers retain distinct commercial prices. The cache ends with each Search
+// so an immediately updated rule is read by the next request.
+{
+  const mixedRules = [rule('BG-rule', { value: 25 }), rule('US-rule', { airlineCode: 'US', value: 80 })];
+  const h = harness({ principal: customer, initialRules: mixedRules });
+  h.state.searchResponse.item1.airSearchResponses = ['BG', 'BG', 'US', 'US'].map((carrierCode, index) => {
+    const offer = supplierOffer(initialBreakdown, carrierCode);
+    offer.itemCodeRef = `item-${index}`;
+    offer.directions[0][0].segments[0].flightNumber = `${carrierCode}-${433 + index}`;
+    offer.directions[0][0].segments[0].segmentCodeRef = `segment-${index}`;
+    return offer;
+  });
+  const { result } = await h.searchFlights(input, 'shapontravels', customerAudience);
+  assert.equal(result.itineraries.length, 4);
+  assert.deepEqual(h.state.calls.ruleSelections.map(({ carrierCode }) => carrierCode), ['BG', 'US']);
+  assert.equal(h.state.calls.pricing.length, 4, 'every fare still receives its own complete price calculation');
+  for (const card of result.itineraries) {
+    const expected = expectedPrice(initialBreakdown, customerAudience, mixedRules, true, card.carrierCode);
+    assertPublicPrice(card, expected);
+    assert.equal(h.state.search.refsByItineraryId.get(card.id).pricing.ruleId, `${card.carrierCode}-rule`);
+  }
+  h.state.rulesResult = { ok: true, rules: [rule('BG-updated', { value: 40 }), mixedRules[1]] };
+  const next = await h.searchFlights(input, 'shapontravels', customerAudience);
+  assert.deepEqual(h.state.calls.ruleSelections.map(({ carrierCode }) => carrierCode), ['BG', 'US', 'BG', 'US']);
+  assert.equal(h.state.calls.rules.length, 2);
+  for (const card of next.result.itineraries) {
+    const refs = h.state.search.refsByItineraryId.get(card.id);
+    assert.equal(refs.pricing.ruleId, card.carrierCode === 'BG' ? 'BG-updated' : 'US-rule');
+    assert.equal(card.totalPrice, 5084.36 + (card.carrierCode === 'BG' ? 40 : 80));
+  }
+}
 
 // RePrice loads newly changed local rules; unchanged supplier payable cannot
 // be mislabeled as a supplier price change merely because selling moved.

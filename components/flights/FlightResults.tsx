@@ -19,7 +19,7 @@ import {
   startOfDay,
 } from 'date-fns';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 
 import AirlineFilterBar from '@/components/flights/AirlineFilterBar';
@@ -670,6 +670,8 @@ function UnavailableResultsState({
   );
 }
 
+const MemoizedItineraryCard = memo(ItineraryCard);
+
 export default function FlightResults({
   input,
   airportCities,
@@ -763,7 +765,6 @@ export default function FlightResults({
             if (!result) return;
             reachedTerminalEvent = true;
             setResult(result);
-            setFilters(defaultFilters(filterOptions(result)));
             return;
           }
 
@@ -790,7 +791,6 @@ export default function FlightResults({
 
         if (envelope.success) {
           setResult(envelope.data);
-          setFilters(defaultFilters(filterOptions(envelope.data)));
         } else {
           setError(envelope.error.errorMessage);
         }
@@ -841,6 +841,86 @@ export default function FlightResults({
     changeSearchDate(format(addDays(current, days), 'yyyy-MM-dd'));
   };
 
+  // Derive default filters once per result instead of rebuilding them during
+  // receipt and every render. Keep hooks before all loading/error returns.
+  const options = useMemo(
+    () => result && result.itineraries.length > 0 ? filterOptions(result) : null,
+    [result]
+  );
+  const activeFilters = useMemo(
+    () => options ? filters ?? defaultFilters(options) : null,
+    [filters, options]
+  );
+  const displayPriceOf = useCallback(
+    (itinerary: FlightItinerary) =>
+      resultDisplayPrice(itinerary, showAuditFares, showAgencyFares),
+    [showAuditFares, showAgencyFares]
+  );
+
+  // Match the airline tabs to the card's primary price. Agency LCC fares use
+  // payable when their service margin puts payable above gross; advertising
+  // the lower gross in that case would show an amount the agency cannot pay.
+  const displayAirlines = useMemo(() => {
+    const airlineMap = new Map<string, AirlineFilter>();
+    for (const itinerary of result?.itineraries ?? []) {
+      if (!itinerary.carrierCode) continue;
+      const displayPrice = displayPriceOf(itinerary);
+      const current = airlineMap.get(itinerary.carrierCode);
+      if (current) {
+        current.totalFlights += 1;
+        current.minPrice = Math.min(current.minPrice, displayPrice);
+      } else {
+        airlineMap.set(itinerary.carrierCode, {
+          airlineCode: itinerary.carrierCode,
+          airlineName: itinerary.carrierName || itinerary.carrierCode,
+          totalFlights: 1,
+          minPrice: displayPrice,
+        });
+      }
+    }
+    return Array.from(airlineMap.values());
+  }, [result, displayPriceOf]);
+
+  const visible = useMemo(() => {
+    if (!result || !activeFilters) return [];
+    return result.itineraries
+      .filter(
+        (itinerary) =>
+          (activeFilters.stops.length === 0 ||
+            activeFilters.stops.includes(stopKey(itinerary))) &&
+          (!activeFilters.refundableOnly || itinerary.refundable) &&
+          itinerary.totalPrice >= activeFilters.price.min &&
+          itinerary.totalPrice <= activeFilters.price.max &&
+          journeyMinutes(itinerary) >= activeFilters.duration.min &&
+          journeyMinutes(itinerary) <= activeFilters.duration.max &&
+          (activeFilters.departureBands.length === 0 ||
+            activeFilters.departureBands.includes(departureBand(itinerary))) &&
+          (activeFilters.airlines.length === 0 ||
+            activeFilters.airlines.includes(itinerary.carrierCode))
+      )
+      .sort((a, b) => {
+        if (sort === 'price-low-high') return a.totalPrice - b.totalPrice;
+        if (sort === 'price-high-low') return b.totalPrice - a.totalPrice;
+        if (sort === 'dep-early-late') {
+          return (a.legs[0]?.departure ?? '').localeCompare(b.legs[0]?.departure ?? '');
+        }
+        if (sort === 'dep-late-early') {
+          return (b.legs[0]?.departure ?? '').localeCompare(a.legs[0]?.departure ?? '');
+        }
+        if (sort === 'layover-short-long') {
+          return layoverMinutes(a) - layoverMinutes(b);
+        }
+        if (sort === 'layover-long-short') {
+          return layoverMinutes(b) - layoverMinutes(a);
+        }
+        return 0;
+      });
+  }, [result, activeFilters, sort, displayPriceOf]);
+  const minimumVisiblePrice = useMemo(
+    () => visible.reduce((min, itinerary) => Math.min(min, itinerary.totalPrice), Infinity),
+    [visible]
+  );
+
   if (loading) return <LoadingState stage={searchStage} input={input} />;
 
   if (error) {
@@ -856,7 +936,7 @@ export default function FlightResults({
     );
   }
 
-  if (!result || result.itineraries.length === 0) {
+  if (!result || result.itineraries.length === 0 || !options || !activeFilters) {
     return (
       <UnavailableResultsState
         input={input}
@@ -869,69 +949,7 @@ export default function FlightResults({
     );
   }
 
-  const options = filterOptions(result);
-  const activeFilters = filters ?? defaultFilters(options);
   const resetFilters = () => setFilters(defaultFilters(options));
-
-  // Match the airline tabs to the card's primary price. Agency LCC fares use
-  // payable when their service margin puts payable above gross; advertising
-  // the lower gross in that case would show an amount the agency cannot pay.
-  const airlineMap = new Map<string, AirlineFilter>();
-  for (const itinerary of result.itineraries) {
-    if (!itinerary.carrierCode) continue;
-    const displayPrice = resultDisplayPrice(
-      itinerary,
-      showAuditFares,
-      showAgencyFares
-    );
-    const current = airlineMap.get(itinerary.carrierCode);
-    if (current) {
-      current.totalFlights += 1;
-      current.minPrice = Math.min(current.minPrice, displayPrice);
-    } else {
-      airlineMap.set(itinerary.carrierCode, {
-        airlineCode: itinerary.carrierCode,
-        airlineName: itinerary.carrierName || itinerary.carrierCode,
-        totalFlights: 1,
-        minPrice: displayPrice,
-      });
-    }
-  }
-  const displayAirlines = Array.from(airlineMap.values());
-
-  const visible = result.itineraries
-    .filter(
-      (itinerary) =>
-        (activeFilters.stops.length === 0 ||
-          activeFilters.stops.includes(stopKey(itinerary))) &&
-        (!activeFilters.refundableOnly || itinerary.refundable) &&
-        itinerary.totalPrice >= activeFilters.price.min &&
-        itinerary.totalPrice <= activeFilters.price.max &&
-        journeyMinutes(itinerary) >= activeFilters.duration.min &&
-        journeyMinutes(itinerary) <= activeFilters.duration.max &&
-        (activeFilters.departureBands.length === 0 ||
-          activeFilters.departureBands.includes(departureBand(itinerary))) &&
-        (activeFilters.airlines.length === 0 ||
-          activeFilters.airlines.includes(itinerary.carrierCode))
-    )
-    .slice()
-    .sort((a, b) => {
-      if (sort === 'price-low-high') return a.totalPrice - b.totalPrice;
-      if (sort === 'price-high-low') return b.totalPrice - a.totalPrice;
-      if (sort === 'dep-early-late') {
-        return (a.legs[0]?.departure ?? '').localeCompare(b.legs[0]?.departure ?? '');
-      }
-      if (sort === 'dep-late-early') {
-        return (b.legs[0]?.departure ?? '').localeCompare(a.legs[0]?.departure ?? '');
-      }
-      if (sort === 'layover-short-long') {
-        return layoverMinutes(a) - layoverMinutes(b);
-      }
-      if (sort === 'layover-long-short') {
-        return layoverMinutes(b) - layoverMinutes(a);
-      }
-      return 0;
-    });
 
   return (
     <div className="space-y-4">
@@ -988,7 +1006,7 @@ export default function FlightResults({
                     {' '}
                     · from{' '}
                     {formatPrice(
-                      visible.reduce((min, i) => Math.min(min, i.totalPrice), Infinity),
+                      minimumVisiblePrice,
                       result.currency
                     )}
                   </>
@@ -1032,7 +1050,7 @@ export default function FlightResults({
           ) : (
             <div className="space-y-3">
               {visible.map((itinerary) => (
-                <ItineraryCard
+                <MemoizedItineraryCard
                   key={itinerary.id}
                   itinerary={itinerary}
                   currency={result.currency}

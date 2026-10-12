@@ -80,7 +80,8 @@ function popularityShape(input: FlightSearchInput) {
  */
 export async function recordFlightSearch(
   userId: string | null,
-  input: FlightSearchInput
+  input: FlightSearchInput,
+  options: { userRegistered?: boolean } = {}
 ): Promise<void> {
   if (!userId) return;
   const supabase = supabaseAdmin();
@@ -94,13 +95,17 @@ export async function recordFlightSearch(
     // A new Clerk account can search during the same response in which its
     // deferred registry visit is recorded. Ensure the FK target exists without
     // overwriting any mirrored identity already present.
-    const { error: userError } = await supabase.from('app_users').upsert(
-      { clerk_id: userId },
-      { onConflict: 'clerk_id', ignoreDuplicates: true }
-    );
-    if (userError) {
-      console.error('[db] flight search history user stub failed:', userError.message);
-      return;
+    // A successfully inserted usage event already confirms this FK target.
+    // Other callers retain the first-account upsert below.
+    if (!options.userRegistered) {
+      const { error: userError } = await supabase.from('app_users').upsert(
+        { clerk_id: userId },
+        { onConflict: 'clerk_id', ignoreDuplicates: true }
+      );
+      if (userError) {
+        console.error('[db] flight search history user stub failed:', userError.message);
+        return;
+      }
     }
 
     const { error } = await supabase.from('flight_search_history').upsert(

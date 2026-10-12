@@ -117,12 +117,12 @@ for (const scenario of calculations) {
   assert.equal(priced.serviceMargin, scenario.lcc ? scenario.requested : 0);
 }
 
-// Shapon passenger rows are totals for that type. Only fixed markup multiplies
-// by head count; payable and tax totals must never be multiplied again.
+// Shapon passenger rows are per person. The adapter multiplies their money by
+// count once and reconciles with the top-level party totals before markup.
 const party = {
   currency: 'BDT', gross: '12000.00', payable: '10000.00', taxes: '2000.00', ait: '20.00',
   passengers: {
-    adt: { count: 2, payable: '8000.00', taxes: '1600.00', ait: '16.00' },
+    adt: { count: 2, payable: '4000.00', taxes: '800.00', ait: '8.00' },
     chd: { count: 1, payable: '2000.00', taxes: '400.00', ait: '4.00' },
     inf: { count: 0 },
   },
@@ -144,7 +144,7 @@ assert.equal(price([rule('party-LCC-percent', { airlineCode: 'BG', lccServiceMar
 const withServiceCharge = {
   ...party, baseFare: '9780.00', serviceCharge: '200.00',
   passengers: {
-    adt: { ...party.passengers.adt, gross: '9600.00', baseFare: '7824.00', serviceCharge: '160.00' },
+    adt: { ...party.passengers.adt, gross: '4800.00', baseFare: '3912.00', serviceCharge: '80.00' },
     chd: { ...party.passengers.chd, gross: '2400.00', baseFare: '1956.00', serviceCharge: '40.00' },
   },
 };
@@ -152,6 +152,49 @@ assert.equal(price([rule('service-fixed')], { input: withServiceCharge }).totalP
 const serviceLcc = price([rule('service-LCC-percent', { airlineCode: 'BG', lccServiceMargin: true, markupType: 'percentage', value: 1 })], { input: withServiceCharge });
 assert.equal(serviceLcc.totalPrice, 12097.8, 'LCC percentage excludes supplier service charges');
 assert.equal(serviceLcc.snapshot.components[0].basisAmount, 9780);
+
+// Sanitized live DAC-KUL six-adult breakdown: each ADT amount is per person,
+// while the top-level breakdown is the complete party. No supplier references
+// or personal details are retained in this fixture.
+const sixAdults = {
+  currency: 'BDT', gross: '219618.00', payable: '209662.62', taxes: '74334.00',
+  ait: '0.00', serviceCharge: '0.00',
+  passengers: {
+    adt: { count: 6, gross: '36603.00', payable: '34943.77', taxes: '12389.00',
+      ait: '0.00', serviceCharge: '0.00' },
+  },
+};
+const sixSupplier = price([], { input: sixAdults, audience: superadmin });
+assert.equal(sixSupplier.totalPrice, 209662.62, 'six adults preserve authoritative party payable');
+assert.equal(sixSupplier.fares.length, 1);
+assert.equal(sixSupplier.fares[0].count, 6);
+assert.equal(sixSupplier.fares[0].taxes, 74334, 'per-person taxes multiply by six once');
+assert.equal(sixSupplier.fares[0].totalPrice, 209662.62, 'ADT public fare is the party total');
+const sixFixed = price([rule('six-fixed')], { input: sixAdults });
+assert.equal(sixFixed.totalPrice, 210262.62);
+assert.equal(sixFixed.snapshot.requestedMarkupAmount, 600, 'fixed markup counts all six adults once');
+assert.equal(sixFixed.fares[0].totalPrice, sixFixed.totalPrice);
+const sixPercent = price([rule('six-percent', { markupType: 'percentage', value: 1 })], { input: sixAdults });
+assert.equal(sixPercent.totalPrice, 211759.25, 'percentage uses party payable once');
+assert.equal(sixPercent.snapshot.requestedMarkupAmount, 2096.63);
+
+// Synthetic service-charge variant keeps the same base fare and adds BDT 50
+// per person, proving supplier service charges scale without entering the LCC
+// percentage base.
+const sixWithServiceCharge = {
+  ...sixAdults, gross: '219918.00', payable: '209962.62', serviceCharge: '300.00',
+  passengers: {
+    adt: { ...sixAdults.passengers.adt, gross: '36653.00', payable: '34993.77', serviceCharge: '50.00' },
+  },
+};
+const sixServiceFixed = price([rule('six-service-fixed')], { input: sixWithServiceCharge });
+assert.equal(sixServiceFixed.totalPrice, 210562.62);
+const sixServiceLcc = price([rule('six-service-LCC-percent', {
+  airlineCode: 'BG', lccServiceMargin: true, markupType: 'percentage', value: 1,
+})], { input: sixWithServiceCharge });
+assert.equal(sixServiceLcc.snapshot.components[0].basisAmount, 145284);
+assert.equal(sixServiceLcc.serviceMargin, 1452.84);
+assert.equal(sixServiceLcc.totalPrice, 221370.84);
 
 for (const [audience, rulesAvailable, payable, basis] of [
   [b2c, true, 5349, 'gross'], [agency, true, 5084.36, 'supplier'],
@@ -187,8 +230,13 @@ const invalid = [
     .map((values) => ({ ...breakdown, passengers: { adt: { ...breakdown.passengers.adt, ...values } } })),
   { ...withServiceCharge, serviceCharge: '201.00' },
   { ...withServiceCharge, serviceCharge: 'unknown' },
-  { ...withServiceCharge, passengers: { ...withServiceCharge.passengers, adt: { ...withServiceCharge.passengers.adt, gross: '9600.01' } } },
-  { ...withServiceCharge, passengers: { ...withServiceCharge.passengers, adt: { ...withServiceCharge.passengers.adt, serviceCharge: '159.99' } } },
+  { ...withServiceCharge, passengers: { ...withServiceCharge.passengers, adt: { ...withServiceCharge.passengers.adt, gross: '4800.01' } } },
+  { ...withServiceCharge, passengers: { ...withServiceCharge.passengers, adt: { ...withServiceCharge.passengers.adt, serviceCharge: '79.99' } } },
+  { ...sixAdults, payable: '209662.63' },
+  { ...sixAdults, passengers: { adt: { ...sixAdults.passengers.adt, payable: '34943.78' } } },
+  // The decimal itself is safe, but multiplying it by six would exceed the
+  // exact integer-cent range and must fail closed.
+  { ...sixAdults, passengers: { adt: { ...sixAdults.passengers.adt, payable: '90071992547409.91' } } },
 ];
 for (const [index, input] of invalid.entries()) {
   assert.equal(shapontravelsPricedOffer(input, b2c, { rulesAvailable: true, rules: markup.NO_MARKUP_RULES }), null, `invalid breakdown ${index + 1} is rejected`);

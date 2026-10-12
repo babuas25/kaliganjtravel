@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import vm from 'node:vm';
+import ts from 'typescript';
+import { createHash } from 'node:crypto';
 
 function source(...parts) {
   return fs.readFileSync(path.join(process.cwd(), ...parts), 'utf8');
@@ -29,7 +32,7 @@ assert.match(repository, /recordFlightSearch[\s\S]*flight_search_history[\s\S]*o
 assert.match(repository, /getFlightSearchSuggestions[\s\S]*\.eq\('user_id', userId\)[\s\S]*popular_flight_searches_v1/);
 assert.match(repository, /popular[\s\S]*Array\.from\(\{ length: children \}, \(\) => 8\)/);
 assert.equal(
-  [...api.matchAll(/await recordFlightSearch\(/g)].length,
+  [...api.matchAll(/recordFlightSearch\(/g)].length,
   2,
   'both SSE and JSON success paths must record the search'
 );
@@ -41,6 +44,51 @@ assert.match(cards, /Popular searches/);
 assert.match(cards, /\/flights\?\$\{encodeSearchParams\(item\.input\)\}/);
 assert.match(cards, /prefetch=\{false\}/, 'Suggestions must not start results navigation before a click');
 assert.match(cards, /snap-x snap-mandatory/);
+
+// A persisted usage event proves the user FK exists. The history writer may
+// skip the redundant upsert only for that explicitly confirmed caller.
+const compiledHistory = ts.transpileModule(repository, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText;
+const sampleSearch = {
+  tripType: 'oneway',
+  routes: [{ origin: 'DAC', destination: 'SIN', departureDate: '2026-10-31' }],
+  adults: 1, children: 0, infants: 0, childrenAges: [],
+  cabinClass: 1, preferredCarriers: [],
+};
+for (const [userRegistered, stubFails] of [[false, false], [true, false], [false, true]]) {
+  const calls = [];
+  const module = { exports: {} };
+  const dependencies = {
+    'server-only': {},
+    'node:crypto': { createHash },
+    '@/lib/flights/cabin': { isCabinClassValue: () => true },
+    '@/lib/supabase/server': { supabaseAdmin: () => ({
+      from: table => ({ upsert: async (payload, options) => {
+        calls.push({ table, payload, options });
+        return { error: table === 'app_users' && stubFails ? { message: 'fixture failure' } : null };
+      } }),
+    }) },
+  };
+  vm.runInNewContext(compiledHistory, {
+    module, exports: module.exports,
+    require: name => {
+      assert.ok(Object.hasOwn(dependencies, name), `Unexpected history import ${name}`);
+      return dependencies[name];
+    },
+    console: { error() {} },
+  });
+  await module.exports.recordFlightSearch('u1', sampleSearch, { userRegistered });
+  assert.deepEqual(calls.map(call => call.table), userRegistered
+    ? ['flight_search_history']
+    : stubFails ? ['app_users'] : ['app_users', 'flight_search_history']);
+  const saved = calls.find(call => call.table === 'flight_search_history');
+  if (saved) {
+    assert.equal(saved.payload.user_id, 'u1');
+    assert.equal(saved.payload.routes[0].destination, 'SIN');
+    assert.equal(saved.options.onConflict, 'user_id,search_key');
+  }
+}
 
 const database = new PGlite();
 try {

@@ -8,6 +8,7 @@ import {
   SearchReferenceStoreError,
   selectionSignatureForItinerary,
   storeSearch,
+  warmFlightQuoteStore,
   type ItineraryRefs,
   type SearchPersistenceTiming,
 } from '@/lib/flights/search-cache';
@@ -584,6 +585,8 @@ function referencesForDisplayedFares(
 /* ── Entry point ─────────────────────────────────────────────────────── */
 
 export type FlightSearchExecutionTiming = TriploverCallTiming & {
+  /** Full supplier-client call, including token, transfer and JSON parsing. */
+  supplierRoundTripMs?: number;
   /** The pricing-rule read that begins alongside the supplier call. */
   markupRulesMs: number;
   /** The portion of markup-rule work that remained after Search completed. */
@@ -706,6 +709,9 @@ export async function searchFlights(
   // trace is intentionally limited to the TakeOff investigation.
   const trace = supplier === 'takeoff' ? options.trace : undefined;
   const searchRequest = buildSearchRequest(input);
+  // A cold Redis handshake should run during the supplier request instead of
+  // delaying finalization after the offers arrive. No quote is written here.
+  void warmFlightQuoteStore();
   emitSearchTrace(trace, {
     name: 'takeoff_search_payload_ready',
     details: searchPayloadTraceDetails(searchRequest),
@@ -727,10 +733,16 @@ export async function searchFlights(
       throw error;
     }
   );
+  const supplierCallStartedAt = performance.now();
   const call = supplier === 'shapontravels'
     ? await (async () => {
         const startedAt = performance.now();
-        const envelope = await shapontravelsRead('Search', searchRequest) as {
+        let measuredTiming: TriploverCallTiming | undefined;
+        const envelope = await shapontravelsRead('Search', searchRequest, {
+          onTiming(value) {
+            measuredTiming = { ...value };
+          },
+        }) as {
           item1?: RawSearchPayload;
           item2?: unknown;
         };
@@ -747,7 +759,7 @@ export async function searchFlights(
             !!status && typeof status === 'object' &&
             (status as { isSuccess?: unknown }).isSuccess === false
           ),
-          timing: {
+          timing: measuredTiming ?? {
             tokenMs: 0,
             tokenSource: 'shapontravels',
             tokenLoginAttempts: 0,
@@ -801,6 +813,16 @@ export async function searchFlights(
   const supplierItineraries: SupplierItinerary[] = [];
   const supplierRefsByItineraryId = new Map<string, SupplierRefs>();
   const shapontravelsPricingByItineraryId = new Map<string, NonNullable<ReturnType<typeof shapontravelsPricedOffer>>>();
+  // Rules, audience and requested routes are fixed for this Search. Only the
+  // carrier changes, so choose its winning rule once across all fare options.
+  const rulesByCarrier = new Map<string, ReturnType<typeof selectMarkupRules>>();
+  const rulesForCarrier = (carrierCode: string): ReturnType<typeof selectMarkupRules> => {
+    const cached = rulesByCarrier.get(carrierCode);
+    if (cached) return cached;
+    const selected = selectMarkupRules(rulesResult.rules, audience, carrierCode, input.routes);
+    rulesByCarrier.set(carrierCode, selected);
+    return selected;
+  };
   let droppedOfferCount = 0;
 
   offers.forEach((offer, index) => {
@@ -814,7 +836,7 @@ export async function searchFlights(
       if (supplier === 'shapontravels') {
         const priced = shapontravelsPricedOffer(offer.fareBreakdown, audience, {
           rulesAvailable: rulesResult.ok,
-          rules: selectMarkupRules(rulesResult.rules, audience, itinerary.carrierCode, input.routes),
+          rules: rulesForCarrier(itinerary.carrierCode),
         });
         if (!priced) {
           droppedOfferCount += 1;
@@ -840,6 +862,8 @@ export async function searchFlights(
   });
 
   const passengerCount = input.adults + input.children + input.infants;
+  const requestedChdCount = input.childrenAges.filter((age) => age >= 5).length;
+  const requestedCnnCount = input.childrenAges.filter((age) => age < 5).length;
   const refsByItineraryId = new Map<string, ItineraryRefs>();
   const pricedItineraries: StandaloneFlightItinerary[] = [];
   for (const supplier of supplierItineraries) {
@@ -859,12 +883,7 @@ export async function searchFlights(
         droppedOfferCount += 1;
         continue;
       }
-      const selectedRules = isShapontravels ? null : selectMarkupRules(
-        rulesResult.rules,
-        audience,
-        supplier.carrierCode,
-        input.routes
-      );
+      const selectedRules = isShapontravels ? null : rulesForCarrier(supplier.carrierCode);
       const priced = isShapontravels
         ? shapontravelsPricingByItineraryId.get(supplier.id)!
         : priceOffer({
@@ -888,12 +907,8 @@ export async function searchFlights(
       // requested party as a fallback so checkout can still require the exact
       // ADT/CHD/CNN/INF mix rather than accepting a caller-supplied one.
       passengerCounts.adt ??= input.adults;
-      passengerCounts.chd ??= input.childrenAges.filter(
-        (age) => age >= 5
-      ).length;
-      passengerCounts.cnn ??= input.childrenAges.filter(
-        (age) => age < 5
-      ).length;
+      passengerCounts.chd ??= requestedChdCount;
+      passengerCounts.cnn ??= requestedCnnCount;
       passengerCounts.inf ??= input.infants;
       refsByItineraryId.set(supplier.id, {
         ...refs,
@@ -1065,6 +1080,7 @@ export async function searchFlights(
     },
     timing: {
       ...call.timing,
+      supplierRoundTripMs: supplierCallCompletedAt - supplierCallStartedAt,
       markupRulesMs,
       postSupplierMarkupWaitMs,
       mappingMs,

@@ -70,7 +70,9 @@ async function readMembership(
 ): Promise<AgencyMembership> {
   const { data, error } = await supabase
     .from(APP_USERS)
-    .select('agency_code')
+    // Use the membership FK explicitly: agencies also points back to users
+    // through owner_user_id. One live read checks the stored link and owner.
+    .select('agency_code, agency:agencies!app_users_agency_code_fkey(owner_user_id)')
     .eq('clerk_id', userId)
     .maybeSingle();
 
@@ -79,24 +81,25 @@ async function readMembership(
     return FAILED;
   }
 
-  const agencyCode = (data?.agency_code as string | null) ?? null;
+  const membership = data as { agency_code?: unknown; agency?: unknown } | null;
+  const agencyCode = membership?.agency_code ?? null;
   if (!agencyCode) return UNAFFILIATED;
 
-  const { data: agency, error: agencyError } = await supabase
-    .from(AGENCIES)
-    .select('owner_user_id')
-    .eq('agency_code', agencyCode)
-    .maybeSingle();
-
-  if (agencyError) {
-    console.error('[db] readMembership agency failed:', agencyError.message);
-    return FAILED;
-  }
+  // A stale membership cannot authorize a sub user against a deleted agency.
+  const agency = membership?.agency;
+  if (
+    !isAgencyCode(agencyCode) ||
+    !agency ||
+    typeof agency !== 'object' ||
+    Array.isArray(agency)
+  ) return FAILED;
+  const ownerUserId = (agency as { owner_user_id?: unknown }).owner_user_id;
+  if (ownerUserId !== null && typeof ownerUserId !== 'string') return FAILED;
 
   return {
     ok: true,
     agencyCode,
-    isOwner: Boolean(agency) && agency?.owner_user_id === userId,
+    isOwner: ownerUserId === userId,
   };
 }
 

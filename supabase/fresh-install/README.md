@@ -4,6 +4,21 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Triplover Refresh Status, 2026-10-13 — applied and verified:**
+Applied only `20261013000000_triplover_supplier_status_confirmation.sql`
+to `ljzoizsogbirlvlsrwzi` through this workdir. The follow-up dry run has no
+pending migrations; all 24 local/remote versions match. Hosted readback verified
+both tables' RLS, service-role RPC-only writes, denied client permissions,
+immutable records and the issued-status operation fence. Booking, wallet,
+reservation, ledger, deposit, operation, case, lifecycle and notification
+snapshots were unchanged by DDL. A live Refresh Status check of the already
+settled `KTT261013111114` verified Issued and all three passenger ticket slots;
+its confirmation preview correctly returned `BOOKING_ALREADY_SETTLED`. Only a
+status-check record was added; no NewTicket or financial command was sent.
+The full-chain offline tests, API/UI tests, TypeScript, lint and production
+build passed. See [the feature guide](../../docs/32-TRIPLOVER-REFRESH-STATUS.md)
+and [the rollout receipt](migration-receipts/20261013_triplover_supplier_status_confirmation.json).
+
 **Shapon migration rollout, 2026-10-11 — applied and verified:**
 Applied only `20261008000000_shapontravels_booking_cancellation.sql`, then
 `20261010000000_shapon_external_ticket_confirmation.sql` to project

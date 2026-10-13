@@ -106,6 +106,7 @@ async function run(options = {}) {
       syncAirTicketingDetails: forbidden,
     },
     '@/lib/db/security': { recordSecurityAuditEvent: async () => {} },
+    '@/lib/db/triplover-status-confirmation': { hasVerifiedTriploverIssuedStatus: async () => { throw new Error('Shapontravels cannot read Triplover proof'); } },
     '@/lib/email/booking-status-delivery': { dispatchBookingStatusEmails: async () => {} },
     '@/lib/db/wallet': {
       beginBookingIssue: async (_id, _session, identity) => {

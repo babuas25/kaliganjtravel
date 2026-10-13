@@ -1,0 +1,156 @@
+{
+  "projectRef": "ljzoizsogbirlvlsrwzi",
+  "verifiedAt": "2026-10-13T17:27:18.450Z",
+  "status": "passed",
+  "migration": "20261013000000_triplover_supplier_status_confirmation.sql",
+  "migrationSha256": "f46a1e919675b2275f5382ddf97547e9b74567faae634aa14962f030384d6a89",
+  "migrationVersions": [
+    "20260911000000",
+    "20260911010000",
+    "20260911020000",
+    "20260911030000",
+    "20260912000000",
+    "20260912010000",
+    "20260912020000",
+    "20260912030000",
+    "20260915000000",
+    "20260926000000",
+    "20260927000000",
+    "20260927010000",
+    "20260927020000",
+    "20260927030000",
+    "20260930000000",
+    "20260930010000",
+    "20261002000000",
+    "20261003000000",
+    "20261006000000",
+    "20261006000100",
+    "20261008000000",
+    "20261008010000",
+    "20261010000000",
+    "20261013000000"
+  ],
+  "pendingMigrations": [],
+  "newTables": [
+    {
+      "anonSelect": false,
+      "authenticatedSelect": false,
+      "rls": true,
+      "serviceDelete": false,
+      "serviceInsert": false,
+      "serviceSelect": true,
+      "serviceUpdate": false,
+      "table": "triplover_booking_status_checks"
+    },
+    {
+      "anonSelect": false,
+      "authenticatedSelect": false,
+      "rls": true,
+      "serviceDelete": false,
+      "serviceInsert": false,
+      "serviceSelect": true,
+      "serviceUpdate": false,
+      "table": "triplover_issued_hold_confirmations"
+    }
+  ],
+  "newFunctions": [
+    {
+      "anonExecute": false,
+      "authenticatedExecute": false,
+      "name": "confirm_triplover_issued_hold_v1",
+      "securityDefiner": true,
+      "serviceExecute": true
+    },
+    {
+      "anonExecute": false,
+      "authenticatedExecute": false,
+      "name": "guard_triplover_issued_status_operation_v1",
+      "securityDefiner": true,
+      "serviceExecute": false
+    },
+    {
+      "anonExecute": false,
+      "authenticatedExecute": false,
+      "name": "preview_triplover_issued_hold_confirmation_v1",
+      "securityDefiner": true,
+      "serviceExecute": true
+    },
+    {
+      "anonExecute": false,
+      "authenticatedExecute": false,
+      "name": "record_triplover_status_check_v1",
+      "securityDefiner": true,
+      "serviceExecute": true
+    },
+    {
+      "anonExecute": false,
+      "authenticatedExecute": false,
+      "name": "triplover_status_check_context_v1",
+      "securityDefiner": true,
+      "serviceExecute": true
+    },
+    {
+      "anonExecute": false,
+      "authenticatedExecute": false,
+      "name": "triplover_status_records_immutable_v1",
+      "securityDefiner": false,
+      "serviceExecute": false
+    },
+    {
+      "anonExecute": false,
+      "authenticatedExecute": false,
+      "name": "triplover_status_snapshot_v1",
+      "securityDefiner": true,
+      "serviceExecute": false
+    }
+  ],
+  "newTriggers": [
+    "booking_operations_triplover_issued_status_guard",
+    "triplover_booking_status_checks_immutable",
+    "triplover_issued_hold_confirmations_immutable"
+  ],
+  "businessSnapshotsUnchanged": true,
+  "businessSnapshotTables": [
+    "booking_notification_outbox",
+    "booking_operations",
+    "booking_reconciliation_cases",
+    "booking_status_events",
+    "flight_bookings",
+    "wallet_accounts",
+    "wallet_deposit_requests",
+    "wallet_ledger_entries",
+    "wallet_reservations",
+    "wallets"
+  ],
+  "hostedRefreshCheck": {
+    "status": "passed",
+    "bookingReference": "KTT261013111114",
+    "verifiedStatus": "issued",
+    "passengerTicketSlots": 3,
+    "previewEligible": false,
+    "previewCode": "BOOKING_ALREADY_SETTLED",
+    "supplierOperations": [
+      "LogIn",
+      "Pnr",
+      "AirTicketingDetails"
+    ],
+    "checkedAt": "2026-10-13T17:26:23.936913+00:00",
+    "newIssueRequests": 0,
+    "financialActions": 0
+  },
+  "validation": {
+    "fullMigrationChain": 24,
+    "serviceApiAssertions": 532,
+    "indigoAssertions": 446,
+    "uiHandlers": true,
+    "browserViewportWidths": [
+      1280,
+      375,
+      320
+    ],
+    "ci": true,
+    "typecheck": true,
+    "lint": true,
+    "productionBuild": true
+  }
+}

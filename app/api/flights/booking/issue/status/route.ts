@@ -10,6 +10,7 @@ import {
 import { readBookingLocalTimeLimitContext } from '@/lib/db/booking-local-time-limit';
 import { readOpenBookingReconciliationCaseForBooking } from '@/lib/db/booking-reconciliation-evidence';
 import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
+import { hasVerifiedTriploverIssuedStatus } from '@/lib/db/triplover-status-confirmation';
 import { readWalletForOwner } from '@/lib/db/wallet';
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { isTriploverSupplier } from '@/lib/triplover/config';
@@ -52,8 +53,9 @@ export async function GET(request: NextRequest) {
   let openReconciliationCase;
   let localTimeLimit;
   let wallet;
+  let supplierAlreadyIssued;
   try {
-    [operationState, openReconciliationCase, localTimeLimit, wallet] = await Promise.all([
+    [operationState, openReconciliationCase, localTimeLimit, wallet, supplierAlreadyIssued] = await Promise.all([
       readActiveBookingOperationState(booking.id),
       readOpenBookingReconciliationCaseForBooking(booking.id),
       booking.supplier === 'triplover'
@@ -68,6 +70,9 @@ export async function GET(request: NextRequest) {
             booking.currency
           )
         : Promise.resolve(null),
+      booking.supplier === 'triplover'
+        ? hasVerifiedTriploverIssuedStatus(booking.id)
+        : Promise.resolve(false),
     ]);
   } catch {
     return walletFail(
@@ -87,6 +92,7 @@ export async function GET(request: NextRequest) {
     localTimeLimit?.requestRequired && !localTimeLimit.localDeadlineActive
   );
   const reconciliationRequired =
+    supplierAlreadyIssued ||
     booking.payment_state === 'reconciliation' ||
     operationState === 'needs_reconciliation' ||
     Boolean(openReconciliationCase);
@@ -132,6 +138,7 @@ export async function GET(request: NextRequest) {
     operationState,
     openReconciliationCase: Boolean(openReconciliationCase),
     reconciliationRequired,
+    supplierAlreadyIssued,
     canSubmit,
     wallet: wallet
       ? {

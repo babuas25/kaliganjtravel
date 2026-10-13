@@ -137,6 +137,7 @@ const routeDependencies = {
   '@/lib/db/booking-local-time-limit': localLimits,
   '@/lib/db/flight-bookings': { readBookingByPublicRef: async () => booking, publicBookingWithHeaderContact: async () => ({ publicRef: booking.public_ref }) },
   '@/lib/db/security': { recordSecurityAuditEvent: async () => {} },
+  '@/lib/db/triplover-status-confirmation': { hasVerifiedTriploverIssuedStatus: async () => false },
   '@/lib/email/booking-status-delivery': { dispatchBookingStatusEmails: async () => {} },
   '@/lib/db/wallet': {
     beginBookingIssue: async () => { effects.push('reserve'); return { ok: true, replay, operationId: 'operation-1' }; },

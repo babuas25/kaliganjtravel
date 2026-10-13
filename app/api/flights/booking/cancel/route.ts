@@ -16,6 +16,7 @@ import {
   syncPnrDetails,
 } from '@/lib/db/flight-bookings';
 import { recordSecurityAuditEvent } from '@/lib/db/security';
+import { hasVerifiedTriploverIssuedStatus } from '@/lib/db/triplover-status-confirmation';
 import { dispatchBookingStatusEmails } from '@/lib/email/booking-status-delivery';
 import {
   finalizeBookingCancellation,
@@ -98,6 +99,14 @@ export async function POST(request: NextRequest) {
         ? 'Only an unissued On Hold, Pending, Unconfirmed, or Expired booking can be cancelled.'
         : 'Only a held, unissued booking can be cancelled.'
     );
+  }
+  if (booking.supplier === 'triplover') {
+    try {
+      if (await hasVerifiedTriploverIssuedStatus(booking.id)) return walletFail(409,
+        'SUPPLIER_ALREADY_ISSUED', 'The supplier has verified issued tickets. An Admin must review Refresh Status before taking another action.');
+    } catch {
+      return walletFail(503, 'STORAGE_ERROR', 'Supplier status verification is unavailable.');
+    }
   }
 
   if (supplierAccount === 'shapontravels' &&

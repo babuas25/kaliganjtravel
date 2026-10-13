@@ -48,17 +48,19 @@ function identifiers(value: unknown): string[] | null {
   return result.length > 0 && new Set(result).size === result.length ? result : null;
 }
 
-function savedContext(input: TicketIssueInput) {
+function savedContext(input: TicketIssueInput, indigoOnly = true) {
   const saved = input.savedBooking;
   const itinerary = saved?.itinerary;
   const rawPeople = saved?.passengers;
   const people = Array.isArray(rawPeople) ? rawPeople : record(rawPeople).travellers;
-  if (!saved || itinerary?.carrierCode !== '6E' || !Array.isArray(itinerary.legs) || itinerary.legs.length === 0 ||
+  if (!saved || !itinerary || (indigoOnly && itinerary.carrierCode !== '6E') ||
+      !Array.isArray(itinerary.legs) || itinerary.legs.length === 0 ||
       !itinerary.legs.every(leg => leg && Array.isArray(leg.segments) && leg.segments.length > 0 &&
-        leg.segments.every(segment => segment && segment.airlineCode === '6E' &&
-          segment.codeshare !== true && (!segment.operatingCarrierCode || segment.operatingCarrierCode === '6E')))) return null;
-  const pnrs = identifiers(saved.airlinePnrs);
-  if (!pnrs || !pnrs.every(pnr => locator.test(pnr)) ||
+        leg.segments.every(segment => segment && (indigoOnly ? segment.airlineCode === '6E' : /^[A-Z0-9]{2}$/.test(segment.airlineCode)) &&
+          segment.codeshare !== true && (!segment.operatingCarrierCode || segment.operatingCarrierCode === segment.airlineCode)))) return null;
+  const pnrs = Array.isArray(saved.airlinePnrs) && saved.airlinePnrs.length === 0 && !indigoOnly
+    ? [] : identifiers(saved.airlinePnrs);
+  if (!pnrs || (indigoOnly && pnrs.length === 0) || !pnrs.every(pnr => (indigoOnly ? locator : /^[A-Z0-9]{3,16}$/).test(pnr)) ||
       !Number.isInteger(input.expectedPassengerCount) || !input.expectedPassengerCount ||
       !Array.isArray(people) || people.length !== input.expectedPassengerCount ||
       !Array.isArray(saved.fares) || saved.fares.length === 0) return null;
@@ -76,7 +78,7 @@ function savedContext(input: TicketIssueInput) {
     identityCounts.set(type, (identityCounts.get(type) ?? 0) + 1);
   }
   if (fares.some(fare => identityCounts.get(String(fare.passengerType)) !== fare.count)) return null;
-  return { saved, itinerary, pnrs, fares, passengers };
+  return { saved, itinerary, pnrs, ticketPnrs: indigoOnly ? pnrs : [], fares, passengers };
 }
 
 function passengerIdentity(passenger: Row): string | null {
@@ -114,12 +116,12 @@ function sameSegment(raw: Row, expected: Row, report: boolean): boolean {
   const carrier = raw.airlineCode ?? raw.operationCarrier;
   const departure = text(raw.departure).replace('T', ' ');
   const arrival = text(raw.arrival).replace('T', ' ');
-  return raw.isCancelled !== true && raw.isRefunded !== true &&
+  return raw.isCancelled !== true && raw.isCanceled !== true && raw.isRefunded !== true && raw.isVoided !== true &&
     raw.isCodeShared !== true && raw.isCodeshare !== true &&
-    (raw.operationCarrier == null || raw.operationCarrier === '6E') &&
-    (raw.operatingCarrierCode == null || raw.operatingCarrierCode === '6E') &&
+    (raw.operationCarrier == null || raw.operationCarrier === expected.airlineCode) &&
+    (raw.operatingCarrierCode == null || raw.operatingCarrierCode === expected.airlineCode) &&
     normalized(raw.from ?? raw.origin) === normalized(expected.from) &&
-    normalized(raw.to ?? raw.destination) === normalized(expected.to) && carrier === '6E' &&
+    normalized(raw.to ?? raw.destination) === normalized(expected.to) && carrier === expected.airlineCode &&
     normalized(raw.flightNumber) === normalized(expected.flightNumber) &&
     departure === text(expected.departure).replace('T', ' ') &&
     arrival === text(expected.arrival).replace('T', ' ') &&
@@ -163,7 +165,7 @@ function sameCounts(raw: unknown, context: NonNullable<ReturnType<typeof savedCo
 function verifiedNumbers(value: unknown, pnrs: string[], numericSeen: Set<string>): string[] | null {
   const values = value == null || value === '' || (Array.isArray(value) && value.length === 0)
     ? pnrs : identifiers(value);
-  if (!values) return null;
+  if (!values || values.length === 0) return null;
   for (const number of values) {
     if (numericTicket.test(number)) {
       if (numericSeen.has(number)) return null;
@@ -187,7 +189,7 @@ function orderedTickets(rows: unknown, context: NonNullable<ReturnType<typeof sa
     // individually named row. Row identities, never that field, determine slots.
     const typeCount = context.fares.find(fare => fare.passengerType === context.passengers[matches[0]].passengerType)?.count;
     if (report && row.passengerCount != null && row.passengerCount !== 1 && row.passengerCount !== typeCount) return null;
-    const numbers = verifiedNumbers(row.ticketNumbers, context.pnrs, numericSeen);
+    const numbers = verifiedNumbers(row.ticketNumbers, context.ticketPnrs, numericSeen);
     if (!numbers) return null;
     ordered[matches[0]] = numbers;
     suppliedRows[matches[0]] = row;
@@ -260,14 +262,23 @@ export function verifyIndigoIssueReceipt(value: unknown, input: TicketIssueInput
 }
 
 /** Read-only report corroboration; never treats an Active PNR as an issued ticket. */
-export function verifyIndigoTicketReport(value: unknown, input: TicketIssueInput): VerifiedIndigoTicket | null {
+function activeTicketReport(raw: Row): boolean {
+  const active = (row: Row) => ['isCancelled', 'isCanceled', 'isRefunded', 'isVoided'].every(key => row[key] !== true) &&
+    ['status', 'ticketStatus'].every(key => row[key] == null || row[key] === '' ||
+      ['ISSUED', 'TICKETED', 'CONFIRMED', 'ACTIVE'].includes(normalized(row[key])));
+  return active(record(raw.ticketInfo)) && Array.isArray(raw.passengerInfo) && raw.passengerInfo.length > 0 &&
+    raw.passengerInfo.every(row => active(record(row)));
+}
+
+function verifiedTicketReport(value: unknown, input: TicketIssueInput, indigoOnly: boolean): VerifiedIndigoTicket | null {
   const raw = record(value);
   const ticket = record(raw.ticketInfo);
-  const context = savedContext(input);
+  const context = savedContext(input, indigoOnly);
   if (!context || ticket.pnr !== input.pnr || ticket.uniqueTransID !== input.uniqueTransId ||
       !compatibleReferences(ticket, input) || !compatibleLocators(ticket.airlinePNRs, context.pnrs) ||
       ticket.status !== 'Issued' || ticket.statusFor !== 'Ticket' ||
-      ticket.isPaid !== true || ticket.isCompleted !== true || ticket.isReissued === true ||
+      [ticket.currency, ticket.currencyName, raw.currency, raw.currencyName].some(value => value != null && value !== 'BDT') ||
+      ticket.isPaid !== true || ticket.isCompleted !== true || ticket.isReissued === true || !activeTicketReport(raw) ||
       !validIssueDate(ticket.issueDate) ||
       money(ticket.ticketingPrice) !== money(context.saved.supplierTotalPrice) || !sameFlights(raw, context, true)) return null;
   const tickets = orderedTickets(raw.passengerInfo, context, input.supplier, true);
@@ -280,4 +291,14 @@ export function verifyIndigoTicketReport(value: unknown, input: TicketIssueInput
       (row.uniqueTransID != null && row.uniqueTransID !== input.uniqueTransId) ||
       (row.currencyName != null && row.currencyName !== 'BDT')) || !moneyCoverage(amounts, context)) return null;
   return { ticketNumbers: tickets.numbers, airlinesPnr: context.pnrs, ticketCodeRef: text(ticket.ticketCodeRef) || null, passengerTickets: tickets.slots };
+}
+
+export function verifyIndigoTicketReport(value: unknown, input: TicketIssueInput): VerifiedIndigoTicket | null {
+  return verifiedTicketReport(value, input, true);
+}
+
+/** Staff status checks use the same complete proof; other carriers require numeric e-tickets. */
+export function verifyTriploverTicketReport(value: unknown, input: TicketIssueInput): VerifiedIndigoTicket | null {
+  return input.savedBooking?.itinerary?.carrierCode === '6E'
+    ? verifiedTicketReport(value, input, true) : verifiedTicketReport(value, input, false);
 }

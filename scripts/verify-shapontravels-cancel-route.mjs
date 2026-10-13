@@ -102,6 +102,7 @@ async function run(options = {}) {
     '@/lib/db/security': { recordSecurityAuditEvent: async () => {
       events.push('audit'); if (options.auditFailure) throw new Error('fixture audit unavailable');
     } },
+    '@/lib/db/triplover-status-confirmation': { hasVerifiedTriploverIssuedStatus: async () => false },
     '@/lib/email/booking-status-delivery': { dispatchBookingStatusEmails: async () => {
       events.push('email'); if (options.emailFailure) throw new Error('fixture delivery unavailable');
     } },

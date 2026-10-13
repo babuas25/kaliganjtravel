@@ -28,6 +28,8 @@ This directory contains the complete documentation system for the ShoponTravels 
 | 17  | IMP-EXP-IMPORTS       | Imported pricing, wallet/lifecycle, Sync, ticket display, and runtime limits |
 | 18  | BOOKING-RECONCILIATION-RUNBOOK | Staff case procedures, evidence, SLA, maker-checker, and emergency response |
 | 19  | SUPERADMIN-BOOKING-DECISION-PLAN | Implementation plan, corrected wallet matrix, progress, and verification log |
+| 31  | [TRIPLOVER-INDIGO-TICKETING](31-TRIPLOVER-INDIGO-TICKETING.md) | Verified shared IndiGo PNR receipts and report recovery |
+| 32  | [TRIPLOVER-REFRESH-STATUS](32-TRIPLOVER-REFRESH-STATUS.md) | Admin supplier checks and original hold confirmation |
 
 ## Recommended Reading Order
 

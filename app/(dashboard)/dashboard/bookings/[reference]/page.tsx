@@ -12,6 +12,7 @@ import ImportedManualTicketFinancialPanel from '@/components/dashboard/bookings/
 import ImportedBookingTicketingResolutionPanel from '@/components/dashboard/bookings/ImportedBookingTicketingResolutionPanel';
 import ManualBookingStatusPanel from '@/components/dashboard/bookings/ManualBookingStatusPanel';
 import SuperAdminBookingDecisionPanel from '@/components/dashboard/bookings/SuperAdminBookingDecisionPanel';
+import TriploverSupplierStatusPanel from '@/components/dashboard/bookings/TriploverSupplierStatusPanel';
 import { bookingLifecycleRolloutState } from '@/lib/booking-lifecycle/rollout';
 import { ticketManagementRolloutEnabled } from '@/lib/ticket-management/rollout';
 import { ticketManagementActionsForBooking } from '@/lib/ticket-management/booking-actions';
@@ -178,6 +179,11 @@ export default async function BookingDetailsPage({
   const imported = row.import_source === 'IMP_EXP';
   const manual = row.import_source === 'MANUAL';
   const externalBooking = imported || manual;
+  const showTriploverSupplierStatus =
+    (session.role === 'admin' || session.role === 'superadmin') &&
+    row.currency === 'BDT' && (row.audience === 'agency' || row.audience === 'b2c') &&
+    usesStoredBookingReferences(row) && !row.direct_ticketing &&
+    Boolean(storedTicketReferences(row));
   const rollout = bookingLifecycleRolloutState();
   let lifecycleTimeline: BookingLifecycleTimelineItem[] | null = null;
   let staffLifecycle: StaffBookingLifecycle | null = null;
@@ -332,6 +338,7 @@ export default async function BookingDetailsPage({
         showStepper={false}
         allowCancellation={canCancelSupplierBooking}
         allowSupplierRefresh={
+          !showTriploverSupplierStatus &&
           row.supplier === 'triplover' &&
           (!usesStoredBookingReferences(row) || row.status === 'confirmed' || row.status === 'cancelled') &&
           canRefreshBookingSupplierDetails(session.role)
@@ -399,8 +406,19 @@ export default async function BookingDetailsPage({
             : undefined
         }
         sidebarContent={
-          lifecycleTimeline ? (
-            <BookingLifecycleTimeline items={lifecycleTimeline} compact />
+          showTriploverSupplierStatus || lifecycleTimeline ? (
+            <>
+              {showTriploverSupplierStatus && (
+                <TriploverSupplierStatusPanel
+                  key={reference}
+                  bookingReference={reference}
+                  localStatus={row.lifecycle_status ?? row.status}
+                  paymentState={row.payment_state}
+                  passengers={stored.map(({ firstName, lastName }) => ({ firstName, lastName }))}
+                />
+              )}
+              {lifecycleTimeline && <BookingLifecycleTimeline items={lifecycleTimeline} compact />}
+            </>
           ) : undefined
         }
       />

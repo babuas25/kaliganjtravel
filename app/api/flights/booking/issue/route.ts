@@ -17,6 +17,7 @@ import {
   syncAirTicketingDetails,
 } from '@/lib/db/flight-bookings';
 import { recordSecurityAuditEvent } from '@/lib/db/security';
+import { hasVerifiedTriploverIssuedStatus } from '@/lib/db/triplover-status-confirmation';
 import { dispatchBookingStatusEmails } from '@/lib/email/booking-status-delivery';
 import {
   beginLegacyManualIssue,
@@ -120,6 +121,14 @@ export async function GET(request: NextRequest) {
   }
   if (!canIssueBooking(session, booking)) {
     return walletFail(403, 'ISSUE_FORBIDDEN', 'You cannot issue this booking.');
+  }
+  if (booking.supplier === 'triplover') {
+    try {
+      if (await hasVerifiedTriploverIssuedStatus(booking.id)) return walletFail(409,
+        'SUPPLIER_ALREADY_ISSUED', 'The supplier has verified issued tickets. An Admin must review Refresh Status before taking another action.');
+    } catch {
+      return walletFail(503, 'STORAGE_ERROR', 'Supplier status verification is unavailable.');
+    }
   }
   if (booking.supplier === 'shapontravels' &&
       (booking.status !== 'on-hold' || booking.direct_ticketing ||
@@ -244,6 +253,14 @@ export async function POST(request: NextRequest) {
   }
   if (!canIssueBooking(session, booking)) {
     return walletFail(403, 'ISSUE_FORBIDDEN', 'You cannot issue this booking.');
+  }
+  if (booking.supplier === 'triplover') {
+    try {
+      if (await hasVerifiedTriploverIssuedStatus(booking.id)) return walletFail(409,
+        'SUPPLIER_ALREADY_ISSUED', 'The supplier has verified issued tickets. An Admin must review Refresh Status before taking another action.');
+    } catch {
+      return walletFail(503, 'STORAGE_ERROR', 'Supplier status verification is unavailable.');
+    }
   }
   const refs = storedTicketReferences(booking);
   if (!refs) {

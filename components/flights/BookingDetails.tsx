@@ -8,6 +8,7 @@ import { airlinePnrs as validAirlinePnrs } from '@/lib/flights/airline-pnr';
 import {
   BadgeCheck,
   Check,
+  Clock3,
   Copy,
   Mail,
   MapPin,
@@ -599,7 +600,18 @@ function DocumentHeader({
               {booking.statusMessage}
             </p>
           )}
-          {(booking.status === 'on-hold' || allowTicketingTimeRefresh) && (
+          {ticketed ? (
+            <div className="mt-3 border-t border-current/10 pt-2 text-left">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold">
+                <Clock3 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Booked at
+              </p>
+              <p className="mt-1 text-[12px] font-semibold">
+                <time dateTime={booking.bookedAt}>{formatActivity(booking.bookedAt)}</time>
+              </p>
+              <p className="mt-0.5 text-[10px] opacity-70">Bangladesh time</p>
+            </div>
+          ) : (booking.status === 'on-hold' || allowTicketingTimeRefresh) && (
             <BookingDeadlineNotice
               key={booking.publicRef}
               deadline={booking.ticketingDeadlineAt}

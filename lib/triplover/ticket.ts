@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { PrivateBookingRefs } from '@/lib/flights/booking';
+import type { BookedItinerary, PrivateBookingRefs } from '@/lib/flights/booking';
 import {
   TriploverError,
   triploverCall,
@@ -8,6 +8,7 @@ import {
 } from '@/lib/triplover/client';
 import type { TriploverSupplier } from '@/lib/triplover/config';
 import { completeTicketNumbers } from '@/lib/triplover/ticket-payload';
+import { canVerifyIndigoIssueResponse, indigoIssueReportMatches, verifyIndigoIssueReceipt, verifyIndigoTicketReport } from '@/lib/triplover/indigo-ticket';
 
 export type TicketIssueInput = PrivateBookingRefs & {
   supplier: TriploverSupplier;
@@ -15,6 +16,15 @@ export type TicketIssueInput = PrivateBookingRefs & {
   bookingRefNumber: string;
   bookingCodeRef: string;
   expectedPassengerCount?: number;
+  /** Context comes only from the scoped saved booking, outside the request identity. */
+  savedBooking?: {
+    itinerary: BookedItinerary | null;
+    airlinePnrs: unknown;
+    passengers: unknown;
+    fares: unknown;
+    supplierTotalPrice?: number;
+    grossPrice?: number;
+  };
 };
 
 export type TicketIssueOutcome = {
@@ -24,6 +34,8 @@ export type TicketIssueOutcome = {
   ticketNumbers: string[];
   warnings: string[];
   message: string | null;
+  airlinesPnr?: string[];
+  ticketNumberSource?: 'airline_pnr';
 };
 
 /** Issues one held Triplover booking. This operation is never transport-retried. */
@@ -51,7 +63,28 @@ export async function issueTicket(
   };
   const pnr = raw.pnr?.trim() || input.pnr;
   const ticketCodeRef = raw.ticketCodeRef?.trim() ?? '';
-  const ticketNumbers = completeTicketNumbers(raw.ticketInfoes, input.expectedPassengerCount);
+  let ticketNumbers = completeTicketNumbers(raw.ticketInfoes, input.expectedPassengerCount);
+  let verifiedIndigo: ReturnType<typeof verifyIndigoIssueReceipt> = null;
+  if (!ticketNumbers?.every(number => /^\d{10,16}$/.test(number))) {
+    ticketNumbers = null;
+    if (canVerifyIndigoIssueResponse(raw, input)) {
+      verifiedIndigo = verifyIndigoIssueReceipt(raw, input);
+      // A read can establish the issued result of this one call. Never repeat NewTicket.
+      if (!verifiedIndigo && input.savedBooking?.itinerary?.carrierCode === '6E') {
+        try {
+          const report = await triploverCall('AirTicketingDetails',
+            `/api/B2BReport/AirTicketingDetails/${encodeURIComponent(input.uniqueTransId)}/Confirmed`, null,
+            { supplier: input.supplier, method: 'GET', topLevelPayload: true, timeoutMs: 5000 });
+          verifiedIndigo = verifyIndigoTicketReport(report.data, input);
+          if (verifiedIndigo && ((verifiedIndigo.ticketCodeRef && verifiedIndigo.ticketCodeRef !== ticketCodeRef) ||
+              !indigoIssueReportMatches(raw, verifiedIndigo, input))) verifiedIndigo = null;
+        } catch {
+          // Unavailable or incomplete proof retains the existing reconciliation path.
+        }
+      }
+      ticketNumbers = verifiedIndigo?.ticketNumbers ?? null;
+    }
+  }
   if (!ticketCodeRef || !ticketNumbers) {
     throw new TriploverError(
       'protocol',
@@ -69,5 +102,10 @@ export async function issueTicket(
         )
       : [],
     message: raw.message ?? null,
+    ...(verifiedIndigo ? {
+      airlinesPnr: verifiedIndigo.airlinesPnr,
+      ...(ticketNumbers.some(number => verifiedIndigo?.airlinesPnr.includes(number))
+        ? { ticketNumberSource: 'airline_pnr' as const } : {}),
+    } : {}),
   };
 }

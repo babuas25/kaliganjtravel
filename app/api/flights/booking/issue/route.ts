@@ -348,7 +348,18 @@ export async function POST(request: NextRequest) {
           ticketDetails: null,
         }
       : await enrichIssuedTicket(
-          await issueTicket({ ...supplierInput, supplier: triploverAccount! }, supplierLifecycle),
+          await issueTicket({
+            ...supplierInput,
+            supplier: triploverAccount!,
+            savedBooking: {
+              itinerary: booking.itinerary,
+              airlinePnrs: booking.airlines_pnr,
+              passengers: booking.passengers,
+              fares: booking.fares,
+              supplierTotalPrice: booking.pricing_snapshot.supplierTotalPrice,
+              grossPrice: booking.pricing_snapshot.grossPrice,
+            },
+          }, supplierLifecycle),
           refs.uniqueTransId,
           triploverAccount!
         );

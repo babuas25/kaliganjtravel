@@ -13,7 +13,9 @@ export async function enrichIssuedTicket(
   outcome: TicketIssueOutcome & { airlinesPnr: string[] };
   ticketDetails: AirTicketingDetails | null;
 }> {
-  const fallback = { outcome: { ...outcome, airlinesPnr: [] }, ticketDetails: null };
+  const fallback = { outcome: { ...outcome,
+    airlinesPnr: outcome.ticketNumberSource === 'airline_pnr' ? outcome.airlinesPnr ?? [] : [],
+  }, ticketDetails: null };
   try {
     const report = await readAirTicketingDetails(uniqueTransId, 'Confirmed', supplier, 5000);
     const identity = report.reconciliationEvidenceV2?.bookingIdentity;

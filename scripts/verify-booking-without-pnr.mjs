@@ -50,7 +50,11 @@ const book = load('lib/triplover/book.ts', {
   '@/lib/triplover/client': client,
   '@/lib/triplover/ticket-payload': ticketPayload,
 });
-const ticket = load('lib/triplover/ticket.ts', { '@/lib/triplover/client': client, '@/lib/triplover/ticket-payload': ticketPayload });
+const ticket = load('lib/triplover/ticket.ts', {
+  '@/lib/triplover/client': client,
+  '@/lib/triplover/ticket-payload': ticketPayload,
+  '@/lib/triplover/indigo-ticket': load('lib/triplover/indigo-ticket.ts'),
+});
 supplierReply = { pnr: 'ABC123', airlinesPNR: ['ABC123'], bookingRefNumber: 'BOOK123', bookingCodeRef: 'saved-booking', bookingStatus: 'Created', ticketingTimeLimit: '' };
 const { outcome } = await book.bookFlight(refs, [], {}, 'triplover');
 assert.equal(outcome.status, 'held');
@@ -272,6 +276,47 @@ await assert.rejects(book.bookFlight(refs, [], {}, 'triplover'), error => error.
 assert.equal(ticketPayload.completeTicketNumbers([{ ticketNumbers: ['T1'] }], 2), null);
 assert.equal(ticketPayload.completeTicketNumbers([{ ticketNumbers: ['T1'] }, { ticketNumbers: ['T1'] }], 2), null);
 assert.equal(ticketPayload.completeTicketNumbers([{ ticketNumbers: ['T1', ''] }], 1), null);
+
+// A verified all-IndiGo receipt captures once and retains all three PNR slots.
+const indigoPassengers = ['Alpha', 'Beta', 'Gamma'].map(firstName => ({
+  passengerType: 'ADT', firstName, lastName: 'Example',
+}));
+const indigoSegment = {
+  from: 'CAN', to: 'DAC', departure: '2026-11-02 04:00:00', arrival: '2026-11-02 08:00:00',
+  airlineCode: '6E', flightNumber: '1924', bookingClass: 'X', cabinClass: 'Economy',
+};
+booking = {
+  ...base, passenger_counts: { ADT: 3 },
+  passengers: { travellers: indigoPassengers },
+  itinerary: { carrierCode: '6E', legs: [{ segments: [indigoSegment] }] },
+  fares: [{ passengerType: 'ADT', count: 3, basePrice: 240, taxes: 60, ait: 0, serviceMargin: 3, totalPrice: 303 }],
+  pricing_snapshot: { supplierTotalPrice: 300, grossPrice: 300, sellingPrice: 303 },
+};
+supplierReply = {
+  pnr: base.pnr, ticketCodeRef: 'issued-indigo', status: 'Issued', isPaid: true,
+  flightInfo: {
+    directions: [[{ segments: [indigoSegment] }]], passengerCounts: { adt: 3 },
+    passengerFares: { adt: { basePrice: 80, taxes: 20, ait: 0, totalPrice: 100 } },
+    bookingComponents: [{ basePrice: 240, taxes: 60, ait: 0, totalPrice: 300 }],
+  },
+  ticketInfoes: [...indigoPassengers].reverse().map(person => ({
+    passengerInfo: { passengerType: 'ADT', nameElement: { firstName: person.firstName, lastName: person.lastName } },
+    ticketNumbers: [base.pnr],
+  })),
+};
+effects.length = 0;
+const indigoCallsBefore = supplierCalls.length;
+assert.equal((await issue()).status, 200);
+assert.deepEqual(effects, ['reserve', 'capture']);
+assert.equal(supplierCalls.length, indigoCallsBefore + 1, 'Verified receipt needs exactly one NewTicket');
+const indigoIssued = await ticket.issueTicket({
+  ...flow.storedTicketReferences(booking), supplier: 'triplover', expectedPassengerCount: 3,
+  savedBooking: { itinerary: booking.itinerary, airlinePnrs: booking.airlines_pnr,
+    passengers: booking.passengers, fares: booking.fares, supplierTotalPrice: 300, grossPrice: 300 },
+});
+assert.deepEqual(indigoIssued.ticketNumbers, [base.pnr, base.pnr, base.pnr]);
+assert.equal(indigoIssued.ticketNumberSource, 'airline_pnr');
+assert.ok(!Object.hasOwn(supplierCalls.at(-1).payload, 'savedBooking'), 'Saved verification context never changes supplier payload');
 
 // The Shapontravels route must claim the same wallet operation, carry the
 // stable request identity, and protect funds if the supplier outcome is pending.

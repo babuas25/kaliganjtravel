@@ -136,6 +136,7 @@
     "verify:agency-membership": "node scripts/verify-agency-membership.mjs",
     "verify:admin-agency-logo": "node scripts/verify-admin-agency-logo.mjs",
     "verify:promotion-upload": "node scripts/verify-promotion-upload.mjs",
+    "verify:promotional-settings-cache": "node scripts/verify-promotional-settings-cache.mjs",
     "verify:next-eslint-root-dirs": "node scripts/verify-next-eslint-root-dirs.mjs",
     "verify:tailwind-compatibility": "node scripts/verify-tailwind-compatibility.mjs",
     "verify:announcement-slider": "node scripts/verify-announcement-slider.mjs",

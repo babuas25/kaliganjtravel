@@ -21,6 +21,7 @@ import {
   type TicketStatusValue,
 } from '@/components/dashboard/bookings/BookingsTabs';
 import type { BookingListRow } from '@/lib/dashboard/bookings';
+import { bookingListNeedsRefresh } from '@/lib/dashboard/booking-list-freshness';
 import {
   DEFAULT_BOOKING_PAGE_SIZE,
   type BookingListQuery,
@@ -53,6 +54,7 @@ export default function BookingsView({
   bookings,
   totalBookings,
   loadError,
+  serverLoadedAt,
   query,
   showActions,
   canManageUserVisibility,
@@ -69,6 +71,7 @@ export default function BookingsView({
   bookings: BookingListRow[];
   totalBookings: number;
   loadError: boolean;
+  serverLoadedAt: number;
   query: BookingListQuery;
   showActions: boolean;
   canManageUserVisibility: boolean;
@@ -107,6 +110,8 @@ export default function BookingsView({
   const searchEdited = useRef(false);
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const lastRefreshRequestedAt = useRef<number | null>(null);
+  const latestServerLoadedAt = useRef(serverLoadedAt);
   const pathname = usePathname();
   const router = useRouter();
   const exactReference = /^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/i.test(searchInput.trim())
@@ -189,20 +194,37 @@ export default function BookingsView({
   }, [query.search, searchInput, updateQuery]);
 
   const refreshBookings = useCallback(() => {
+    // Explicit Refresh/Retry always rechecks the server, even for a fresh list.
+    lastRefreshRequestedAt.current = Date.now();
     startTransition(() => router.refresh());
   }, [router]);
 
   useEffect(() => {
     // A dynamic server page can still be restored from the client router cache.
-    // Refresh on entry (including restored routes), without replacing its query.
+    // Recheck stale snapshots without immediately fetching a fresh page twice.
     if (pathname !== '/dashboard/bookings') return;
-    refreshBookings();
+    if (serverLoadedAt > latestServerLoadedAt.current) {
+      // Receipt of a new snapshot starts a local freshness window even when
+      // client/server clocks differ or the refresh took longer than 30 seconds.
+      lastRefreshRequestedAt.current = Date.now();
+      latestServerLoadedAt.current = serverLoadedAt;
+    }
+    const refreshIfStale = () => {
+      if (document.visibilityState !== 'visible' || isPending) return;
+      if (!bookingListNeedsRefresh({
+        serverLoadedAt,
+        lastRefreshRequestedAt: lastRefreshRequestedAt.current,
+        now: Date.now(),
+      })) return;
+      refreshBookings();
+    };
+    refreshIfStale();
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshBookings();
+      refreshIfStale();
     };
     const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) refreshBookings();
+      if (event.persisted) refreshIfStale();
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -211,7 +233,7 @@ export default function BookingsView({
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pageshow', onPageShow);
     };
-  }, [pathname, refreshBookings]);
+  }, [isPending, pathname, refreshBookings, serverLoadedAt]);
 
   return (
     // Bleeds past the dashboard's own padding so the tab rows span the full

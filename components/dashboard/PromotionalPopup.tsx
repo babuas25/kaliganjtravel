@@ -2,9 +2,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { initializePromotionalTabSession } from '@/lib/promotional-tab-session.client';
+import { loadPromotionalSettings } from '@/lib/promotional-settings.client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { promotionDue, promotionSchema, PROMOTION_PAGES, type PromotionSlide } from '@/lib/promotional-popup';
+import { promotionDue, PROMOTION_PAGES, type PromotionSlide } from '@/lib/promotional-popup';
 
 export function PromotionDialog({ slides, open, onOpenChange, autoCloseSeconds = 10 }: { autoCloseSeconds?: number; slides: PromotionSlide[]; open: boolean; onOpenChange: (open: boolean) => void }) {
   const [index, setIndex] = useState(0);
@@ -50,7 +51,7 @@ export default function PromotionalPopup({ userId, signedInAt }: { userId: strin
     if (!PROMOTION_PAGES.some((page) => page.path === pathname)) return;
     let disposed = false;
     let fetching = false;
-    let settings: ReturnType<typeof promotionSchema.parse> | null = null;
+    let settings: Awaited<ReturnType<typeof loadPromotionalSettings>> = null;
     let eligibleSince: number | null = null;
     const storageKey = () => settings?.display.frequencyScope === 'tab'
       ? `promotion:tab-last-shown:${userId}`
@@ -87,13 +88,11 @@ export default function PromotionalPopup({ userId, signedInAt }: { userId: strin
       if (disposed || fetching || document.visibilityState !== 'visible') return;
       fetching = true;
       try {
-        const response = await fetch('/api/promotional-popup', { cache: 'no-store' });
-        if (!response.ok || disposed) return;
-        const result = promotionSchema.safeParse(await response.json());
-        if (disposed || !result.success) return;
-        if (result.data.display.frequencyScope === 'tab') await initializePromotionalTabSession();
+        const nextSettings = await loadPromotionalSettings(userId, signedInAt);
+        if (disposed || !nextSettings) return;
+        if (nextSettings.display.frequencyScope === 'tab') await initializePromotionalTabSession();
         if (disposed) return;
-        settings = result.data;
+        settings = nextSettings;
         check();
       } catch { /* Promotions must not block the dashboard if unavailable. */ }
       finally { fetching = false; }

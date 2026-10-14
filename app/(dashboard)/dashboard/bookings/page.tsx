@@ -41,6 +41,7 @@ export default async function BookingsPage({
         bookings={bookingPage.bookings}
         totalBookings={bookingPage.total}
         loadError={bookingPage.loadError}
+        serverLoadedAt={Date.now()}
         query={query}
         showActions={
           session.role !== 'customer' &&

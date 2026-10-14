@@ -113,6 +113,7 @@ export default function Footer() {
                   <li key={link.href}>
                     <Link
                       href={link.href}
+                      prefetch={false}
                       className="text-sm text-neutral-600 transition-colors hover:text-black"
                     >
                       {link.label}
@@ -164,10 +165,10 @@ export default function Footer() {
             </a>
           </div>
           <div className="flex gap-4 text-xs text-neutral-600">
-            <Link href="/privacy-policy" className="hover:text-black">
+            <Link href="/privacy-policy" prefetch={false} className="hover:text-black">
               Privacy Policy
             </Link>
-            <Link href="/terms-and-conditions" className="hover:text-black">
+            <Link href="/terms-and-conditions" prefetch={false} className="hover:text-black">
               Terms &amp; Conditions
             </Link>
           </div>

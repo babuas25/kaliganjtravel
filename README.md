@@ -19,6 +19,18 @@ deadline clears stale supplier time, while local approved deadlines and override
 retain precedence. This refresh does not call live PNR or change payment state.
 Run `npm run verify:booking-ticketing-time` for the API and database checks.
 
+Direct Triplover Search retains complete, ordered segment-reference vectors
+even when a through-flight repeats a reference across sectors (such as BG305
+DAC–FCO–YYZ followed by AC470 to YOW). Reprice must echo the exact ordered flights,
+airports, dates and times, plus the original transaction and item, before that
+fare can reach booking preparation. Missing/partial references still fail closed;
+FirstTrip/Takeoff and Shapontravels retain their existing selector contracts.
+FareRules forwards the same unchanged vector; a supplier rule lookup failure
+does not authorize a different selection or block a separately verified Reprice.
+Run `npm run verify:flight-search-reference-safety` for offline Search, Redis,
+Reprice and Prepare regressions. This needs no database migration or supplier
+switch; application publication remains a separate release step.
+
 ## Local development
 
 ```bash

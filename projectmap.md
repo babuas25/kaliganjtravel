@@ -1017,9 +1017,15 @@ both selectors. The backend resolves the owned saved directions and supplier ref
 Reprice must return the same ordered flights, endpoints, dates and times before the refreshed
 price can reach Prepare. FareRules can be unavailable if the backend cannot uniquely identify
 the original supplier rules; this does not disable Reprice. Existing quote snapshots without
-indices retain their legacy reference-based flow until expiry. Direct Triplover, FirstTrip and
-Takeoff integrations still require their existing complete, unique reference vectors; the
-index selector is specific to the Shapontravels API aggregating those suppliers.
+indices retain their legacy reference-based flow until expiry. Direct Triplover also accepts
+complete ordered vectors containing repeated through-flight references, without deduplicating,
+inventing or omitting any sector's token. Those fares require a matching Reprice itinerary AND
+the original transaction/item echoes even when Search offered only one direction. A missing or
+mismatched echo cannot overwrite the accepted price or reach Prepare; the public itinerary's
+digest still binds the booking draft. FirstTrip and Takeoff retain complete, unique vectors;
+the index selector remains specific to the Shapontravels API. Missing/partial direct reference
+vectors still fail closed. The reference-safety verifier exercises both paths across Redis
+instances, alternate-token collisions, altered supplier identities and browser snapshot tampering.
 
 ### Authentication and the token cache
 

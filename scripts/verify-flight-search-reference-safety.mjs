@@ -562,8 +562,9 @@ function loadRepriceModule({ search, response, calls, quoteStore }) {
     if (id === '@/lib/triplover/client') {
       return {
         TriploverError: TestTriploverError,
-        triploverCall: async () => {
+        triploverCall: async (operation, endpoint, payload, options) => {
           calls.supplier += 1;
+          (calls.directPayloads ??= []).push({ operation, endpoint, payload, options });
           return { data: response, uniqueTransId: 'supplier-trans' };
         },
       };
@@ -1707,6 +1708,171 @@ for (const variant of ['repeated', 'missing', 'null', 'partial', 'unique']) {
   assert.equal((await rules.getFlightFareRules({ searchId: indexId, itineraryId: card.id })).rules.length, 1);
   assert.deepEqual(Array.from(ruleCalls[0].payload.directionIndices), [0]);
   assert.equal(Object.hasOwn(ruleCalls[0].payload, 'segmentCodeRefs'), false);
+}
+
+// Direct Triplover returns one through-flight reference for both BG305 sectors.
+// Every reference remains in its original position. Missing references still
+// fail closed, and this allowance does not apply to other direct suppliers.
+for (const supplier of ['triplover', 'firsttrip', 'takeoff']) {
+  for (const variant of ['repeated', 'missing', 'null', 'partial', 'unique']) {
+    const offer = structuredClone(throughOffer);
+    const segments = offer.directions[0][0].segments;
+    if (variant === 'missing') segments.forEach(segment => { delete segment.segmentCodeRef; });
+    if (variant === 'null') segments.forEach(segment => { segment.segmentCodeRef = null; });
+    if (variant === 'partial') delete segments[1].segmentCodeRef;
+    if (variant === 'unique') segments[1].segmentCodeRef = 'second-sector';
+    const saved = new Map();
+    const output = await loadSearchModule({ response: { airSearchResponses: [offer] }, storedRefs: saved })
+      .searchFlights(throughInput, supplier);
+    const expected = variant === 'unique' || (supplier === 'triplover' && variant === 'repeated') ? 1 : 0;
+    assert.equal(output.result.itineraries.length, expected, `${supplier}/${variant}`);
+    assert.equal(output.result.droppedOfferCount, 1 - expected, `${supplier}/${variant}: dropped`);
+    assert.equal(saved.get('refs').size, expected, `${supplier}/${variant}: durable refs`);
+    if (expected) {
+      const selected = saved.get('refs').get('itn-0-0');
+      assert.equal(selected.directionIndices, undefined, 'Do not send Shapon-only selectors to a direct supplier');
+      assert.deepEqual(Array.from(selected.segmentCodeRefs), segments.map(segment => segment.segmentCodeRef));
+    }
+  }
+}
+
+{
+  const saved = new Map();
+  const output = await loadSearchModule({ response: { airSearchResponses: [structuredClone(throughOffer)] }, storedRefs: saved })
+    .searchFlights(throughInput, 'triplover');
+  const card = output.result.itineraries[0];
+  const vector = ['through-bg305', 'through-bg305', 'connection-ac470'];
+  assert.equal(card.ambiguousSelection, false);
+  assert.equal(card.legs[0].segments.length, 3);
+  assert.ok(!JSON.stringify(output.result).includes('through-bg305'), 'Supplier references must stay private');
+  const clock = { now: 965_000 };
+  const redis = new FakeRedis(clock);
+  const searchId = '00000000-0000-4000-8000-000000000020';
+  await storeFor(redis, clock, searchId).storeSearch('supplier-trans', saved.get('refs'), 'triplover');
+  const reader = storeFor(redis, clock, searchId);
+  const stored = await reader.readSearch(searchId);
+  const selected = stored.refsByItineraryId.get(card.id);
+  assert.deepEqual(Array.from(selected.segmentCodeRefs), vector, 'Cross-instance Redis must not deduplicate or reorder');
+  assert.equal(selected.alternativeSelection, false, 'A single through-flight still needs the stronger Reprice proof');
+  for (const supplier of ['firsttrip', 'takeoff']) {
+    const other = new FakeRedis(clock);
+    await expectStoreError(() => storeFor(other, clock).storeSearch('supplier-trans', saved.get('refs'), supplier), 'integrity');
+    assert.equal(other.calls.set, 0, 'The relaxed Triplover vector cannot be written under another direct account');
+  }
+  for (const badVector of [[], ['through-bg305'], ['through-bg305', '', 'connection-ac470']]) {
+    const invalid = new Map([[card.id, { ...selected, segmentCodeRefs: badVector }]]);
+    await expectStoreError(() => storeFor(new FakeRedis(clock), clock).storeSearch('supplier-trans', invalid, 'triplover'), 'integrity');
+  }
+  const response = {
+    uniqueTransID: 'supplier-trans', itemCodeRef: selected.itemCodeRef,
+    priceCodeRef: 'direct-through-price', currency: 'BDT', bookable: true,
+    totalPrice: 95321, basePrice: 80301, taxes: 15020,
+    directions: repriceDirectionsFor(selected.selection),
+  };
+  const owner = principal('prepare-owner');
+  const calls = { supplier: 0, persist: [] };
+  await loadRepriceModule({ response, calls, quoteStore: reader })
+    .repriceFlight({ searchId, itineraryId: card.id, principal: owner });
+  assert.equal(calls.supplier, 1);
+  assert.equal(calls.shapon ?? 0, 0);
+  assert.equal(calls.directPayloads[0].operation, 'RePrice');
+  assert.equal(calls.directPayloads[0].endpoint, '/api/Reprice');
+  assert.equal(calls.directPayloads[0].options.supplier, 'triplover');
+  assert.deepEqual(Array.from(calls.directPayloads[0].payload.segmentCodeRefs), vector);
+  assert.equal(Object.hasOwn(calls.directPayloads[0].payload, 'directionIndices'), false);
+  const accepted = await storeFor(redis, clock, searchId).readRepricedSelection(searchId, card.id, owner);
+  assert.equal(accepted.priceCodeRef, response.priceCodeRef);
+  const snapshot = { carrierCode: card.carrierCode, carrierName: card.carrierName, refundable: card.refundable, legs: card.legs };
+  const attempts = [];
+  const prepare = loadPrepareRoute({ search: stored, preparedReprice: accepted, createdAttempts: attempts });
+  const prepared = await prepare.POST({ json: async () => ({ ...preparePayload(card.id, snapshot), searchId }) });
+  assert.equal(prepared.status, 200);
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0].supplierAccount, 'triplover');
+  const tampered = structuredClone(snapshot);
+  tampered.legs[0].segments[2].flightNumber = '462';
+  assert.equal((await prepare.POST({ json: async () => ({ ...preparePayload(card.id, tampered), searchId }) })).status, 409);
+  assert.equal(attempts.length, 1, 'A substituted onward flight cannot create another draft');
+
+  for (const mismatch of [
+    'from', 'to', 'departure', 'arrival', 'airlineCode', 'flightNumber',
+    'missing-directions', 'null-directions', 'malformed-directions', 'reordered', 'missing-sector', 'extra-route',
+    'missing-transaction', 'wrong-transaction', 'missing-item', 'wrong-item',
+  ]) {
+    const bad = structuredClone(response);
+    if (mismatch === 'missing-directions') delete bad.directions;
+    else if (mismatch === 'null-directions') bad.directions = null;
+    else if (mismatch === 'malformed-directions') bad.directions = {};
+    else if (mismatch === 'reordered') bad.directions[0][0].segments.reverse();
+    else if (mismatch === 'missing-sector') bad.directions[0][0].segments.pop();
+    else if (mismatch === 'extra-route') bad.directions.push(structuredClone(bad.directions[0]));
+    else if (mismatch === 'missing-transaction') delete bad.uniqueTransID;
+    else if (mismatch === 'wrong-transaction') bad.uniqueTransID = 'another-transaction';
+    else if (mismatch === 'missing-item') delete bad.itemCodeRef;
+    else if (mismatch === 'wrong-item') bad.itemCodeRef = 'another-item';
+    else bad.directions[0][0].segments[0][mismatch] = 'different-flight';
+    const rejected = { supplier: 0, persist: [] };
+    await assert.rejects(() => loadRepriceModule({ response: bad, calls: rejected, quoteStore: reader })
+      .repriceFlight({ searchId, itineraryId: card.id, principal: owner }), error => error.code === 'SELECTION_MISMATCH', mismatch);
+    assert.equal(rejected.supplier, 1, `${mismatch}: one read-only Reprice, no fallback/replay`);
+    assert.equal(rejected.persist.length, 0, `${mismatch}: no accepted price write`);
+  }
+  assert.equal((await reader.readRepricedSelection(searchId, card.id, owner)).priceCodeRef, accepted.priceCodeRef,
+    'Failed Reprice proofs cannot replace the previously accepted selection');
+
+  for (const field of ['airlineCode', 'flightNumber']) {
+    const incomplete = structuredClone(selected);
+    incomplete.selection.legs[0].segments[0][field] = '';
+    const bad = structuredClone(response);
+    bad.directions = repriceDirectionsFor(incomplete.selection);
+    const rejected = { supplier: 0, persist: [] };
+    await assert.rejects(() => loadRepriceModule({
+      search: { ...stored, refsByItineraryId: new Map([[card.id, incomplete]]) }, response: bad, calls: rejected,
+    }).repriceFlight({ searchId, itineraryId: card.id, principal: owner }), error => error.code === 'SELECTION_MISMATCH');
+    assert.equal(rejected.persist.length, 0, 'Two missing flight identities do not constitute a positive match');
+  }
+
+  // Two alternatives may share the same ordered token vector. A successful
+  // response for AC470 must never authorize the separately displayed AC462.
+  const grouped = structuredClone(throughOffer);
+  const alternate = structuredClone(grouped.directions[0][0]);
+  alternate.segments[2].flightNumber = '462';
+  grouped.directions[0].push(alternate);
+  const alternatives = new Map();
+  await loadSearchModule({ response: { airSearchResponses: [grouped] }, storedRefs: alternatives })
+    .searchFlights(throughInput, 'triplover');
+  const wrongOption = alternatives.get('refs').get('itn-0-1');
+  assert.deepEqual(Array.from(wrongOption.segmentCodeRefs), vector);
+  const rejected = { supplier: 0, persist: [] };
+  await assert.rejects(() => loadRepriceModule({
+    search: { ...stored, refsByItineraryId: alternatives.get('refs') }, response, calls: rejected,
+  }).repriceFlight({ searchId, itineraryId: 'itn-0-1', principal: owner }), error => error.code === 'SELECTION_MISMATCH');
+  assert.equal(rejected.persist.length, 0);
+
+  const ruleCalls = [];
+  const rules = compileModule(await readFile('lib/triplover/fare-rules.ts', 'utf8'), 'fare-rules.ts', id => {
+    if (id === 'server-only') return {};
+    if (id === '@/lib/flights/search-cache') return { SearchReferenceStoreError, readSearch: async () => stored };
+    if (id === '@/lib/shapontravels/client') return { shapontravelsRead() { throw new Error('wrong supplier'); } };
+    if (id === '@/lib/triplover/client') return { triploverCall: async (operation, endpoint, payload, options) => {
+      ruleCalls.push({ operation, endpoint, payload, options });
+      return { data: { fareRuleDetails: [{ type: 'Refund', fareRuleDetail: 'Supplier rules' }] } };
+    } };
+    throw new Error(`Unexpected FareRules import: ${id}`);
+  });
+  await rules.getFlightFareRules({ searchId, itineraryId: card.id });
+  assert.equal(ruleCalls[0].options.supplier, 'triplover');
+  assert.deepEqual(Array.from(ruleCalls[0].payload.segmentCodeRefs), vector, 'FareRules must not deduplicate the supplier vector');
+  assert.equal(Object.hasOwn(ruleCalls[0].payload, 'directionIndices'), false);
+
+  // Revalidate the supplier-scoped contract after Redis decompression as well.
+  const { inflateRawSync, deflateRawSync } = require('node:zlib');
+  const key = `flight:quote:v4:{${searchId}}`;
+  const original = JSON.parse(inflateRawSync(redis.entry(key).value.subarray(2)));
+  const corrupted = structuredClone(original);
+  corrupted.a = 'takeoff';
+  redis.entry(key).value = Buffer.concat([Buffer.from('b:'), deflateRawSync(Buffer.from(JSON.stringify(corrupted)))]);
+  await expectStoreError(() => storeFor(redis, clock).readSearch(searchId), 'integrity');
 }
 
 // Every grouped multicity/round-trip option keeps its original zero-based

@@ -197,8 +197,9 @@ const MAX_COMBINATIONS_PER_OFFER = 12;
  * Flattening them into a single itinerary would render a nonsense
  * "DAC→CXB then DAC→CXB" journey, so each alternative becomes its own card.
  * Triplover can provide a distinct, ordered `segmentCodeRef` vector for every
- * card even though `itemCodeRef` is shared. Direct supplier integrations need
- * that complete, unique vector. Shapontravels instead selects the exact saved
+ * card even though `itemCodeRef` is shared. Direct integrations need a complete
+ * vector; Triplover may repeat a through-flight reference across sectors.
+ * Shapontravels instead selects the exact saved
  * alternative by index, including when references are missing or repeated.
  * RePrice must then echo the displayed itinerary before Book can use it.
  */
@@ -379,13 +380,15 @@ type SupplierRefs = Pick<
 >;
 
 /**
- * Legacy direct integrations identify a selection by its complete, unique
- * reference vector. Shapontravels can instead resolve saved direction indices,
- * so its repeated or missing references do not make that selection ambiguous.
+ * Direct Triplover through-flights can repeat one reference across sectors.
+ * Preserve the complete ordered vector, including repeats; Reprice must prove
+ * the exact selected journey before its price can reach Prepare. Other direct
+ * accounts retain unique vectors; Shapontravels uses saved direction indices.
  */
 function completeSelectionSegmentRefs(
   combination: RawDirection[],
-  legs: ItineraryLeg[]
+  legs: ItineraryLeg[],
+  allowRepeatedReferences: boolean
 ): string[] | null {
   const rawSegments = combination.flatMap((direction) => direction.segments ?? []);
   const displayedSegmentCount = legs.reduce(
@@ -399,7 +402,8 @@ function completeSelectionSegmentRefs(
   const refs = rawSegments.map((segment) =>
     typeof segment.segmentCodeRef === 'string' ? segment.segmentCodeRef.trim() : ''
   );
-  if (refs.some((ref) => ref.length === 0) || new Set(refs).size !== refs.length) {
+  if (refs.some((ref) => ref.length === 0) ||
+      (!allowRepeatedReferences && new Set(refs).size !== refs.length)) {
     return null;
   }
   return refs;
@@ -436,8 +440,9 @@ function hasOverlappingLegs(legs: ItineraryLeg[]): boolean {
 function mapOffer(
   offer: RawOffer,
   index: number,
-  useDirectionIndices = false
+  supplier: FlightReadSupplier
 ): { itineraries: SupplierItinerary[]; refs: SupplierRefs[] } | null {
+  const useDirectionIndices = supplier === 'shapontravels';
   const directions = offer.directions;
   const itemCodeRef = offer.itemCodeRef?.trim();
   if (!Array.isArray(directions) || directions.length === 0 || !itemCodeRef) return null;
@@ -467,7 +472,7 @@ function mapOffer(
         .map((segment) => typeof segment.segmentCodeRef === 'string' ? segment.segmentCodeRef.trim() : '')
         .filter((ref): ref is string => Boolean(ref))
     );
-    const selectedSegmentCodeRefs = completeSelectionSegmentRefs(combination, legs);
+    const selectedSegmentCodeRefs = completeSelectionSegmentRefs(combination, legs, supplier === 'triplover');
     const directionIndices = useDirectionIndices
       ? combination.map((direction, routeIndex) => directions[routeIndex].indexOf(direction))
       : undefined;
@@ -520,7 +525,8 @@ function completeReferenceVector(
     ItineraryRefs,
     'itemCodeRef' | 'segmentCodeRefs' | 'directionIndices' | 'ambiguousSelection'
   >,
-  itinerary: { legs: ItineraryLeg[] }
+  itinerary: { legs: ItineraryLeg[] },
+  supplier: FlightReadSupplier
 ): boolean {
   const segmentCount = itinerary.legs.reduce(
     (count, leg) => count + leg.segments.length,
@@ -541,7 +547,7 @@ function completeReferenceVector(
     segmentCount > 0 &&
     vector.length === segmentCount &&
     vector.every(Boolean) &&
-    new Set(vector).size === vector.length
+    (supplier === 'triplover' || new Set(vector).size === vector.length)
   );
 }
 
@@ -552,7 +558,8 @@ function completeReferenceVector(
  */
 function assertPublicReferenceContract(
   itineraries: FlightItinerary[],
-  refsByItineraryId: Map<string, ItineraryRefs>
+  refsByItineraryId: Map<string, ItineraryRefs>,
+  supplier: FlightReadSupplier
 ): void {
   const publicOptions = itineraries.flatMap((itinerary) => [
     itinerary,
@@ -576,7 +583,7 @@ function assertPublicReferenceContract(
         'Search produced a fare without its private supplier reference.'
       );
     }
-    if (!option.ambiguousSelection && !completeReferenceVector(refs, option)) {
+    if (!option.ambiguousSelection && !completeReferenceVector(refs, option, supplier)) {
       throw new SearchReferenceStoreError(
         'integrity',
         'Search produced a selectable fare with incomplete supplier references.'
@@ -847,7 +854,7 @@ export async function searchFlights(
   let droppedOfferCount = 0;
 
   offers.forEach((offer, index) => {
-    const mapped = mapOffer(offer, index, isShapontravels);
+    const mapped = mapOffer(offer, index, supplier);
     if (!mapped) {
       droppedOfferCount += 1;
       return;
@@ -872,7 +879,7 @@ export async function searchFlights(
       if (
         !refs ||
         refs.ambiguousSelection ||
-        !completeReferenceVector(refs, itinerary)
+        !completeReferenceVector(refs, itinerary, supplier)
       ) {
         droppedOfferCount += 1;
         return;
@@ -1015,7 +1022,7 @@ export async function searchFlights(
       'Search returned no supplier transaction reference.'
     );
   }
-  assertPublicReferenceContract(itineraries, refsByItineraryId);
+  assertPublicReferenceContract(itineraries, refsByItineraryId, supplier);
   emitSearchTrace(trace, {
     name: 'reference_graph_validated',
     details: { itineraryReferenceCount: refsByItineraryId.size },
@@ -1034,7 +1041,7 @@ export async function searchFlights(
   let storedSearch: Awaited<ReturnType<typeof storeSearch>>;
   while (true) {
     try {
-      assertPublicReferenceContract(displayedItineraries, displayedRefs);
+      assertPublicReferenceContract(displayedItineraries, displayedRefs, supplier);
       storedSearch = await storeSearch(uniqueTransId, displayedRefs, supplier, { trace });
       break;
     } catch (error) {

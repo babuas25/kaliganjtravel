@@ -202,7 +202,8 @@ function comparable(value: unknown): string {
  */
 function repriceMatchesSelectedItinerary(
   response: RawReprice,
-  selection: ItinerarySelectionSignature
+  selection: ItinerarySelectionSignature,
+  requireFlightIdentity = false
 ): boolean {
   if (!Array.isArray(response.directions)) return false;
   if (response.directions.length !== selection.legs.length) return false;
@@ -220,6 +221,8 @@ function repriceMatchesSelectedItinerary(
       return Boolean(
         segment &&
           expected &&
+          (!requireFlightIdentity || (comparable(expected.airlineCode).length > 0 &&
+            comparable(expected.flightNumber).length > 0)) &&
           comparable(segment.from) === comparable(expected.from) &&
           comparable(segment.to) === comparable(expected.to) &&
           comparable(segment.departure) === comparable(expected.departure) &&
@@ -457,15 +460,23 @@ export async function repriceFlight({
     );
   }
   const supplierReturnedDirections = Array.isArray(response.directions);
+  const repeatedTriploverReferences = search.supplierAccount === 'triplover' &&
+    new Set(refs.segmentCodeRefs).size !== refs.segmentCodeRefs.length;
   const matchesSelectedItinerary = supplierReturnedDirections
-    ? repriceMatchesSelectedItinerary(response, refs.selection)
+    ? repriceMatchesSelectedItinerary(response, refs.selection, repeatedTriploverReferences)
     : false;
-  // Every returned itinerary shape is verified, not just grouped
-  // alternatives. Alternatives additionally require the supplier to return a
-  // match at all, because a shared item ref alone is insufficient proof.
+  // Every returned itinerary is verified. Grouped alternatives and Triplover
+  // through-flights with repeated references additionally require an exact
+  // echo. The latter must also echo the original transaction and item: repeated
+  // tokens alone are never proof that the returned price belongs to this card.
   if (
     (supplierReturnedDirections && !matchesSelectedItinerary) ||
-    (refs.alternativeSelection === true && !matchesSelectedItinerary)
+    (refs.alternativeSelection === true && !matchesSelectedItinerary) ||
+    (repeatedTriploverReferences && (
+      !matchesSelectedItinerary ||
+      response.uniqueTransID !== search.uniqueTransId ||
+      response.itemCodeRef !== refs.itemCodeRef
+    ))
   ) {
     throw new FlightRepriceError(
       'SELECTION_MISMATCH',

@@ -111,8 +111,9 @@ export type ItineraryRefs = {
   ambiguousSelection: boolean;
   /**
    * Search grouped alternate directions under one item reference. This remains
-   * selectable through saved direction indices or a complete legacy reference
-   * vector. RePrice must echo the exact displayed itinerary before Book can
+   * selectable through saved direction indices or a complete reference vector
+   * (Triplover through-flights may repeat sector refs). RePrice must echo the
+   * exact displayed itinerary before Book can
    * use its resulting price reference.
    */
   alternativeSelection?: boolean;
@@ -574,15 +575,15 @@ function validRepricedSelection(value: unknown): value is RepricedSelection {
   );
 }
 
-/** A selectable itinerary needs a complete, ordered, one-to-one ref vector. */
-function validSegmentReferenceVector(value: unknown): value is string[] {
+/** Keep every sector's reference in order; Triplover through-flights may repeat. */
+function validSegmentReferenceVector(value: unknown, allowRepeatedReferences: boolean): value is string[] {
   if (!Array.isArray(value) || value.length === 0) return false;
   const normalized = value.map((reference) =>
     typeof reference === 'string' ? reference.trim() : ''
   );
   return (
     normalized.every((reference) => reference.length > 0) &&
-    new Set(normalized).size === normalized.length
+    (allowRepeatedReferences || new Set(normalized).size === normalized.length)
   );
 }
 
@@ -652,7 +653,7 @@ function hasCompleteSelectableReferences(
   if (refs.ambiguousSelection) return true;
   return (
     nonEmptyText(refs.itemCodeRef) &&
-    validSegmentReferenceVector(refs.segmentCodeRefs) &&
+    validSegmentReferenceVector(refs.segmentCodeRefs, supplierAccount === 'triplover') &&
     validSelectionSignature(refs.selection) &&
     /^[A-Za-z0-9_-]{43}$/.test(refs.bookingSnapshotDigest) &&
     refs.segmentCodeRefs.length === displayedSegmentCount(refs.selection)

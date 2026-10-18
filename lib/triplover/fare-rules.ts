@@ -127,7 +127,9 @@ export async function getFlightFareRules({
   const request = {
     itemCodeRef: refs.itemCodeRef,
     uniqueTransID: search.uniqueTransId,
-    segmentCodeRefs: refs.segmentCodeRefs,
+    ...(search.supplierAccount === 'shapontravels' && refs.directionIndices !== undefined
+      ? { directionIndices: refs.directionIndices }
+      : { segmentCodeRefs: refs.segmentCodeRefs }),
     brandedFareRefs: '',
   };
   const data = search.supplierAccount === 'shapontravels'

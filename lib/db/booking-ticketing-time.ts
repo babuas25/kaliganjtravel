@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { BookingRow } from '@/lib/db/flight-bookings';
+import type { ShapontravelsTicketingTime } from '@/lib/shapontravels/ticketing-time';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
 export type BookingTicketingTime = {
@@ -13,10 +14,17 @@ export async function saveBookingTicketingTime(
   booking: BookingRow,
   deadline: { rawLastTicketTime: string; ticketingDeadlineAt: string }
 ): Promise<BookingTicketingTime | null> {
+  return saveDeadline(booking, deadline, 'pnr_call');
+}
+
+async function saveDeadline(
+  booking: BookingRow, deadline: ShapontravelsTicketingTime, source: 'pnr_call' | 'supplier',
+): Promise<BookingTicketingTime | null> {
   const db = supabaseAdmin();
   if (!db) throw new Error('Booking storage is unavailable.');
-  if (!booking.updated_at || !deadline.rawLastTicketTime.trim() ||
-      !Number.isFinite(Date.parse(deadline.ticketingDeadlineAt))) {
+  const cleared = source === 'supplier' && deadline.rawLastTicketTime === null && deadline.ticketingDeadlineAt === null;
+  if (!booking.updated_at || (!cleared && (!deadline.rawLastTicketTime?.trim() ||
+      !deadline.ticketingDeadlineAt || !Number.isFinite(Date.parse(deadline.ticketingDeadlineAt))))) {
     throw new Error('The ticketing time could not be verified.');
   }
 
@@ -27,7 +35,7 @@ export async function saveBookingTicketingTime(
     .update({
       supplier_ticketing_time_limit: deadline.rawLastTicketTime,
       supplier_ticketing_deadline_at: deadline.ticketingDeadlineAt,
-      supplier_deadline_source: 'pnr_call',
+      supplier_deadline_source: source,
     })
     .eq('id', booking.id)
     // A concurrent issue, cancellation, owner/reference edit or newer refresh
@@ -44,4 +52,22 @@ export async function saveBookingTicketingTime(
     ticketingDeadlineAt: data.ticketing_deadline_at,
     lastTicketingTime: data.supplier_ticketing_time_limit,
   };
+}
+
+/** Save only the canonical Shapontravels deadline, preserving local authority. */
+export async function saveShapontravelsTicketingTime(
+  booking: BookingRow, deadline: ShapontravelsTicketingTime,
+): Promise<(BookingTicketingTime & { updated: boolean }) | null> {
+  if (booking.supplier !== 'shapontravels' || booking.supplier_account !== 'shapontravels' || booking.import_source) {
+    throw new Error('This is not a native Shapontravels booking.');
+  }
+  const saved = booking.supplier_ticketing_deadline_at ?? null;
+  const sameInstant = saved === null ? deadline.ticketingDeadlineAt === null
+    : deadline.ticketingDeadlineAt !== null && Date.parse(saved) === Date.parse(deadline.ticketingDeadlineAt);
+  if (sameInstant && (booking.supplier_ticketing_time_limit ?? null) === deadline.rawLastTicketTime) {
+    return { updated: false, ticketingDeadlineAt: booking.ticketing_deadline_at,
+      lastTicketingTime: booking.supplier_ticketing_time_limit ?? null };
+  }
+  const result = await saveDeadline(booking, deadline, 'supplier');
+  return result ? { ...result, updated: true } : null;
 }

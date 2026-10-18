@@ -349,7 +349,9 @@ export async function repriceFlight({
     const responseEnvelope = await shapontravelsRead('Reprice', {
       uniqueTransID: search.uniqueTransId,
       itemCodeRef: refs.itemCodeRef,
-      segmentCodeRefs: refs.segmentCodeRefs,
+      ...(refs.directionIndices !== undefined
+        ? { directionIndices: refs.directionIndices }
+        : { segmentCodeRefs: refs.segmentCodeRefs }),
       taxRedemptions: [],
       commissionOnTaxes: [],
       brandedFareRefs: '',

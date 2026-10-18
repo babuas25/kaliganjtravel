@@ -211,6 +211,8 @@ async function review(savedItinerary) {
     '@/lib/supabase/server': { supabaseAdmin: () => ({ from: () => query }) },
     '@/lib/shapontravels/client': client,
     '@/lib/shapontravels/booking-status': status,
+    '@/lib/shapontravels/ticketing-time': compile('lib/shapontravels/ticketing-time.ts', { './booking-status': status }),
+    '@/lib/db/booking-ticketing-time': { saveShapontravelsTicketingTime: forbidden },
     '@/lib/shapontravels/external-ticket-confirmation': externalConfirmation,
     '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async () => ({ saved: true }) },
     '@/lib/shapontravels/ticket': adapter,

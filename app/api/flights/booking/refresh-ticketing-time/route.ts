@@ -4,11 +4,14 @@ import { storedTicketReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import { canRefreshBookingTicketingTime } from '@/lib/dashboard/booking-lifecycle';
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
 import { getDashboardSession } from '@/lib/dashboard/session';
-import { saveBookingTicketingTime } from '@/lib/db/booking-ticketing-time';
+import { saveBookingTicketingTime, saveShapontravelsTicketingTime } from '@/lib/db/booking-ticketing-time';
 import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
 import { checkActionLimit } from '@/lib/rate-limit';
 import { isTriploverSupplier } from '@/lib/triplover/config';
 import { readPnr } from '@/lib/triplover/pnr';
+import { supabaseAdmin } from '@/lib/supabase/server';
+import { shapontravelsReadBooking } from '@/lib/shapontravels/client';
+import { shapontravelsTicketingTime } from '@/lib/shapontravels/ticketing-time';
 import { walletFail, walletOk } from '@/lib/wallet/http';
 
 export const runtime = 'nodejs';
@@ -34,6 +37,30 @@ export async function POST(request: Request) {
     parsed.data.bookingReference, bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (booking.supplier === 'shapontravels' && booking.supplier_account === 'shapontravels' && !booking.import_source) {
+    const refs = storedTicketReferences(booking);
+    if (!refs) return walletFail(409, 'SUPPLIER_REFERENCE_MISSING', 'The booking is missing supplier references.');
+    const limit = await checkActionLimit('refreshTicketingTime', booking.id);
+    if (!limit.ok) return walletFail(429, 'REFRESH_RATE_LIMITED', 'Please wait a moment before refreshing again.');
+    const db = supabaseAdmin();
+    if (!db) return walletFail(503, 'BOOKING_STORAGE_FAILED', 'Booking storage is unavailable.');
+    const { data: identity, error } = await db.from('flight_bookings')
+      .select('supplier_public_ref').eq('id', booking.id).single();
+    if (error) return walletFail(503, 'BOOKING_STORAGE_FAILED', 'Booking storage is unavailable.');
+    if (!identity?.supplier_public_ref) return walletFail(409, 'SUPPLIER_REFERENCE_MISSING', 'The supplier STR reference is missing.');
+    try {
+      // The machine API reads saved evidence; this does not call live PNR/Book/Issue.
+      const read = await shapontravelsReadBooking({ bookingId: refs.bookingCodeRef });
+      const deadline = shapontravelsTicketingTime(read, { ...refs, supplierPublicRef: identity.supplier_public_ref });
+      if (!deadline) return walletFail(502, 'TICKETING_TIME_UNVERIFIED', 'The saved ticketing time could not be verified. Please contact support.');
+      const saved = await saveShapontravelsTicketingTime(booking, deadline);
+      if (!saved) return walletFail(409, 'BOOKING_CHANGED', 'The booking changed during the refresh. Refresh the page and try again.');
+      return walletOk({ ...saved, message: saved.ticketingDeadlineAt ? null
+        : 'No ticketing time is saved by the supplier yet. Contact support to refresh the supplier time limit.' });
+    } catch {
+      return walletFail(502, 'TICKETING_TIME_REFRESH_FAILED', 'The saved ticketing time could not be refreshed. Please try again.');
+    }
+  }
   if (booking.supplier !== 'triplover' || booking.import_source === 'MANUAL') {
     return walletFail(409, 'EXTERNAL_SUPPLIER_BOOKING', 'This booking does not support a PNR refresh.');
   }

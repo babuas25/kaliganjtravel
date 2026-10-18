@@ -64,7 +64,7 @@ export function BookingDeadlineNotice({
       });
       const body = await response.json() as {
         success?: boolean;
-        data?: { updated?: boolean; ticketingDeadlineAt?: string | null };
+        data?: { updated?: boolean; ticketingDeadlineAt?: string | null; message?: string | null };
         error?: { errorMessage?: string };
       };
       if (!response.ok || !body.success) {
@@ -72,12 +72,12 @@ export function BookingDeadlineNotice({
       }
       if (!mounted.current) return;
       const refreshedDeadline = body.data?.ticketingDeadlineAt;
-      if (refreshedDeadline && Number.isFinite(Date.parse(refreshedDeadline))) {
+      if ((refreshedDeadline === null && body.data?.updated === true) || (refreshedDeadline && Number.isFinite(Date.parse(refreshedDeadline)))) {
         setDisplayedDeadline(refreshedDeadline);
       }
-      setMessage(body.data?.updated
+      setMessage(body.data?.message || (refreshedDeadline || body.data?.updated
         ? null
-        : 'The supplier did not return a new ticketing time.');
+        : 'The supplier did not return a new ticketing time.'));
       if (body.data?.updated) router.refresh();
     } catch (error) {
       if (mounted.current) {

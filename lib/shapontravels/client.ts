@@ -293,11 +293,13 @@ export class ShapontravelsWriteError extends Error {
     readonly requestId: string | null = null,
     readonly pendingBookingId: string | null = null,
     readonly pendingReference: string | null = null,
-    readonly operation: 'Book' | 'NewTicket' | 'Cancel' = 'Book'
+    readonly operation: 'Book' | 'NewTicket' | 'Cancel' = 'Book',
+    readonly bookingWarningCode: 'SUPPLIER_DUPLICATE_REPORTED' | null = null
   ) {
     super(`Shapontravels ${operation} ${code}` +
       (pendingBookingId ? ` bookingId=${pendingBookingId}` : '') +
-      (pendingReference ? ` reference=${pendingReference}` : ''));
+      (pendingReference ? ` reference=${pendingReference}` : '') +
+      (bookingWarningCode ? ` warning=${bookingWarningCode}` : ''));
     this.name = 'ShapontravelsWriteError';
   }
 }
@@ -627,8 +629,16 @@ export async function shapontravelsBookRequest(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pending.bookingId)
         ? pending.bookingId : null;
     const reference = bookingPublicReference(response);
+    const warning = pending.warning && typeof pending.warning === 'object'
+      ? pending.warning as Record<string, unknown> : {};
+    // Only the backend's structured unresolved claim is accepted. Supplier
+    // messages and apparent old references are never copied to the customer.
+    const duplicate = bookingId && pending.state === 'outcome_unknown' &&
+      pending.requiresReconciliation === true && pending.automaticRetryAllowed === false &&
+      warning.code === 'SUPPLIER_DUPLICATE_REPORTED';
     throw new ShapontravelsWriteError('pending', 'BOOKING_OUTCOME_UNKNOWN',
-      202, requestId, bookingId, reference);
+      202, requestId, bookingId, reference, 'Book',
+      duplicate ? 'SUPPLIER_DUPLICATE_REPORTED' : null);
   }
   if (!response.ok) {
     throw new ShapontravelsWriteError(

@@ -894,6 +894,7 @@ export default function BookingActions({
         success?: boolean;
         data?: ShapontravelsStatusCheck & {
           ticketingDeadlineAt?: string | null;
+          ticketingTimeUpdated?: boolean;
           complete?: boolean;
           supplierTicket?: {
             result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
@@ -985,7 +986,7 @@ export default function BookingActions({
       if (
         !automatic && (
           allowShaponStatusCheck
-            ? body.data?.projectionUpdated === true
+            ? body.data?.projectionUpdated === true || body.data?.ticketingTimeUpdated === true
             : body.verification?.validation.authoritativeFor !== 'ticketed'
         )
       ) {

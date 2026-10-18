@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE } from '@/lib/db/booking-read-error';
-import { unverifiedBookingMessage } from '@/lib/flights/booking-failure-message';
+import { duplicateBookingWarning, unverifiedBookingMessage } from '@/lib/flights/booking-failure-message';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
@@ -19,9 +19,9 @@ const schema = z.object({
   accessToken: z.string().min(32).max(128),
 });
 
-function fail(status: number, errorCode: string, errorMessage: string) {
+function fail(status: number, errorCode: string, errorMessage: string, warning: ReturnType<typeof duplicateBookingWarning> = null) {
   return NextResponse.json(
-    { success: false, error: { errorCode, errorMessage } },
+    { success: false, error: { errorCode, errorMessage, ...(warning ? { warning } : {}) } },
     { status, headers: { 'Cache-Control': 'no-store' } }
   );
 }
@@ -108,7 +108,9 @@ export async function POST(request: Request) {
     return fail(502, 'BOOKING_FAILED', 'The airline declined the booking. Search and verify the fare again.');
   }
   if (attempt.state === 'unknown') {
-    return fail(503, 'BOOKING_OUTCOME_UNKNOWN', unverifiedBookingMessage(attempt.supplier_message));
+    return fail(503, 'BOOKING_OUTCOME_UNKNOWN',
+      unverifiedBookingMessage(attempt.supplier_message, attempt.supplier_account === 'shapontravels'),
+      attempt.supplier_account === 'shapontravels' ? duplicateBookingWarning(attempt.supplier_message) : null);
   }
 
   return NextResponse.json(

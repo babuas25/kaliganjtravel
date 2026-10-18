@@ -511,7 +511,7 @@ function repriceDirectionsFor(selection) {
  * in-memory supplier response. The surrounding I/O is mocked so the test can
  * assert a mismatch gets exactly one supplier call and no Redis update.
  */
-function loadRepriceModule({ search, response, calls }) {
+function loadRepriceModule({ search, response, calls, quoteStore }) {
   class TestTriploverError extends Error {}
   const localRequire = (id) => {
     if (id === 'server-only') return {};
@@ -521,11 +521,11 @@ function loadRepriceModule({ search, response, calls }) {
     if (id === '@/lib/flights/search-cache') {
       return {
         SearchReferenceStoreError,
-        readSearch: async () => search,
-        readRepricedSelection: async () => null,
+        readSearch: async (...args) => quoteStore ? quoteStore.readSearch(...args) : search,
+        readRepricedSelection: async (...args) => quoteStore ? quoteStore.readRepricedSelection(...args) : null,
         storeRepricedSelection: async (...args) => {
           calls.persist.push(args);
-          return true;
+          return quoteStore ? quoteStore.storeRepricedSelection(...args) : true;
         },
       };
     }
@@ -570,8 +570,9 @@ function loadRepriceModule({ search, response, calls }) {
     }
     if (id === '@/lib/shapontravels/client') return {
       ShapontravelsReadError: class extends Error {},
-      shapontravelsRead: async () => {
+      shapontravelsRead: async (operation, payload) => {
         calls.shapon = (calls.shapon ?? 0) + 1;
+        (calls.shaponPayloads ??= []).push({ operation, payload });
         return { item1: response, item2: { isSuccess: true } };
       },
     };
@@ -659,8 +660,11 @@ function loadSearchModule({
         },
       };
     }
-    if (id === '@/lib/shapontravels/client') return { shapontravelsRead: async () => { throw new Error('Unexpected Shapontravels call'); } };
-    if (id === '@/lib/shapontravels/pricing') return { shapontravelsPricedOffer: () => null };
+    if (id === '@/lib/shapontravels/client') return { shapontravelsRead: async () => {
+      await supplierCall();
+      return { item1: response, item2: [{ isSuccess: true }] };
+    } };
+    if (id === '@/lib/shapontravels/pricing') return { shapontravelsPricedOffer };
     throw new Error(`Unexpected Search import in verifier: ${id}`);
   };
   return compileModule(searchSource, searchPath, localRequire);
@@ -1590,6 +1594,173 @@ assert.deepEqual(
 assert.equal(crossInstanceRoundTripRefs.selection.legs.length, 2);
 assert.equal(crossInstanceRoundTripRefs.selection.legs[0].segments.length, 2);
 assert.equal(crossInstanceRoundTripRefs.selection.legs[1].segments.length, 1);
+
+// BG305 has two displayed sectors sharing one reference. Shapontravels selects
+// saved directions, so repeated, absent and null references must all survive
+// Search -> a fresh Redis reader -> Reprice -> the Prepare handoff.
+const throughInput = {
+  tripType: 'oneway',
+  routes: [{ origin: 'DAC', destination: 'YOW', departureDate: '2026-10-31' }],
+  adults: 1, children: 0, infants: 0, childrenAges: [], cabinClass: 1, preferredCarriers: [],
+};
+const throughOffer = {
+  uniqueTransID: 'supplier-trans', itemCodeRef: 'through-item',
+  platingCarrier: 'BG', platingCarrierName: 'Biman Bangladesh Airlines',
+  currency: 'BDT', totalPrice: 95321, basePrice: 80301, taxes: 15020,
+  refundable: true, bookable: true,
+  fareBreakdown: {
+    currency: 'BDT', gross: '95321.00', payable: '88245.66', taxes: '15020.00', ait: '0.00',
+    passengers: { adt: { count: 1, gross: '95321.00', payable: '88245.66', taxes: '15020.00', ait: '0.00' } },
+  },
+  directions: [[{ from: 'DAC', to: 'YOW', stops: 2, segments: [
+    rawRoundTripSegment({ from: 'DAC', to: 'FCO', airlineCode: 'BG', flightNumber: '305', bookingClass: 'K',
+      departure: '2026-10-31 01:55:00', arrival: '2026-10-31 07:15:00', segmentCodeRef: 'through-bg305' }),
+    rawRoundTripSegment({ from: 'FCO', to: 'YYZ', airlineCode: 'BG', flightNumber: '305', bookingClass: 'K',
+      departure: '2026-10-31 08:30:00', arrival: '2026-10-31 13:40:00', segmentCodeRef: 'through-bg305' }),
+    rawRoundTripSegment({ from: 'YYZ', to: 'YOW', airlineCode: 'AC', flightNumber: '470', bookingClass: 'K',
+      departure: '2026-10-31 22:45:00', arrival: '2026-10-31 23:55:00', segmentCodeRef: 'connection-ac470' }),
+  ] }]],
+};
+for (const variant of ['repeated', 'missing', 'null', 'partial', 'unique']) {
+  const offer = structuredClone(throughOffer);
+  const segments = offer.directions[0][0].segments;
+  if (variant === 'missing') segments.forEach((segment) => { delete segment.segmentCodeRef; });
+  if (variant === 'null') segments.forEach((segment) => { segment.segmentCodeRef = null; });
+  if (variant === 'partial') delete segments[1].segmentCodeRef;
+  if (variant === 'unique') segments[1].segmentCodeRef = 'second-sector';
+  const mappedRefs = new Map();
+  const mapped = await loadSearchModule({
+    response: { currency: 'BDT', airSearchResponses: [offer] }, storedRefs: mappedRefs,
+  }).searchFlights(throughInput, 'shapontravels');
+  assert.equal(mapped.result.itineraries.length, 1, variant);
+  assert.equal(mapped.result.droppedOfferCount, 0, variant);
+  const card = mapped.result.itineraries[0];
+  assert.equal(card.ambiguousSelection, false);
+  assert.equal(card.legs[0].segments.length, 3);
+  const selected = mappedRefs.get('refs').get(card.id);
+  assert.deepEqual(Array.from(selected.directionIndices), [0]);
+  const expectedRefs = variant === 'repeated' ? ['through-bg305', 'through-bg305', 'connection-ac470'] :
+    variant === 'unique' ? ['through-bg305', 'second-sector', 'connection-ac470'] : [];
+  assert.deepEqual(Array.from(selected.segmentCodeRefs), expectedRefs);
+  const indexClock = { now: 950_000 };
+  const indexRedis = new FakeRedis(indexClock);
+  const indexId = '00000000-0000-4000-8000-000000000019';
+  await storeFor(indexRedis, indexClock, indexId).storeSearch('supplier-trans', mappedRefs.get('refs'), 'shapontravels');
+  const freshStore = storeFor(indexRedis, indexClock, indexId);
+  const restored = await freshStore.readSearch(indexId);
+  const restoredRefs = restored.refsByItineraryId.get(card.id);
+  assert.deepEqual(Array.from(restoredRefs.directionIndices), [0]);
+  assert.deepEqual(Array.from(restoredRefs.segmentCodeRefs), expectedRefs);
+  assert.equal(matchesBookingSnapshot(restoredRefs, {
+    carrierCode: card.carrierCode, carrierName: card.carrierName, refundable: card.refundable, legs: card.legs,
+  }), true);
+  const response = { ...offer, priceCodeRef: 'through-price', isPriceChanged: false };
+  response.directions = structuredClone(offer.directions);
+  response.directions[0][0].segments.forEach((segment) => { segment.segmentCodeRef = null; });
+  const calls = { supplier: 0, persist: [] };
+  const owner = principal('index-owner');
+  await loadRepriceModule({ response, calls, quoteStore: freshStore }).repriceFlight({
+    searchId: indexId, itineraryId: card.id, principal: owner,
+  });
+  assert.equal(calls.shapon, 1);
+  assert.equal(calls.supplier, 0);
+  const payload = calls.shaponPayloads[0].payload;
+  assert.deepEqual(Array.from(payload.directionIndices), [0]);
+  assert.equal(Object.hasOwn(payload, 'segmentCodeRefs'), false, 'selectors must not be combined');
+  assert.equal(payload.itemCodeRef, offer.itemCodeRef);
+  const preparedReprice = await storeFor(indexRedis, indexClock, indexId).readRepricedSelection(indexId, card.id, owner);
+  assert.equal(preparedReprice.priceCodeRef, 'through-price');
+  const attempts = [];
+  const prepared = await loadPrepareRoute({ search: restored, preparedReprice, createdAttempts: attempts }).POST({
+    json: async () => ({ ...preparePayload(card.id, {
+      carrierCode: card.carrierCode, carrierName: card.carrierName, refundable: card.refundable, legs: card.legs,
+    }), searchId: indexId }),
+  });
+  assert.equal(prepared.status, 200, variant);
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0].supplierAccount, 'shapontravels');
+
+  for (const mismatch of ['flightNumber', 'departure', 'from', 'missing-directions', 'reordered']) {
+    const bad = structuredClone(response);
+    if (mismatch === 'missing-directions') delete bad.directions;
+    else if (mismatch === 'reordered') bad.directions[0][0].segments.reverse();
+    else bad.directions[0][0].segments[0][mismatch] = 'different-flight';
+    const rejected = { supplier: 0, persist: [] };
+    await assert.rejects(() => loadRepriceModule({ response: bad, calls: rejected, quoteStore: freshStore })
+      .repriceFlight({ searchId: indexId, itineraryId: card.id, principal: owner }),
+    (error) => error.code === 'SELECTION_MISMATCH');
+    assert.equal(rejected.shapon, 1);
+    assert.equal(rejected.persist.length, 0, 'a mismatch cannot replace the accepted flight');
+  }
+
+  const ruleCalls = [];
+  const rules = compileModule(await readFile('lib/triplover/fare-rules.ts', 'utf8'), 'fare-rules.ts', (id) => {
+    if (id === 'server-only') return {};
+    if (id === '@/lib/flights/search-cache') return { SearchReferenceStoreError, readSearch: async () => restored };
+    if (id === '@/lib/triplover/client') return { triploverCall: () => { throw new Error('wrong supplier'); } };
+    if (id === '@/lib/shapontravels/client') return { shapontravelsRead: async (operation, payload) => {
+      ruleCalls.push({ operation, payload });
+      return { item1: { fareRuleDetails: [{ type: 'Refund', fareRuleDetail: 'Supplier rules' }] } };
+    } };
+    throw new Error(`Unexpected FareRules import: ${id}`);
+  });
+  assert.equal((await rules.getFlightFareRules({ searchId: indexId, itineraryId: card.id })).rules.length, 1);
+  assert.deepEqual(Array.from(ruleCalls[0].payload.directionIndices), [0]);
+  assert.equal(Object.hasOwn(ruleCalls[0].payload, 'segmentCodeRefs'), false);
+}
+
+// Every grouped multicity/round-trip option keeps its original zero-based
+// indices, even after another invalid option is dropped from public results.
+{
+  const offer = structuredClone(throughOffer);
+  const bad = structuredClone(validOutbound);
+  delete bad.segments[0].departure;
+  offer.directions = [[bad, invalidOutbound, validOutbound], [validInbound, {
+    ...structuredClone(validInbound), segments: validInbound.segments.map((s) => ({ ...s, flightNumber: 'QR-744' })),
+  }]];
+  const saved = new Map();
+  const output = await loadSearchModule({ response: { currency: 'BDT', airSearchResponses: [offer] }, storedRefs: saved })
+    .searchFlights({ ...throughInput, tripType: 'round', routes: [
+      { origin: 'DAC', destination: 'JFK', departureDate: '2026-09-10' },
+      { origin: 'JFK', destination: 'DAC', departureDate: '2026-09-30' },
+    ] }, 'shapontravels');
+  assert.equal(output.result.itineraries.length, 4);
+  assert.deepEqual(Array.from(saved.get('refs').values(), (r) => Array.from(r.directionIndices)),
+    [[1, 0], [1, 1], [2, 0], [2, 1]]);
+}
+
+// Index selectors are validated before Redis writes and after deserialization.
+// Legacy direct suppliers retain their documented reference requirements.
+{
+  const indexClock = { now: 975_000 };
+  for (const directionIndices of [[], [0, 0], [-1], [0.5], [NaN], [Infinity], ['0'], null]) {
+    const backend = new FakeRedis(indexClock);
+    await expectStoreError(() => storeFor(backend, indexClock).storeSearch('supplier-trans',
+      refs({ segmentCodeRefs: [], directionIndices }), 'shapontravels'), 'integrity');
+    assert.equal(backend.calls.set, 0);
+  }
+  for (const supplier of ['takeoff', 'firsttrip', 'triplover']) {
+    await expectStoreError(() => storeFor(new FakeRedis(indexClock), indexClock).storeSearch('supplier-trans',
+      refs({ segmentCodeRefs: [], directionIndices: [0] }), supplier), 'integrity');
+  }
+  const backend = new FakeRedis(indexClock);
+  const key = 'flight:quote:v4:{00000000-0000-4000-8000-000000000001}';
+  const quoteStore = storeFor(backend, indexClock);
+  await quoteStore.storeSearch('supplier-trans', refs({ segmentCodeRefs: [], directionIndices: [0] }), 'shapontravels');
+  const { inflateRawSync, deflateRawSync } = require('node:zlib');
+  const original = JSON.parse(inflateRawSync(backend.entry(key).value.subarray(2)));
+  for (const mutate of [
+    (payload) => { payload.r['itn-0-0'].x = [-1]; },
+    (payload) => { payload.r['itn-0-0'].x = []; },
+    (payload) => { delete payload.r['itn-0-0'].x; },
+    (payload) => { payload.a = 'takeoff'; },
+  ]) {
+    const invalid = structuredClone(original);
+    mutate(invalid);
+    backend.entry(key).value = Buffer.concat([Buffer.from('b:'), deflateRawSync(Buffer.from(JSON.stringify(invalid)))]);
+    await expectStoreError(() => storeFor(backend, indexClock).readSearch('00000000-0000-4000-8000-000000000001'), 'integrity');
+  }
+}
 
 // Instance A Search -> B RePrice -> C Prepare-like durable read -> D Book
 // handoff. Each store object represents a distinct Vercel instance.

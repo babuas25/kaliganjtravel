@@ -11,6 +11,14 @@ currency retains the existing BDT contract; manual imports and stored checkout
 quotes require BDT. Currency conversion is not supported. Regression coverage
 runs with `npm run verify:booking-currency` and the Search/import checks in CI.
 
+Shapon Travels bookings refresh their ticketing deadline from the saved booking
+API through the time-limit control or staff status refresh. The client verifies
+the booking identity and uses `publicReceipt.deadline.iso` for every upstream
+supplier; it does not interpret supplier-local date text. An explicit unknown
+deadline clears stale supplier time, while local approved deadlines and overrides
+retain precedence. This refresh does not call live PNR or change payment state.
+Run `npm run verify:booking-ticketing-time` for the API and database checks.
+
 ## Local development
 
 ```bash

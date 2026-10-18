@@ -142,6 +142,18 @@ function harness(overrides = {}) {
   };
 }
 
+for (const ticketingTimeUpdated of [true, false]) {
+  const test = harness();
+  test.setRefresh(() => envelope({ success: true, data: {
+    projectionUpdated: false, ticketingTimeUpdated, ticketingDeadlineAt: '2030-10-18T19:59:00+06:00',
+  } }));
+  await test.verify();
+  assert.equal(test.routerRefreshes, ticketingTimeUpdated ? 1 : 0,
+    'Refresh renders a changed deadline even when the status projection is unchanged');
+  assert.equal(test.posts().length, 0);
+  assert.equal(test.button('Confirm Issued Ticket'), undefined);
+}
+
 for (const charged of [true, false]) {
   const test = harness();
   assert.equal(test.button('Confirm Issued Ticket'), undefined, 'confirmation starts hidden');

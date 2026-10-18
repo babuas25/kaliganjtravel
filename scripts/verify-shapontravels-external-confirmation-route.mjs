@@ -202,6 +202,8 @@ async function run(options = {}) {
     } },
     '@/lib/shapontravels/client': client,
     '@/lib/shapontravels/booking-status': statusModule,
+    '@/lib/shapontravels/ticketing-time': compile('lib/shapontravels/ticketing-time.ts', { './booking-status': statusModule }),
+    '@/lib/db/booking-ticketing-time': { saveShapontravelsTicketingTime: forbidden },
     '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async record => {
       events.push('store-status');
       assert.equal(record.bookingId, bookingId);

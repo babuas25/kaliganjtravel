@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isBookingCurrency, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
 import { BOOKING_READ_ERROR_CODE, BOOKING_READ_ERROR_MESSAGE } from '@/lib/db/booking-read-error';
-import { unverifiedBookingMessage } from '@/lib/flights/booking-failure-message';
+import { duplicateBookingWarning, unverifiedBookingMessage } from '@/lib/flights/booking-failure-message';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { createOperationRequestIdentity } from '@/lib/booking-lifecycle/operation-request';
@@ -83,9 +83,9 @@ const schema = z.object({
   contact,
 });
 
-function fail(status: number, errorCode: string, errorMessage: string) {
+function fail(status: number, errorCode: string, errorMessage: string, warning: ReturnType<typeof duplicateBookingWarning> = null) {
   return NextResponse.json(
-    { success: false, error: { errorCode, errorMessage } },
+    { success: false, error: { errorCode, errorMessage, ...(warning ? { warning } : {}) } },
     { status, headers: { 'Cache-Control': 'no-store' } }
   );
 }
@@ -642,10 +642,11 @@ export async function POST(request: NextRequest) {
       unknown ? 503 : duplicateRejected ? 409 : 502,
       terminalErrorCode,
       unknown
-        ? unverifiedBookingMessage(error instanceof Error ? error.message : null)
+        ? unverifiedBookingMessage(error instanceof Error ? error.message : null, supplierAccount === 'shapontravels')
         : duplicateRejected
           ? 'The airline rejected this booking because the same passenger already has a booking for this flight. Please check My Bookings or contact support. Do not submit the same booking again.'
-        : 'The airline declined the booking. Search and verify the fare again.'
+        : 'The airline declined the booking. Search and verify the fare again.',
+      unknown && supplierAccount === 'shapontravels' ? duplicateBookingWarning(error instanceof Error ? error.message : null) : null
     );
   }
 }

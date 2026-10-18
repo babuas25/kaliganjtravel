@@ -64,7 +64,7 @@ function nullableText(value: unknown, max = 100): string | null | undefined {
 }
 
 /** Keep the saved timestamp and offset; a GET time is not a supplier check. */
-function evidenceTime(value: unknown): string | null | undefined {
+export function evidenceTime(value: unknown): string | null | undefined {
   if (value === null) return null;
   if (typeof value !== 'string' || value.length > 64) return undefined;
   const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.exec(value);

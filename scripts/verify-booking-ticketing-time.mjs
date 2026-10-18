@@ -16,12 +16,29 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const one = async (sql, args = []) => (await db.query(sql, args)).rows[0];
 const readRow = async id => (await one('select to_jsonb(b) as row from flight_bookings b where id=$1', [id])).row;
 let bookingId, session, hidden, permitted, supplierReply, envelopeEchoes, onSupplierRead;
-let supplierCalls = [], patches = [];
+let supplierCalls = [], patches = [], savedReads = [], savedReply;
 const cache = new Map();
 class TriploverError extends Error {
   constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; }
 }
+const forbidden = () => { throw new Error('Unexpected supplier mutation, ticket or wallet call'); };
 const mocks = {
+  '@/lib/shapontravels/client': { shapontravelsReadBooking: async lookup => {
+    const booking = await readRow(bookingId);
+    assert.deepEqual(lookup, { bookingId: booking.booking_code_ref });
+    savedReads.push(lookup);
+    if (onSupplierRead) await onSupplierRead();
+    if (savedReply instanceof Error) throw savedReply;
+    return savedReply;
+  }, shapontravelsReadTicket: forbidden, shapontravelsReadCancellation: forbidden },
+  '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async () =>
+    ({ projectionUpdated: false, currentStatusStorage: 'not_recorded' }) },
+  '@/lib/shapontravels/ticket': { parseShapontravelsTicketReceipt: forbidden, shapontravelsTicketIdentityReady: forbidden },
+  '@/lib/shapontravels/cancel': { parseShapontravelsCancellationReceipt: forbidden, shapontravelsCancellationIdentityReady: forbidden },
+  '@/lib/shapontravels/external-ticket-confirmation': {
+    canConfirmShaponExternalTicket: forbidden, canOfferShaponExternalTicketConfirmation: forbidden,
+    verifyShaponExternalTicketConfirmation: forbidden,
+  },
   '@/lib/dashboard/session': { getDashboardSession: async () => session },
   '@/lib/db/ticket-management': {},
   '@/lib/db/booking-lifecycle': {},
@@ -65,6 +82,12 @@ const mocks = {
       update: value => { patch = value; patches.push(value); return builder; },
       eq: (key, value) => { filters.push([key, value]); return builder; },
       select: value => { columns = value; return builder; },
+      single: async () => {
+        assert.equal(patch, undefined);
+        assert.equal(columns, 'supplier_public_ref');
+        assert.deepEqual(filters, [['id', bookingId]]);
+        return { data: { supplier_public_ref: (await readRow(bookingId)).supplier_public_ref }, error: null };
+      },
       maybeSingle: async () => {
         const entries = Object.entries(patch);
         for (const key of [...entries.map(([k]) => k), ...filters.map(([k]) => k), ...columns.split(',')]) {
@@ -92,11 +115,47 @@ function load(file) {
     if (name === 'server-only') return {};
     if (mocks[name]) return mocks[name];
     if (name.startsWith('@/')) return load(`${name.slice(2)}.ts`);
+    if (name.startsWith('.')) return load(path.resolve(path.dirname(full), `${name}.ts`));
     return require(name);
   }, module, module.exports);
   return module.exports;
 }
 const route = load('app/api/flights/booking/refresh-ticketing-time/route.ts');
+const statusRoute = load('app/api/flights/booking/shapon-status/route.ts');
+async function makeShaponBooking() {
+  const id = randomUUID(), key = `book:${id}`;
+  const refs = { uniqueTransId: randomUUID(), itemCodeRef: randomUUID(), priceCodeRef: randomUUID() };
+  const offer = { currency: 'BDT', pricing: { sellingPrice: 500 }, passengerCounts: { ADT: 1 },
+    travelDate: '2030-10-02', directTicketing: false, itinerary: { carrierCode: 'OD', legs: [] },
+    fares: [], passportRequired: false, repricedAt: '2026-09-15T00:00:00Z' };
+  await db.query(`insert into booking_attempts(id,access_token_hash,user_id,audience,state,search_id,itinerary_id,
+    unique_trans_id,item_code_ref,price_code_ref,offer_snapshot,passenger_snapshot,expires_at,submitted_at,supplier,supplier_account,
+    operation_request_key,operation_request_payload_hash,supplier_call_started_at,supplier_response_received_at,supplier_operation)
+    values ($1,$2,'deadline-owner','b2c','submitting',$3,'fixture',$4,$5,$6,$7,'[]',
+    now()+interval '5 minutes',now()-interval '1 minute','shapontravels','shapontravels',$8,$9,now()-interval '1 minute',now(),'Book')`,
+    [id,hash(id),randomUUID(),refs.uniqueTransId,refs.itemCodeRef,refs.priceCodeRef,JSON.stringify(offer),key,hash(key)]);
+  const result = await one('select (create_shapontravels_booking_from_attempt_v1($1,$2,$3,$4)).id as id',
+    [id,key,hash(key),JSON.stringify({ status: 'held', pnr: 'PNR123', airlinesPnr: ['AIR123'],
+      bookingRefNumber: 'PNR123', bookingCodeRef: randomUUID(), supplierPublicRef: `STR${id.replaceAll('-', '').slice(0, 20).toUpperCase()}`,
+      supplierRefs: refs, bookingStatus: 'Created', ticketingTimeLimit: null,
+      ticketCodeRef: null, ticketNumbers: [], warnings: ['Keep this warning'] })]);
+  bookingId = result.id;
+}
+async function resetShapon(iso = '2030-10-18T19:59:00+06:00') {
+  await reset(); savedReads = [];
+  const b = await readRow(bookingId);
+  savedReply = { httpStatus: 200, supplierPublicRef: b.supplier_public_ref, body: {
+    item1: { uniqueTransID: b.supplier_refs.uniqueTransId, itemCodeRef: b.supplier_refs.itemCodeRef,
+      priceCodeRef: b.supplier_refs.priceCodeRef, bookingCodeRef: b.booking_code_ref,
+      bookingRefNumber: b.pnr, pnr: b.pnr, bookingStatus: 'Booked', ticketingTimeLimit: iso },
+    item2: { isSuccess: true },
+    currentStatus: { status: 'on-hold', reviewRequired: false, source: 'supplier_sync', verified: true,
+      supplierStatus: 'Booked', supplierCheckedAt: '2030-10-18T10:50:21Z' },
+    publicReceipt: { status: 'on-hold', pendingReview: false, actions: { canIssue: true },
+      deadline: { iso, raw: iso ? '18 Oct 2030, 7:59 PM' : null, timeZone: iso ? 'Asia/Dhaka' : null } },
+  } };
+}
+
 async function makeBooking(supplier = 'triplover') {
   const id = randomUUID(), key = `book:${id}`;
   const offer = { currency: 'BDT', pricing: { sellingPrice: 500 }, passengerCounts: { ADT: 1 },
@@ -125,9 +184,9 @@ async function reset() {
     ticketNumbers: ['9990000000001'], passengerInfoes: [], totalPrice: 1 };
   envelopeEchoes = [booking.supplier_refs.uniqueTransId];
 }
-async function request(body) {
+async function request(body, selectedRoute = route) {
   const b = await readRow(bookingId);
-  return route.POST(new Request('http://localhost/api/flights/booking/refresh-ticketing-time', {
+  return selectedRoute.POST(new Request('http://localhost/api/flights/booking/refresh-ticketing-time', {
     method: 'POST', body: JSON.stringify(body ?? { bookingReference: b.public_ref }),
   }));
 }
@@ -228,6 +287,92 @@ try {
   await reset(); assert.equal((await request({ bookingReference: 'invalid' })).status, 400); assert.equal(supplierCalls.length, 0);
   await reset(); assert.equal((await request({ bookingReference: (await readRow(bookingId)).public_ref, status: 'confirmed' })).status, 400);
   assert.equal(supplierCalls.length, 0);
+  // All upstream accounts share one canonical public contract. Their raw local
+  // date formats are irrelevant to this API client; no live PNR is dispatched.
+  for (const upstream of ['triplover', 'firsttrip', 'takeoff']) {
+    await makeShaponBooking(); await resetShapon();
+    savedReply.body.publicReceipt.deadline.raw = upstream === 'triplover' ? '18 Oct 2030, 7:59 PM'
+      : upstream === 'firsttrip' ? '18/10/2030 19:59:00' : '10/18/2030 19:59:00';
+    const before = await readRow(bookingId), related = await relatedData();
+    const response = await request(), result = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(result));
+    assert.equal(result.data.updated, true);
+    assert.equal(new Date(result.data.ticketingDeadlineAt).toISOString(), '2030-10-18T13:59:00.000Z');
+    const after = await readRow(bookingId);
+    assert.equal(after.supplier_deadline_source, 'supplier', 'A saved API GET is not a live PNR observation');
+    assert.deepEqual(otherData(after), otherData(before));
+    assert.deepEqual(await relatedData(), related);
+    assert.equal(savedReads.length, 1); assert.equal(supplierCalls.length, 0);
+    assert.doesNotMatch(JSON.stringify(result), /PNR123|bookingCodeRef|supplier_public_ref|uniqueTransID/);
+    await resetShapon();
+    assert.equal((await (await request()).json()).data.updated, false, 'Identical reads do not write again');
+    assert.equal(patches.length, 0);
+  }
+  // Status refresh must persist the deadline even when status metadata is
+  // unchanged or uses a newer source that the legacy status recorder skips.
+  await makeShaponBooking(); await resetShapon();
+  const beforeStatus = await readRow(bookingId), relatedStatus = await relatedData();
+  const statusResult = await (await request(undefined, statusRoute)).json();
+  assert.equal(statusResult.data.ticketingTimeUpdated, true);
+  assert.equal(statusResult.data.projectionUpdated, false);
+  assert.equal(new Date(statusResult.data.ticketingDeadlineAt).toISOString(), '2030-10-18T13:59:00.000Z');
+  assert.deepEqual(otherData(await readRow(bookingId)), otherData(beforeStatus));
+  assert.deepEqual(await relatedData(), relatedStatus);
+  assert.equal(savedReads.length, 1); assert.equal(supplierCalls.length, 0);
+
+  for (const configure of [
+    () => { savedReply.httpStatus = 202; }, () => { savedReply.httpStatus = 404; },
+    () => { savedReply.supplierPublicRef = 'STRFOREIGN123456'; },
+    ...['uniqueTransID','itemCodeRef','priceCodeRef','bookingCodeRef','pnr','bookingRefNumber'].map(key =>
+      () => { savedReply.body.item1[key] = 'foreign'; }),
+    () => { delete savedReply.body.publicReceipt.deadline; },
+    () => { delete savedReply.body.publicReceipt.deadline.iso; },
+    ...['bad','2030-02-30T19:59:00+06:00','18/10/2030 19:59:00','2030-10-18T19:59:00'].map(value =>
+      () => { savedReply.body.publicReceipt.deadline.iso = value; }),
+    () => { savedReply.body.publicReceipt.deadline.timeZone = 'UTC'; },
+    () => { savedReply.body.item1.ticketingTimeLimit = '2030-10-18T20:59:00+06:00'; },
+    () => { savedReply = new Error('Private transport detail'); },
+  ]) {
+    await resetShapon(); configure(); const before = await readRow(bookingId);
+    const response = await request(); assert.equal(response.status, 502);
+    assert.equal(patches.length, 0); assert.deepEqual(await readRow(bookingId), before);
+    assert.doesNotMatch(await response.text(), /Private transport detail|foreign/);
+  }
+  await resetShapon(null);
+  const clear = await (await request()).json();
+  assert.equal(clear.data.updated, true); assert.equal(clear.data.ticketingDeadlineAt, null);
+  assert.match(clear.data.message, /No ticketing time is saved by the supplier/);
+  assert.equal((await readRow(bookingId)).supplier_ticketing_deadline_at, null,
+    'An authoritative unknown clears stale supplier time, rather than reviving Book');
+
+  const shaponOverride = await one(`insert into superadmin_booking_deadline_overrides(booking_id,request_key,effective_deadline_at,actor_user_id,actor_role)
+    values($1,$2,'2030-11-01T12:00:00Z','deadline-superadmin','superadmin') returning id`, [bookingId, randomUUID()]);
+  await db.query('update flight_bookings set active_superadmin_deadline_override_id=$2 where id=$1', [bookingId, shaponOverride.id]);
+  await resetShapon(); const beforeOverride = await readRow(bookingId);
+  const resultOverride = await (await request()).json();
+  assert.equal(new Date(resultOverride.data.ticketingDeadlineAt).toISOString(), '2030-11-01T12:00:00.000Z');
+  assert.deepEqual(otherData(await readRow(bookingId)), otherData(beforeOverride));
+  await resetShapon(null);
+  assert.equal(new Date((await (await request()).json()).data.ticketingDeadlineAt).toISOString(), '2030-11-01T12:00:00.000Z');
+  await resetShapon();
+  let racedShapon;
+  onSupplierRead = async () => { await db.query("update flight_bookings set supplier_message='Concurrent change' where id=$1", [bookingId]); racedShapon = await readRow(bookingId); };
+  assert.equal((await request()).status, 409);
+  assert.deepEqual(await readRow(bookingId), racedShapon);
+  for (const [configure, status] of [
+    [() => { session = null; }, 401], [() => { session.role = 'staff_media'; }, 403],
+    [() => { session = { clerkId: 'someone-else', role: 'customer' }; }, 404],
+    [() => { session = { clerkId: 'deadline-owner', role: 'b2b', agencyCode: 'foreign' }; }, 404],
+    [() => { hidden = true; }, 404], [() => { permitted = false; }, 429],
+  ]) {
+    await resetShapon(); configure(); assert.equal((await request()).status, status);
+    assert.equal(savedReads.length, 0); assert.equal(patches.length, 0);
+  }
+  for (const role of ['customer','b2b','b2b_sub','admin','superadmin']) {
+    await resetShapon(); session = { clerkId: 'deadline-owner', role, agencyCode: null };
+    assert.equal((await request()).status, 200); assert.equal(savedReads.length, 1);
+  }
+  console.log('Saved API deadlines passed for every upstream supplier: scoped route, status refresh, canonical/null evidence, local authority, stale-write and financial isolation.');
   console.log('Manual PNR deadline refresh passed: full-row preservation, wallet/event isolation, local overrides, identity/date guards, stale-write rejection, scope, limits and all three suppliers.');
 } finally {
   await db.close();

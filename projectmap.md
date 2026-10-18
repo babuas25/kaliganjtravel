@@ -1005,12 +1005,21 @@ Triplover answered HTTP 200 with a plain-text .NET exception: that becomes a con
 
 ### Alternative flights under one reference
 
-When a route lists several directions, each becomes its own results card flagged
-`ambiguousSelection`, and the Itinerary footer panel says so. Flattening them would render a nonsense
-"DAC→CXB then DAC→CXB" journey; dropping them would silently lose a fifth of the results on a
-domestic route.
+When a route lists several directions, Search expands one selected direction per route into
+separate itineraries (subject to the existing combination cap). For the Shapontravels API,
+each option retains its original zero-based `directionIndices` in the private Redis graph.
+Missing, null or repeated segment references do not discard an otherwise valid option:
+BG305 DAC→FCO→YYZ, for example, can legitimately share one reference across two sectors.
+Incomplete reference vectors are stored as empty; complete repeated vectors stay intact.
 
-This is a display decision only, and it does not survive into booking — see below.
+Shapontravels Reprice and FareRules send the saved indices instead of `segmentCodeRefs`, never
+both selectors. The backend resolves the owned saved directions and supplier references.
+Reprice must return the same ordered flights, endpoints, dates and times before the refreshed
+price can reach Prepare. FareRules can be unavailable if the backend cannot uniquely identify
+the original supplier rules; this does not disable Reprice. Existing quote snapshots without
+indices retain their legacy reference-based flow until expiry. Direct Triplover, FirstTrip and
+Takeoff integrations still require their existing complete, unique reference vectors; the
+index selector is specific to the Shapontravels API aggregating those suppliers.
 
 ### Authentication and the token cache
 

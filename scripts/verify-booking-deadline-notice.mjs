@@ -120,6 +120,32 @@ assert.match(content(), /did not return a new ticketing time/);
 assert.equal(refreshes, 1, 'No page refresh when supplier returned no new time');
 
 reset();
+toggle(true);
+await settle(success(false, savedTime));
+assert.match(content(), /2 Oct 2030, 14:15/);
+assert.doesNotMatch(content(), /did not return a new ticketing time/,
+  'An unchanged known API deadline is still available');
+assert.equal(refreshes, 0);
+
+const missingSavedTime = 'No ticketing time is saved by the supplier yet. Contact support to refresh the supplier time limit.';
+reset();
+toggle(true);
+await settle({ success: true, data: { updated: true, ticketingDeadlineAt: null, message: missingSavedTime } });
+assert.match(content(), /Ticketing time unavailable/);
+assert.ok(content().includes(missingSavedTime));
+assert.doesNotMatch(content(), /Issue before|2 Oct 2030, 14:15/,
+  'An explicit authoritative null removes the old deadline');
+assert.equal(refreshes, 1);
+
+reset({ deadline: null });
+toggle(true);
+await settle({ success: true, data: { updated: false, ticketingDeadlineAt: null, message: missingSavedTime } });
+assert.ok(content().includes(missingSavedTime));
+assert.doesNotMatch(content(), /supplier did not return/,
+  'A saved API read must not claim that the supplier was queried');
+assert.equal(refreshes, 0);
+
+reset();
 toggle(true); toggle(false); toggle(true);
 assert.equal(requests.length, 1, 'Fast repeated clicks must share the pending read');
 toggle(false);

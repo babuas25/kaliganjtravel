@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import {
   FormEvent,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -22,6 +23,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import BookingDetails from '@/components/flights/BookingDetails';
+import BookingFailureNotice from '@/components/flights/BookingFailureNotice';
+import type { DuplicateBookingWarning } from '@/lib/flights/booking-failure-message';
 import CheckoutStepper from '@/components/flights/CheckoutStepper';
 import CheckoutSummary, {
   useOfferExpiry,
@@ -51,7 +54,7 @@ import type { PassengerProfile } from '@/lib/passengers';
 
 type Failure = {
   success: false;
-  error: { errorCode: string; errorMessage: string };
+  error: { errorCode: string; errorMessage: string; warning?: DuplicateBookingWarning };
 };
 type AttemptEnvelope = { success: true; data: PublicBookingAttempt } | Failure;
 type BookingEnvelope = { success: true; data: PublicBooking } | Failure;
@@ -292,7 +295,12 @@ export default function BookingCheckout({
   const [passengersOpen, setPassengersOpen] = useState(true);
   const [contactOpen, setContactOpen] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorText] = useState<string | null>(null);
+  const [warning, setWarning] = useState<DuplicateBookingWarning | null>(null);
+  const setError = useCallback((message: string | null, bookingWarning: DuplicateBookingWarning | null = null) => {
+    setErrorText(message);
+    setWarning(bookingWarning);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submissionLocked, setSubmissionLocked] = useState(false);
@@ -356,11 +364,11 @@ export default function BookingCheckout({
               return;
             }
             if (!recovered.success) {
-              setError(recovered.error.errorMessage);
+              setError(recovered.error.errorMessage, recovered.error.warning);
               return;
             }
           }
-          setError(envelope.error.errorMessage);
+          setError(envelope.error.errorMessage, envelope.error.warning);
           return;
         }
         setAttempt(envelope.data);
@@ -375,7 +383,7 @@ export default function BookingCheckout({
       })
       .catch(() => setError('The booking draft could not be loaded.'))
       .finally(() => setLoading(false));
-  }, [accessToken, bookingId, router]);
+  }, [accessToken, bookingId, router, setError]);
 
   useEffect(() => {
     let mounted = true;
@@ -718,7 +726,7 @@ export default function BookingCheckout({
               return;
             }
             if (!recovered.success) {
-              setError(recovered.error.errorMessage);
+              setError(recovered.error.errorMessage, recovered.error.warning);
               return;
             }
           } catch {
@@ -728,7 +736,7 @@ export default function BookingCheckout({
             return;
           }
         }
-        setError(envelope.error.errorMessage);
+        setError(envelope.error.errorMessage, envelope.error.warning);
       } else {
         sessionStorage.removeItem(`kaliganj-booking-${bookingId}`);
         setBooking(envelope.data);
@@ -752,7 +760,7 @@ export default function BookingCheckout({
             `/dashboard/bookings/${encodeURIComponent(recovered.data.publicRef)}?created=1`
           );
         } else if (!recovered.success) {
-          setError(recovered.error.errorMessage);
+          setError(recovered.error.errorMessage, recovered.error.warning);
         } else {
           setError(
             'Your booking is still being confirmed. Do not submit again; refresh this page shortly.'
@@ -798,7 +806,7 @@ export default function BookingCheckout({
     return (
       <div className="rounded-lg bg-white p-10 text-center ring-1 ring-neutral-200">
         <AlertCircle className="mx-auto h-7 w-7 text-brand-orange" />
-        <p className="mt-3 font-semibold">{error}</p>
+        {error && <BookingFailureNotice message={error} warning={warning} />}
       </div>
     );
   }
@@ -1443,12 +1451,7 @@ export default function BookingCheckout({
               </ReviewCard>
 
               {error && (
-                <p
-                  role="alert"
-                  className="rounded-lg bg-red-50 p-3 text-sm text-red-800 ring-1 ring-red-200"
-                >
-                  {error}
-                </p>
+                <BookingFailureNotice message={error} warning={warning} />
               )}
             </div>
           )}

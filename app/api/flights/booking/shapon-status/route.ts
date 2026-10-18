@@ -3,6 +3,8 @@ import { getDashboardSession } from '@/lib/dashboard/session';
 import { canRefreshBookingSupplierDetails } from '@/lib/dashboard/booking-lifecycle';
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
 import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
+import { saveShapontravelsTicketingTime } from '@/lib/db/booking-ticketing-time';
+import { shapontravelsTicketingTime } from '@/lib/shapontravels/ticketing-time';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { shapontravelsReadBooking, shapontravelsReadTicket, shapontravelsReadCancellation } from '@/lib/shapontravels/client';
 import { verifyShapontravelsBookingStatus } from '@/lib/shapontravels/booking-status';
@@ -79,6 +81,8 @@ export async function POST(request: Request) {
       return walletFail(409, 'SUPPLIER_IDENTITY_UNVERIFIED',
         'Supplier details did not verify against this booking. Staff reconciliation is required.');
     }
+    const deadline = shapontravelsTicketingTime(read, expected);
+    const savedDeadline = deadline ? await saveShapontravelsTicketingTime(booking, deadline) : null;
     const storage = await recordShapontravelsCurrentStatus({
       bookingId: booking.id, requestStartedAt, expected, status,
     });
@@ -152,7 +156,10 @@ export async function POST(request: Request) {
         }
       }
     }
-    return walletOk({ ...status, supplierTicket, supplierCancellation, externalTicketConfirmation, ...storage });
+    return walletOk({ ...status, supplierTicket, supplierCancellation, externalTicketConfirmation, ...storage,
+      ticketingTimeUpdated: savedDeadline?.updated === true,
+      ...(savedDeadline ? { ticketingDeadlineAt: savedDeadline.ticketingDeadlineAt } : {}),
+    });
   } catch (error) {
     console.error('[shapontravels] booking status read failed', {
       bookingId: booking.id,

@@ -357,7 +357,8 @@ export default async function BookingDetailsPage({
         }
         autoRefreshDeadline={false}
         allowTicketingTimeRefresh={
-          row.supplier === 'triplover' && row.import_source !== 'MANUAL' &&
+          ((row.supplier === 'triplover' && row.import_source !== 'MANUAL') ||
+            (row.supplier === 'shapontravels' && row.supplier_account === 'shapontravels' && !row.import_source)) &&
           Boolean(row.supplier_account && storedTicketReferences(row)) &&
           canRefreshBookingTicketingTime(session.role)
         }

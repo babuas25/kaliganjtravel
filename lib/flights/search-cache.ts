@@ -105,13 +105,15 @@ export type ItineraryRefs = {
   itemCodeRef: string;
   /** Flattened across every requested route in route order. */
   segmentCodeRefs: string[];
+  /** Shapontravels: one saved alternative index per requested route. */
+  directionIndices?: number[];
   /** Such a selection cannot be repriced unambiguously yet. */
   ambiguousSelection: boolean;
   /**
    * Search grouped alternate directions under one item reference. This remains
-   * selectable only when its own segment-reference vector is complete, and
-   * RePrice must echo the exact displayed itinerary before Book can use its
-   * resulting price reference.
+   * selectable through saved direction indices or a complete legacy reference
+   * vector. RePrice must echo the exact displayed itinerary before Book can
+   * use its resulting price reference.
    */
   alternativeSelection?: boolean;
   /** Inputs required to select and recalculate the rule after RePrice. */
@@ -202,6 +204,8 @@ type CompactItineraryRefs = {
   d: CompactStoredString;
   /** true only for an alternative selection */
   a?: 1;
+  /** Shapontravels saved direction indices; absent on legacy quotes. */
+  x?: number[];
 };
 
 type RedisQuotePayload = {
@@ -462,6 +466,7 @@ function compactReferenceGraph(refs: Map<string, ItineraryRefs>): {
       t: itineraryIndex,
       d: value.bookingSnapshotDigest,
       ...(value.alternativeSelection ? { a: 1 as const } : {}),
+      ...(value.directionIndices !== undefined ? { x: value.directionIndices } : {}),
     };
   });
 
@@ -616,7 +621,34 @@ function displayedSegmentCount(value: ItinerarySelectionSignature): number {
   return value.legs.reduce((count, leg) => count + leg.segments.length, 0);
 }
 
-function hasCompleteSelectableReferences(refs: ItineraryRefs): boolean {
+function validDirectionIndices(value: unknown, routeCount: number): value is number[] {
+  return (
+    Array.isArray(value) &&
+    routeCount >= 1 && routeCount <= 6 &&
+    value.length === routeCount &&
+    value.every((index) => Number.isSafeInteger(index) && index >= 0)
+  );
+}
+
+function hasCompleteSelectableReferences(
+  refs: ItineraryRefs,
+  supplierAccount: FlightReadSupplier
+): boolean {
+  if (refs.directionIndices !== undefined) {
+    return (
+      supplierAccount === 'shapontravels' &&
+      refs.ambiguousSelection === false &&
+      nonEmptyText(refs.itemCodeRef) &&
+      validSelectionSignature(refs.selection) &&
+      validDirectionIndices(refs.directionIndices, refs.selection.legs.length) &&
+      refs.context.routes.length === refs.directionIndices.length &&
+      /^[A-Za-z0-9_-]{43}$/.test(refs.bookingSnapshotDigest) &&
+      Array.isArray(refs.segmentCodeRefs) &&
+      refs.segmentCodeRefs.every(nonEmptyText) &&
+      (refs.segmentCodeRefs.length === 0 ||
+        refs.segmentCodeRefs.length === displayedSegmentCount(refs.selection))
+    );
+  }
   if (refs.ambiguousSelection) return true;
   return (
     nonEmptyText(refs.itemCodeRef) &&
@@ -922,7 +954,8 @@ function hydrateCompactRefs(
   value: unknown,
   compactContext: CompactSearchContext,
   rawSelections: unknown,
-  rawReferenceDictionary: unknown
+  rawReferenceDictionary: unknown,
+  supplierAccount: FlightReadSupplier
 ): Map<string, ItineraryRefs> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (!Array.isArray(rawSelections)) return null;
@@ -979,6 +1012,7 @@ function hydrateCompactRefs(
       segmentCodeRefs: segmentCodeRefs as string[],
       ambiguousSelection: false,
       alternativeSelection: candidate.a === 1,
+      ...(candidate.x !== undefined ? { directionIndices: candidate.x } : {}),
       context: {
         carrierCode,
         routes,
@@ -992,7 +1026,7 @@ function hydrateCompactRefs(
       selection,
       bookingSnapshotDigest,
     };
-    if (!hasCompleteSelectableReferences(hydrated)) return null;
+    if (!hasCompleteSelectableReferences(hydrated, supplierAccount)) return null;
     refs.set(key, hydrated);
   }
   return refs;
@@ -1185,7 +1219,7 @@ function validateSearchCandidate(candidate: SearchCandidate, currentTime: number
     if (
       !nonEmptyText(itineraryId) ||
       !nonEmptyText(refs.itemCodeRef) ||
-      !hasCompleteSelectableReferences(refs)
+      !hasCompleteSelectableReferences(refs, candidate.supplierAccount)
     ) {
       throw new SearchReferenceStoreError(
         'integrity',
@@ -1205,8 +1239,8 @@ function hydrateQuote(payload: unknown, now: number): StoredSearch | null {
   const uniqueTransId = candidate.u;
   const expiresAt = candidate.e;
   const compactContext = hydrateCompactContext(candidate.c);
-  const refsByItineraryId = compactContext
-    ? hydrateCompactRefs(candidate.r, compactContext, candidate.t, candidate.h)
+  const refsByItineraryId = compactContext && isFlightReadSupplier(supplierAccount)
+    ? hydrateCompactRefs(candidate.r, compactContext, candidate.t, candidate.h, supplierAccount)
     : null;
   if (
     schemaVersion !== QUOTE_SCHEMA_VERSION ||

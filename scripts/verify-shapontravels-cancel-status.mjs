@@ -147,6 +147,8 @@ async function invoke({ readStatus = 200, receipt = cancellationReceipt, readErr
     },
     '@/lib/shapontravels/client': client,
     '@/lib/shapontravels/booking-status': bookingStatus,
+    '@/lib/shapontravels/ticketing-time': compile('lib/shapontravels/ticketing-time.ts', { './booking-status': bookingStatus }),
+    '@/lib/db/booking-ticketing-time': { saveShapontravelsTicketingTime: forbiddenWrite },
     '@/lib/shapontravels/external-ticket-confirmation': externalConfirmation,
     '@/lib/shapontravels/current-status-store': {
       async recordShapontravelsCurrentStatus({ bookingId, requestStartedAt, expected, status }) {

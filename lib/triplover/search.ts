@@ -107,7 +107,7 @@ type RawSegment = {
   isCodeShared?: unknown;
   isCodeshare?: unknown;
   flightNumber?: string;
-  segmentCodeRef?: string;
+  segmentCodeRef?: string | null;
   serviceClass?: string;
   bookingClass?: string;
   bookingCount?: string;
@@ -197,10 +197,10 @@ const MAX_COMBINATIONS_PER_OFFER = 12;
  * Flattening them into a single itinerary would render a nonsense
  * "DAC→CXB then DAC→CXB" journey, so each alternative becomes its own card.
  * Triplover can provide a distinct, ordered `segmentCodeRef` vector for every
- * card even though `itemCodeRef` is shared. Such a card is selectable only
- * when that vector is complete and unique; RePrice then has to echo the exact
- * displayed itinerary before its price reference can reach Book. Missing or
- * duplicate segment references remain `ambiguousSelection` and fail closed.
+ * card even though `itemCodeRef` is shared. Direct supplier integrations need
+ * that complete, unique vector. Shapontravels instead selects the exact saved
+ * alternative by index, including when references are missing or repeated.
+ * RePrice must then echo the displayed itinerary before Book can use it.
  */
 function expandRouteAlternatives(directions: RawDirection[][]): RawDirection[][] | null {
   const total = directions.reduce((product, route) => product * Math.max(route.length, 1), 1);
@@ -373,16 +373,15 @@ type SupplierRefs = Pick<
   ItineraryRefs,
   | 'itemCodeRef'
   | 'segmentCodeRefs'
+  | 'directionIndices'
   | 'ambiguousSelection'
   | 'alternativeSelection'
 >;
 
 /**
- * A supplier may group alternate directions under one `itemCodeRef`. Each
- * displayed combination is safe to send to RePrice only when every displayed
- * segment contributes one non-empty, non-duplicated reference in journey
- * order. A shared segment across *different* combinations is fine; duplicate
- * references inside the same chosen journey are not.
+ * Legacy direct integrations identify a selection by its complete, unique
+ * reference vector. Shapontravels can instead resolve saved direction indices,
+ * so its repeated or missing references do not make that selection ambiguous.
  */
 function completeSelectionSegmentRefs(
   combination: RawDirection[],
@@ -397,7 +396,9 @@ function completeSelectionSegmentRefs(
     return null;
   }
 
-  const refs = rawSegments.map((segment) => segment.segmentCodeRef?.trim() ?? '');
+  const refs = rawSegments.map((segment) =>
+    typeof segment.segmentCodeRef === 'string' ? segment.segmentCodeRef.trim() : ''
+  );
   if (refs.some((ref) => ref.length === 0) || new Set(refs).size !== refs.length) {
     return null;
   }
@@ -434,7 +435,8 @@ function hasOverlappingLegs(legs: ItineraryLeg[]): boolean {
 /** Maps one supplier offer into zero or more itineraries. */
 function mapOffer(
   offer: RawOffer,
-  index: number
+  index: number,
+  useDirectionIndices = false
 ): { itineraries: SupplierItinerary[]; refs: SupplierRefs[] } | null {
   const directions = offer.directions;
   const itemCodeRef = offer.itemCodeRef?.trim();
@@ -453,22 +455,31 @@ function mapOffer(
   combinations.forEach((combination, combinationIndex) => {
     const legs = combination.map(mapLeg).filter((leg): leg is ItineraryLeg => leg !== null);
     // One unmappable leg means we do not know the whole journey — drop it all.
-    if (legs.length !== combination.length) return;
+    if (legs.length !== combination.length || combination.some((direction, routeIndex) =>
+      direction.segments?.length !== legs[routeIndex].segments.length
+    )) return;
     // Grouped outbound/return alternatives may form impossible combinations.
     // Drop those before exposing a card or persisting supplier references.
     if (hasOverlappingLegs(legs)) return;
 
     const incompleteSegmentCodeRefs = combination.flatMap((direction) =>
       (direction.segments ?? [])
-        .map((segment) => segment.segmentCodeRef?.trim())
+        .map((segment) => typeof segment.segmentCodeRef === 'string' ? segment.segmentCodeRef.trim() : '')
         .filter((ref): ref is string => Boolean(ref))
     );
     const selectedSegmentCodeRefs = completeSelectionSegmentRefs(combination, legs);
-    // A missing/duplicate vector is never safe to RePrice, whether this is a
-    // grouped alternative or a single supplier direction. The entry point
-    // below excludes it before any public result or Redis quote is created.
-    const ambiguousSelection = selectedSegmentCodeRefs === null;
-    const segmentCodeRefs = selectedSegmentCodeRefs ?? incompleteSegmentCodeRefs;
+    const directionIndices = useDirectionIndices
+      ? combination.map((direction, routeIndex) => directions[routeIndex].indexOf(direction))
+      : undefined;
+    const ambiguousSelection = !useDirectionIndices && selectedSegmentCodeRefs === null;
+    // Index selection never needs a partial reference vector. Keep complete
+    // vectors (including repeats) as evidence; omit incomplete vectors.
+    const rawSegmentCount = combination.reduce(
+      (count, direction) => count + (direction.segments?.length ?? 0), 0
+    );
+    const segmentCodeRefs = useDirectionIndices
+      ? (incompleteSegmentCodeRefs.length === rawSegmentCount ? incompleteSegmentCodeRefs : [])
+      : selectedSegmentCodeRefs ?? incompleteSegmentCodeRefs;
 
     const id = `itn-${index}-${combinationIndex}`;
 
@@ -497,6 +508,7 @@ function mapOffer(
       segmentCodeRefs,
       ambiguousSelection,
       alternativeSelection,
+      ...(directionIndices !== undefined ? { directionIndices } : {}),
     });
   });
 
@@ -506,7 +518,7 @@ function mapOffer(
 function completeReferenceVector(
   refs: Pick<
     ItineraryRefs,
-    'itemCodeRef' | 'segmentCodeRefs' | 'ambiguousSelection'
+    'itemCodeRef' | 'segmentCodeRefs' | 'directionIndices' | 'ambiguousSelection'
   >,
   itinerary: { legs: ItineraryLeg[] }
 ): boolean {
@@ -515,6 +527,15 @@ function completeReferenceVector(
     0
   );
   const vector = refs.segmentCodeRefs.map((value) => value.trim());
+  if (refs.directionIndices !== undefined) {
+    return (
+      refs.itemCodeRef.trim().length > 0 && segmentCount > 0 &&
+      refs.directionIndices.length === itinerary.legs.length &&
+      refs.directionIndices.length <= 6 &&
+      refs.directionIndices.every((index) => Number.isSafeInteger(index) && index >= 0) &&
+      (vector.length === 0 || vector.length === segmentCount) && vector.every(Boolean)
+    );
+  }
   return (
     refs.itemCodeRef.trim().length > 0 &&
     segmentCount > 0 &&
@@ -826,7 +847,7 @@ export async function searchFlights(
   let droppedOfferCount = 0;
 
   offers.forEach((offer, index) => {
-    const mapped = mapOffer(offer, index);
+    const mapped = mapOffer(offer, index, isShapontravels);
     if (!mapped) {
       droppedOfferCount += 1;
       return;

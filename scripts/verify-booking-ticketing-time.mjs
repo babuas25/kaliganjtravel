@@ -23,6 +23,8 @@ class TriploverError extends Error {
 }
 const forbidden = () => { throw new Error('Unexpected supplier mutation, ticket or wallet call'); };
 const mocks = {
+  '@/lib/db/booking-payment-resolution': { BOOKING_PAYMENT_EFFECTS: ['charge_wallet','capture_hold','already_paid'], previewShaponTicketPayment: forbidden },
+  '@/lib/shapontravels/cancellation-recovery': { verifyShaponCancellationRecovery: forbidden },
   '@/lib/shapontravels/client': { shapontravelsReadBooking: async lookup => {
     const booking = await readRow(bookingId);
     assert.deepEqual(lookup, { bookingId: booking.booking_code_ref });
@@ -33,10 +35,11 @@ const mocks = {
   }, shapontravelsReadTicket: forbidden, shapontravelsReadCancellation: forbidden },
   '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async () =>
     ({ projectionUpdated: false, currentStatusStorage: 'not_recorded' }) },
-  '@/lib/shapontravels/ticket': { parseShapontravelsTicketReceipt: forbidden, shapontravelsTicketIdentityReady: forbidden },
+  '@/lib/shapontravels/ticket': { parseShapontravelsTicketEvidence: forbidden, shapontravelsTicketIdentityReady: forbidden },
   '@/lib/shapontravels/cancel': { parseShapontravelsCancellationReceipt: forbidden, shapontravelsCancellationIdentityReady: forbidden },
   '@/lib/shapontravels/external-ticket-confirmation': {
-    canConfirmShaponExternalTicket: forbidden, canOfferShaponExternalTicketConfirmation: forbidden,
+    canConfirmShaponExternalTicket: role => role === 'admin' || role === 'superadmin',
+    canOfferShaponExternalTicketConfirmation: forbidden, isShaponTicketingRecovery: forbidden,
     verifyShaponExternalTicketConfirmation: forbidden,
   },
   '@/lib/dashboard/session': { getDashboardSession: async () => session },

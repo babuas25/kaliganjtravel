@@ -12,6 +12,9 @@ function compile(file, imports, globals = {}) {
     module, exports: module.exports,
     require(name) {
       if (name === 'server-only') return {};
+      if (file === 'lib/shapontravels/ticket.ts' && name === './booking-status') {
+        return compile('lib/shapontravels/booking-status.ts', {});
+      }
       assert.ok(name in imports, `Unexpected import ${name}`);
       return imports[name];
     },

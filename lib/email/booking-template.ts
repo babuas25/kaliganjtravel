@@ -1,4 +1,5 @@
 import { airlinePnrs as validAirlinePnrs } from '@/lib/flights/airline-pnr';
+import { bookingTicketDisplay } from '@/lib/flights/ticket-display';
 
 import type {
   BookingStatus,
@@ -251,17 +252,15 @@ function sectionHeading(iconName: string, title: string): string {
 function renderPassengers(input: MasterBookingEmailInput): string {
   const { booking, travellers, variant } = input;
   const namedTravellers = travellers.filter((traveller) => traveller.lastName.trim() !== '');
-  const ticketsAlign =
-    booking.ticketNumbers.length > 0 &&
-    booking.ticketNumbers.length === namedTravellers.length;
-  const ticketColumn = variant.passengerMode === 'ticketing' || ticketsAlign;
+  const ticketDisplay = bookingTicketDisplay(booking, namedTravellers.length);
+  const ticketColumn = variant.passengerMode === 'ticketing' || ticketDisplay.showPassengerColumn;
   const columnWidths = ticketColumn
       ? ['33%', '12%', '15%', '18%', '22%']
       : ['45%', '15%', '15%', '25%'];
   const colgroup = `<colgroup>${columnWidths
     .map((width) => `<col style="width:${width}">`)
     .join('')}</colgroup>`;
-  const heading = `<tr style="background:#f8fafc;color:#64748b"><th align="left" style="padding:9px">PASSENGER</th><th align="left" style="padding:9px">TYPE</th><th align="left" style="padding:9px">GENDER</th><th align="left" style="padding:9px">DATE OF BIRTH</th>${ticketColumn ? '<th align="right" style="padding:9px">TICKET NUMBER</th>' : ''}</tr>`;
+  const heading = `<tr style="background:#f8fafc;color:#64748b"><th align="left" style="padding:9px">PASSENGER</th><th align="left" style="padding:9px">TYPE</th><th align="left" style="padding:9px">GENDER</th><th align="left" style="padding:9px">DATE OF BIRTH</th>${ticketColumn ? `<th align="right" style="padding:9px">${escapeHtml(ticketDisplay.columnLabel.toUpperCase())}</th>` : ''}</tr>`;
 
   const rows = namedTravellers.map((traveller, index) => {
     const name = [traveller.title, traveller.firstName, traveller.lastName]
@@ -269,7 +268,7 @@ function renderPassengers(input: MasterBookingEmailInput): string {
       .join(' ')
       .toUpperCase();
     const nationality = countryName(traveller.nationality).toUpperCase();
-    const ticket = ticketsAlign ? booking.ticketNumbers[index] : '--';
+    const ticket = ticketDisplay.passengers[index]?.text ?? ticketDisplay.unavailableValue;
     const commonPassenger = `<td valign="top" style="padding:11px;border-top:1px solid #e2e8f0;font-weight:700;color:#172b45">${escapeHtml(name)}<div style="margin-top:4px;font-size:10px;font-weight:400;color:#64748b">NATIONALITY <strong style="color:#172b45">${escapeHtml(nationality)}</strong></div></td><td valign="top" style="padding:11px;border-top:1px solid #e2e8f0">${escapeHtml(PASSENGER_LABELS[traveller.passengerType])}</td>`;
     return `<tr>${commonPassenger}<td valign="top" style="padding:11px;border-top:1px solid #e2e8f0">${escapeHtml(traveller.gender)}</td><td valign="top" style="padding:11px;border-top:1px solid #e2e8f0">${escapeHtml(formatDate(traveller.dateOfBirth))}</td>${ticketColumn ? `<td align="right" valign="top" style="padding:11px;border-top:1px solid #e2e8f0;font-weight:700;color:#172b45">${escapeHtml(ticket)}</td>` : ''}</tr>`;
   }).join('');
@@ -280,6 +279,8 @@ function renderPassengers(input: MasterBookingEmailInput): string {
     <table role="presentation" class="booking-passenger-table" width="100%" cellspacing="0" cellpadding="0" style="width:100%;table-layout:fixed;border:1px solid #e2e8f0;border-radius:0;overflow:hidden;font-size:11px;line-height:1.4;word-break:break-word">
       ${colgroup}${heading}${rows || fallback}
     </table>
+    ${ticketDisplay.sharedAirlinePnr ? '<p style="font-size:10px;color:#64748b">Airline PNR applies to this booking and is shared across its passengers.</p>' : ''}
+    ${ticketDisplay.unassignedTicketNumbers.length > 0 ? `<p style="font-size:10px;color:#64748b">Booking ticket numbers: ${escapeHtml(ticketDisplay.unassignedTicketNumbers.join(', '))}. Ticket numbers could not be matched to individual passengers.</p>` : ''}
   </td></tr>`;
 }
 
@@ -404,11 +405,12 @@ function plainText(input: MasterBookingEmailInput): string {
   const { booking, travellers, variant } = input;
   const pnr = validAirlinePnrs(booking.airlinesPnr).join(', ') || 'Not available';
   const trip = tripSummary(booking);
+  const ticketDisplay = bookingTicketDisplay(booking, travellers.length);
   const passengers = travellers.map((traveller, index) => {
-    const ticket = booking.ticketNumbers.length === travellers.length
-      ? booking.ticketNumbers[index]
-      : null;
-    return `- ${traveller.title} ${traveller.firstName} ${traveller.lastName} | ${PASSENGER_LABELS[traveller.passengerType]} | ${traveller.gender} | DOB ${formatDate(traveller.dateOfBirth)} | Nationality ${countryName(traveller.nationality)}${ticket ? ` | Ticket ${ticket}` : ''}`;
+    const identifier = ticketDisplay.passengers[index];
+    const ticket = identifier ? ` | ${identifier.label} ${identifier.value}`
+      : ticketDisplay.showPassengerColumn ? ` | ${ticketDisplay.columnLabel} ${ticketDisplay.unavailableValue}` : '';
+    return `- ${traveller.title} ${traveller.firstName} ${traveller.lastName} | ${PASSENGER_LABELS[traveller.passengerType]} | ${traveller.gender} | DOB ${formatDate(traveller.dateOfBirth)} | Nationality ${countryName(traveller.nationality)}${ticket}`;
   }).join('\n');
   const itinerary = (booking.itinerary?.legs ?? []).flatMap((leg) =>
     leg.segments.map((segment) =>
@@ -430,7 +432,7 @@ ${variant.activityLabel}: ${formatActivity(variant.activityAt)}${deadline}
 Payment status: ${PAYMENT_LABELS[booking.paymentState]}
 
 Passenger & Ticket Details
-${passengers || '- Passenger details unavailable'}
+${passengers || '- Passenger details unavailable'}${ticketDisplay.sharedAirlinePnr ? '\nAirline PNR applies to this booking and is shared across its passengers.' : ''}${ticketDisplay.unassignedTicketNumbers.length > 0 ? `\nBooking ticket numbers: ${ticketDisplay.unassignedTicketNumbers.join(', ')}. Ticket numbers could not be matched to individual passengers.` : ''}
 
 Flight Itinerary
 ${itinerary || '- Itinerary unavailable'}

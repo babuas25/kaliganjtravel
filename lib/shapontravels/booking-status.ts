@@ -15,7 +15,7 @@ const CURRENT_STATUSES = [
 ] as const;
 const CURRENT_SOURCES = [
   'supplier_pnr', 'ticket_operation', 'cancellation_operation', 'admin_decision',
-  'staff_manual', 'saved_booking', 'saved_import', 'public_receipt',
+  'staff_manual', 'saved_booking', 'saved_import', 'airline_refresh', 'public_receipt', 'supplier_sync',
 ] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export type ShapontravelsCurrentStatus = {
@@ -52,6 +52,193 @@ function object(value: unknown): Record<string, unknown> | null {
     ? value as Record<string, unknown> : null;
 }
 
+type ReceiptEnvelope = {
+  envelope: Record<string, unknown>;
+  receipt: Record<string, unknown>;
+  savedBooking: Record<string, unknown> | null;
+};
+
+function sameSavedData(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length &&
+      left.every((value, index) => sameSavedData(value, right[index]));
+  }
+  const a = object(left), b = object(right);
+  return Boolean(a && b && Object.keys(a).length === Object.keys(b).length &&
+    Object.keys(a).every(key => Object.hasOwn(b, key) && sameSavedData(a[key], b[key])));
+}
+
+/** Canonical rows may repeat one passenger ticket across multiple segments. */
+function ticketIdentifierSet(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const identifiers = new Set<string>();
+  for (const valueRow of value) {
+    const row = object(valueRow);
+    if (!row || !Array.isArray(row.ticketNumbers) || row.ticketNumbers.length === 0 ||
+        row.ticketNumbers.some(number => typeof number !== 'string' ||
+          number.length === 0 || number !== number.trim())) return null;
+    for (const number of row.ticketNumbers as string[]) identifiers.add(number);
+  }
+  return Array.from(identifiers).sort();
+}
+
+/** Both authenticated reads must describe the same saved passenger/flight/ticket snapshot. */
+export function matchingShapontravelsSavedTicketSnapshots(bookingBody: unknown, ticketBody: unknown): boolean {
+  const booking = normalizeShapontravelsReceiptEnvelope(bookingBody);
+  const ticket = normalizeShapontravelsReceiptEnvelope(ticketBody);
+  if (!booking || !ticket) return false;
+  if (!booking.savedBooking && !ticket.savedBooking) return true;
+  if (!booking.savedBooking || !ticket.savedBooking) return false;
+  return ['bookingId', 'reference', 'passengerInfoes', 'segments', 'ticketInfoes', 'fareBreakdown', 'ticketCodeRef']
+    .every(key => sameSavedData(booking.savedBooking![key], ticket.savedBooking![key]));
+}
+
+/**
+ * The saved-v1 endpoint omits the legacy item1/item2 wrapper. Bind its complete
+ * schema to both public projections before exposing the saved receipt fields.
+ * A partial or failed legacy response must never fall back to saved data.
+ */
+export function normalizeShapontravelsReceiptEnvelope(body: unknown): ReceiptEnvelope | null {
+  const envelope = object(body);
+  if (!envelope) return null;
+  if (Object.hasOwn(envelope, 'item1') || Object.hasOwn(envelope, 'item2')) {
+    const receipt = object(envelope.item1), result = object(envelope.item2);
+    return receipt && result?.isSuccess === true
+      ? { envelope, receipt, savedBooking: null } : null;
+  }
+  return normalizeShapontravelsSavedBookingEnvelope(body);
+}
+
+/**
+ * Read canonical saved-v1 state even when the API also retains a successful
+ * legacy receipt. Neither failed wrappers nor contradictory duplicate fields
+ * may be used to authorize a saved-status reconciliation.
+ */
+export function normalizeShapontravelsSavedBookingEnvelope(body: unknown): ReceiptEnvelope | null {
+  const envelope = object(body);
+  if (!envelope) return null;
+  let legacyReceipt: Record<string, unknown> | null = null;
+  if (Object.hasOwn(envelope, 'item1') || Object.hasOwn(envelope, 'item2')) {
+    legacyReceipt = object(envelope.item1);
+    if (!legacyReceipt || object(envelope.item2)?.isSuccess !== true) return null;
+  }
+  const saved = object(envelope.savedBooking);
+  const current = object(envelope.currentStatus);
+  const publicReceipt = object(envelope.publicReceipt);
+  if (!saved || !current || !publicReceipt || saved.schemaVersion !== 1 ||
+      typeof saved.reference !== 'string' || !/^STR[A-Z0-9]{6,32}$/.test(saved.reference) ||
+      typeof saved.bookingId !== 'string' || !UUID.test(saved.bookingId) ||
+      saved.bookingCodeRef !== saved.bookingId ||
+      !['uniqueTransID', 'itemCodeRef', 'priceCodeRef'].every(key =>
+        typeof saved[key] === 'string' && UUID.test(saved[key] as string)) ||
+      typeof saved.pnr !== 'string' || !/^[A-Z0-9]{3,12}$/.test(saved.pnr) ||
+      !(saved.bookingStatus === null || shortText(saved.bookingStatus)) ||
+      !CURRENT_STATUSES.includes(saved.status as ShapontravelsCurrentStatus['status']) ||
+      typeof saved.reviewRequired !== 'boolean' || typeof saved.requiresReconciliation !== 'boolean' ||
+      saved.status !== current.status || saved.status !== publicReceipt.status ||
+      saved.reviewRequired !== current.reviewRequired || saved.reviewRequired !== publicReceipt.pendingReview ||
+      saved.paymentState !== publicReceipt.paymentState || saved.pnr !== publicReceipt.pnr ||
+      !sameSavedData(saved.currentStatus, current) || !sameSavedData(saved.publicReceipt, publicReceipt) ||
+      (Object.hasOwn(envelope, 'requiresReconciliation') &&
+        envelope.requiresReconciliation !== saved.requiresReconciliation) ||
+      (Object.hasOwn(envelope, 'bookingId') && envelope.bookingId !== saved.bookingId) ||
+      (Object.hasOwn(envelope, 'status') && envelope.status !== saved.status) ||
+      (Object.hasOwn(envelope, 'paymentState') && envelope.paymentState !== saved.paymentState) ||
+      (Object.hasOwn(envelope, 'customerPaymentState') && envelope.customerPaymentState !== saved.paymentState) ||
+      !Array.isArray(saved.passengerInfoes) || !Number.isSafeInteger(saved.passengerCount) ||
+      Number(saved.passengerCount) <= 0 || saved.passengerCount !== saved.passengerInfoes.length ||
+      !saved.passengerInfoes.every(passenger => object(passenger) !== null) ||
+      !Array.isArray(saved.segments) || !saved.segments.every(segment => object(segment) !== null) ||
+      !Array.isArray(saved.ticketInfoes) || !saved.ticketInfoes.every(ticket => object(ticket) !== null) ||
+      !Array.isArray(saved.missingFields) || saved.missingFields.some(field =>
+        typeof field !== 'string' || !field.startsWith('/'))) return null;
+  const payment = object(saved.payment);
+  if (!payment || Object.keys(payment).length !== 3 ||
+      !['state', 'required', 'operationId'].every(key => Object.hasOwn(payment, key)) ||
+      !(payment.state === null || typeof payment.state === 'string') ||
+      !(payment.required === null || typeof payment.required === 'boolean') ||
+      !(payment.operationId === null || typeof payment.operationId === 'string')) return null;
+  // bookingRefNumber is the documented optional public PNR mirror.
+  if (saved.bookingRefNumber != null && saved.bookingRefNumber !== saved.pnr &&
+      (typeof saved.bookingRefNumber !== 'string' || !UUID.test(saved.bookingRefNumber))) return null;
+  if (legacyReceipt) {
+    if (!['uniqueTransID', 'itemCodeRef', 'priceCodeRef', 'bookingCodeRef', 'pnr']
+      .every(key => legacyReceipt![key] === saved[key])) return null;
+    const legacyReference = legacyReceipt.bookingRefNumber;
+    const savedReference = saved.bookingRefNumber ?? saved.pnr;
+    if (legacyReference != null && legacyReference !== savedReference &&
+        !(typeof legacyReference === 'string' && UUID.test(legacyReference) && savedReference === saved.pnr)) return null;
+    if (Object.hasOwn(legacyReceipt, 'ticketInfoes')) {
+      const legacyTickets = ticketIdentifierSet(legacyReceipt.ticketInfoes);
+      const savedTickets = ticketIdentifierSet(saved.ticketInfoes);
+      if (!legacyTickets || !savedTickets || !sameSavedData(legacyTickets, savedTickets)) return null;
+    }
+    if ((legacyReceipt.bookingStatus != null && saved.bookingStatus != null &&
+          legacyReceipt.bookingStatus !== saved.bookingStatus) ||
+        (Object.hasOwn(legacyReceipt, 'ticketCodeRef') && legacyReceipt.ticketCodeRef !== saved.ticketCodeRef) ||
+        (Object.hasOwn(legacyReceipt, 'isCancel') &&
+          (typeof legacyReceipt.isCancel !== 'boolean' || legacyReceipt.isCancel !== (saved.status === 'cancelled'))) ||
+        (Object.hasOwn(legacyReceipt, 'issuedAt') && legacyReceipt.issuedAt !== saved.issuedAt) ||
+        (Object.hasOwn(legacyReceipt, 'cancelledAt') && legacyReceipt.cancelledAt !== saved.cancelledAt)) return null;
+  }
+  const deadline = object(saved.ticketingDeadline);
+  return {
+    envelope,
+    savedBooking: saved,
+    receipt: { ...saved, bookingRefNumber: saved.bookingRefNumber ?? saved.pnr,
+      ticketingTimeLimit: deadline?.raw ?? deadline?.iso ?? null },
+  };
+}
+
+/** Group canonical segment tickets by their explicitly associated passenger. */
+export function normalizeShapontravelsSavedTicketRows(
+  saved: Record<string, unknown>
+): Record<string, unknown>[] | null {
+  if (!Array.isArray(saved.passengerInfoes) || !Array.isArray(saved.segments) ||
+      !Array.isArray(saved.ticketInfoes)) return null;
+  const passengers = saved.passengerInfoes.map(object);
+  const segments = saved.segments.map(object);
+  const passengerIds = passengers.map(passenger => shortText(passenger?.passengerId, 200));
+  const segmentIds = segments.map(segment => shortText(segment?.segmentId, 200));
+  if (!passengers.length || passengerIds.some(id => !id) ||
+      new Set(passengerIds).size !== passengerIds.length || !segments.length ||
+      segmentIds.some(id => !id) || new Set(segmentIds).size !== segmentIds.length) return null;
+  const grouped = passengers.map((passenger, passengerIndex) => ({ passengerIndex,
+    passengerInfo: passenger!, ticketNumbers: [] as string[], ticketNumberSource: null as string | null }));
+  for (const value of saved.ticketInfoes) {
+    const ticket = object(value), index = ticket?.passengerIndex;
+    if (!ticket || typeof index !== 'number' || !Number.isSafeInteger(index) ||
+        index < 0 || index >= passengers.length || ticket.passengerId !== passengerIds[index] ||
+        !Array.isArray(ticket.ticketNumbers) || !ticket.ticketNumbers.length ||
+        ticket.ticketNumbers.some(number => typeof number !== 'string' || !number.trim()) ||
+        !(ticket.segmentIds === null || Array.isArray(ticket.segmentIds) &&
+          ticket.segmentIds.every(id => typeof id === 'string' && segmentIds.includes(id)))) return null;
+    const actual = object(ticket.passengerInfo), expected = passengers[index]!;
+    const actualName = object(actual?.nameElement), expectedName = object(expected.nameElement);
+    const titles = ['mr', 'mrs', 'ms', 'miss', 'mstr', 'master'];
+    if (!actual || !actualName || !expectedName ||
+        !['ADT', 'CHD', 'CNN', 'INF', 'INS'].includes(String(expected.passengerType)) ||
+        !['Male', 'Female'].includes(String(expected.gender)) ||
+        !titles.includes(String(expectedName.title).replace(/\.$/, '').toLowerCase()) ||
+        !titles.includes(String(actualName.title).replace(/\.$/, '').toLowerCase()) ||
+        typeof expectedName.firstName !== 'string' || !shortText(expectedName.lastName) ||
+        actual.passengerType !== expected.passengerType || actual.gender !== expected.gender ||
+        actualName.firstName !== expectedName.firstName || actualName.lastName !== expectedName.lastName ||
+        (actualName.middleName && expectedName.middleName && actualName.middleName !== expectedName.middleName) ||
+        actual.dateOfBirth !== expected.dateOfBirth) return null;
+    const target = grouped[index]!;
+    const source = ticket.ticketNumberSource ?? null;
+    if ((source !== null && source !== 'airline_pnr') ||
+        (target.ticketNumbers.length > 0 && source !== target.ticketNumberSource)) return null;
+    target.ticketNumberSource = source;
+    for (const number of ticket.ticketNumbers as string[]) {
+      if (!target.ticketNumbers.includes(number)) target.ticketNumbers.push(number);
+    }
+  }
+  return grouped.some(row => row.ticketNumbers.length === 0) ? null : grouped;
+}
+
 function shortText(value: unknown, max = 100): string | null {
   return typeof value === 'string' && value.trim() && value.length <= max
     ? value.trim() : null;
@@ -77,7 +264,80 @@ export function evidenceTime(value: unknown): string | null | undefined {
   return value;
 }
 
+/** Deadline proof is separate from the current-status source's Issue authority. */
+export function shapontravelsHoldTicketingDeadline(
+  read: ShapontravelsBookingRead,
+  status: ShapontravelsBookingStatus,
+): string | null {
+  const envelope = object(read.body);
+  const current = object(envelope?.currentStatus);
+  const receipt = object(envelope?.publicReceipt);
+  const actions = object(receipt?.actions);
+  if (read.httpStatus !== 200 || status.result !== 'verified' || status.ticketedEvidencePresent ||
+      envelope?.requiresReconciliation === true || current?.status !== 'on-hold' ||
+      current.reviewRequired !== false || receipt?.status !== 'on-hold' ||
+      receipt.pendingReview !== false || actions?.canIssue !== true) return null;
+  // The receipt carries its own offset; never infer a timezone.
+  const timestamp = evidenceTime(status.ticketingTimeLimit);
+  return timestamp ? new Date(timestamp).toISOString() : null;
+}
+
 type CurrentMetadata = Pick<ShapontravelsBookingStatus, 'currentStatus' | 'currentStatusState'>;
+
+/** The saved-v1 summary omits private state and operation-check timestamps. */
+function savedSummaryMetadata(
+  envelope: Record<string, unknown>, current: Record<string, unknown>, allowSavedPublic: boolean,
+): CurrentMetadata {
+  const invalid: CurrentMetadata = { currentStatus: null, currentStatusState: 'invalid' };
+  if (typeof current.reviewRequired !== 'boolean' ||
+      !(current.verified === null || typeof current.verified === 'boolean') ||
+      !(current.source === null || CURRENT_SOURCES.includes(current.source as ShapontravelsCurrentStatus['source']))) {
+    return invalid;
+  }
+  const supplierStatus = nullableText(current.supplierStatus);
+  const supplierCheckedAt = evidenceTime(current.supplierCheckedAt);
+  const savedSupplierSync = current.source === 'supplier_sync';
+  const platformDecisionSummary = current.source === 'admin_decision' && current.verified === false &&
+    supplierCheckedAt === null;
+  if (supplierStatus === undefined || supplierCheckedAt === undefined ||
+      (savedSupplierSync && (typeof current.verified !== 'boolean' ||
+        (current.verified === true && supplierCheckedAt === null))) ||
+      (supplierStatus !== null && supplierCheckedAt === null && !platformDecisionSummary)) return invalid;
+  const observationSource = current.source === 'supplier_pnr' || current.source === 'airline_refresh';
+  if ((current.source === null && (supplierStatus !== null || supplierCheckedAt !== null)) ||
+      (observationSource && current.verified === true && supplierCheckedAt === null) ||
+      (current.source === 'public_receipt' &&
+        (current.verified === true || supplierStatus !== null || supplierCheckedAt !== null))) return invalid;
+
+  let reviewRequired = current.reviewRequired;
+  const receipt = object(envelope.publicReceipt);
+  if (receipt || !allowSavedPublic) {
+    const actions = object(receipt?.actions);
+    if (!receipt || receipt.status !== current.status ||
+        typeof receipt.pendingReview !== 'boolean' || typeof actions?.canIssue !== 'boolean') return invalid;
+    reviewRequired = reviewRequired || receipt.pendingReview ||
+      (current.status === 'on-hold' && actions.canIssue !== true);
+  }
+  // Platform ticket/cancellation state is not a saved supplier observation.
+  // Use the existing conservative public projection when no such evidence is
+  // present or its provenance/verification is unknown. Raw saved-v1 facts stay
+  // in the original receipt; a GET timestamp never replaces missing evidence.
+  const publicSummary = !savedSupplierSync &&
+    (supplierCheckedAt === null || current.source === null || current.verified === null);
+  if (!publicSummary && observationSource && current.verified !== true) return invalid;
+  return {
+    currentStatusState: 'available',
+    currentStatus: {
+      status: current.status as ShapontravelsCurrentStatus['status'],
+      bookingState: null,
+      supplierStatus: publicSummary ? null : supplierStatus,
+      supplierCheckedAt: publicSummary ? null : supplierCheckedAt,
+      verified: publicSummary ? false : current.verified as boolean,
+      source: publicSummary ? 'public_receipt' : current.source as ShapontravelsCurrentStatus['source'],
+      checkedAt: null, reviewRequired, lastCheck: null,
+    },
+  };
+}
 
 function currentMetadata(envelope: Record<string, unknown>, allowSavedPublic = false): CurrentMetadata {
   if (!Object.hasOwn(envelope, 'currentStatus')) {
@@ -86,6 +346,10 @@ function currentMetadata(envelope: Record<string, unknown>, allowSavedPublic = f
   const invalid: CurrentMetadata = { currentStatus: null, currentStatusState: 'invalid' };
   const current = object(envelope.currentStatus);
   if (!current || !CURRENT_STATUSES.includes(current.status as ShapontravelsCurrentStatus['status'])) return invalid;
+  const savedSummary = ['status', 'reviewRequired', 'supplierStatus', 'supplierCheckedAt', 'verified', 'source']
+    .every(key => Object.hasOwn(current, key)) &&
+    !['bookingState', 'checkedAt', 'lastCheck'].some(key => Object.hasOwn(current, key));
+  if (savedSummary) return savedSummaryMetadata(envelope, current, allowSavedPublic);
   // Public machine receipts deliberately withhold private state and supplier
   // check details. Keep their saved status without inventing that evidence.
   const compact = Object.keys(current).length === 2 &&
@@ -143,6 +407,10 @@ function currentMetadata(envelope: Record<string, unknown>, allowSavedPublic = f
         (reasonCode !== null && !/^[A-Z][A-Z0-9_]{0,79}$/.test(reasonCode))) return invalid;
     lastCheck = { checkedAt: lastTime, verified: last.verified, reasonCode };
   }
+  if (current.source === 'supplier_sync' &&
+      (current.bookingState !== null || current.checkedAt !== null || current.lastCheck !== null ||
+        typeof current.reviewRequired !== 'boolean' ||
+        (current.verified === true && supplierCheckedAt === null))) return invalid;
   return {
     currentStatusState: 'available',
     currentStatus: {
@@ -199,26 +467,30 @@ export function verifyShapontravelsBookingStatus(
     };
   }
 
-  const envelope = object(read.body);
-  const receipt = object(envelope?.item1);
-  const result = object(envelope?.item2);
-  if (!envelope || !receipt || result?.isSuccess !== true || !read.supplierPublicRef ||
+  const normalized = normalizeShapontravelsReceiptEnvelope(read.body);
+  const envelope = normalized?.envelope, receipt = normalized?.receipt;
+  if (!envelope || !receipt || !read.supplierPublicRef ||
       !shortText(receipt.bookingCodeRef) || !shortText(receipt.pnr) ||
-      !shortText(receipt.bookingStatus)) {
+      (!shortText(receipt.bookingStatus) && !normalized?.savedBooking)) {
     return { ...base, result: 'unverified' };
   }
   // Current public receipts publish the PNR in this field; older local rows
   // retain the private UUID. All remaining receipt and PNR pins still match.
   const legacyPublicReference = UUID.test(expected.bookingRefNumber ?? '') &&
     Boolean(expected.pnr) && receipt.bookingRefNumber === expected.pnr;
+  // The machine API may omit its optional PNR alias. Only the canonical PNR
+  // mirror can be absent; all UUID, public STR and locator pins still match.
+  const absentPublicReference = receipt.bookingRefNumber == null &&
+    Boolean(expected.pnr) && expected.bookingRefNumber === expected.pnr && receipt.pnr === expected.pnr;
   if (receipt.uniqueTransID !== expected.uniqueTransId ||
       receipt.itemCodeRef !== expected.itemCodeRef ||
       receipt.priceCodeRef !== expected.priceCodeRef ||
       (expected.bookingCodeRef && receipt.bookingCodeRef !== expected.bookingCodeRef) ||
       (expected.bookingRefNumber && receipt.bookingRefNumber !== expected.bookingRefNumber &&
-        !legacyPublicReference) ||
+        !legacyPublicReference && !absentPublicReference) ||
       (expected.pnr && receipt.pnr !== expected.pnr) ||
-      (expected.supplierPublicRef && read.supplierPublicRef !== expected.supplierPublicRef)) {
+      (expected.supplierPublicRef && read.supplierPublicRef !== expected.supplierPublicRef) ||
+      (normalized?.savedBooking && normalized.savedBooking.reference !== read.supplierPublicRef)) {
     return { ...base, result: 'mismatch' };
   }
   const metadata = currentMetadata(envelope);

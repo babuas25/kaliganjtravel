@@ -494,7 +494,7 @@ export async function shapontravelsReadCancellation(
   throw new ShapontravelsReadError('AUTH_FAILED');
 }
 
-/** Saved ticket state for operator reconciliation; this never sends Issue. */
+/** Saved ticket state only; never requests Issue, verification or supplier sync. */
 export async function shapontravelsReadTicket(
   bookingId: string
 ): Promise<ShapontravelsTicketRead> {
@@ -532,7 +532,7 @@ export async function shapontravelsReadTicket(
   throw new ShapontravelsReadError('AUTH_FAILED');
 }
 
-/** Reads a saved supplier booking. This never sends Book, Issue, or Cancel. */
+/** Reads Shapon's saved booking; never requests supplier sync, Book, Issue or Cancel. */
 export async function shapontravelsReadBooking(
   lookup: { bookingId: string } | { reference: string }
 ): Promise<ShapontravelsBookingRead> {

@@ -76,6 +76,8 @@ export type BookingRow = {
   shapon_current_status?: unknown;
   /** Latest audit event for list display fallbacks; populated by listBookings. */
   last_lifecycle_event_at?: string | null;
+  /** Scoped recovery context; older installed views may omit this column. */
+  active_operation_id?: string | null;
   operation_kind: 'ticketing' | 'cancellation' | 'reconciliation' | null;
   operation_reason:
     | 'ticketing'
@@ -1291,7 +1293,26 @@ export async function readBookingByPublicRef(
     if (throwOnReadError) throw new BookingReadUnavailableError();
     return null;
   }
-  return (data as BookingRow | null) ?? null;
+  const row = (data as BookingRow | null) ?? null;
+  // The installed lifecycle view expanded flight_bookings before the durable
+  // operation pointer existed. Keep its projection and access scope intact,
+  // then enrich only an already-authorized recovery booking from its raw row.
+  if (row?.supplier === 'shapontravels' && row.supplier_account === 'shapontravels' &&
+      row.import_source === null && !row.legacy_operational && !row.direct_ticketing &&
+      row.status === 'in-progress' &&
+      row.operation_kind === 'reconciliation' && !Object.hasOwn(row, 'active_operation_id')) {
+    try {
+      const { data: operation, error: operationError } = await supabase
+        .from('flight_bookings').select('active_operation_id').eq('id', row.id).maybeSingle();
+      if (operationError || !operation) throw new BookingReadUnavailableError();
+      return { ...row, active_operation_id: operation.active_operation_id ?? null };
+    } catch {
+      console.error('[db] booking recovery operation lookup failed');
+      if (throwOnReadError) throw new BookingReadUnavailableError();
+      return null;
+    }
+  }
+  return row;
 }
 
 /**

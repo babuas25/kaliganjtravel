@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
 import BookingDetails from '@/components/flights/BookingDetails';
+import BookingPaymentReturn from '@/components/flights/BookingPaymentReturn';
+import { readBookingPaymentReturnContext } from '@/lib/db/booking-payment-resolution';
 import BookingUserVisibilityPanel from '@/components/dashboard/bookings/BookingUserVisibilityPanel';
 import BookingEvidenceReader from '@/components/dashboard/bookings/BookingEvidenceReader';
 import BookingLifecycleTimeline from '@/components/dashboard/bookings/BookingLifecycleTimeline';
@@ -306,6 +308,12 @@ export default async function BookingDetailsPage({
   }
 
   const publicBooking = await publicBookingWithHeaderContact(row);
+  const paymentReturnContext = (session.role === 'admin' || session.role === 'superadmin') &&
+    !row.legacy_operational
+    ? await readBookingPaymentReturnContext({
+        bookingId: row.id, actorUserId: session.clerkId, actorRole: session.role,
+      })
+    : null;
   const canCancelSupplierBooking = canCancelBooking(session, row) &&
     ((row.supplier === 'triplover' && publicBooking.status === 'on-hold') ||
       (row.supplier === 'shapontravels' &&
@@ -352,7 +360,7 @@ export default async function BookingDetailsPage({
           row.supplier === 'shapontravels' &&
           row.supplier_account === 'shapontravels' &&
           row.import_source === null && !row.direct_ticketing &&
-          (row.status === 'on-hold' || row.status === 'pending') &&
+          (row.status === 'on-hold' || row.status === 'pending' || row.status === 'in-progress') &&
           (session.role === 'admin' || session.role === 'superadmin')
         }
         autoRefreshDeadline={false}
@@ -407,8 +415,11 @@ export default async function BookingDetailsPage({
             : undefined
         }
         sidebarContent={
-          showTriploverSupplierStatus || lifecycleTimeline ? (
+          showTriploverSupplierStatus || lifecycleTimeline || paymentReturnContext?.canReturn ? (
             <>
+              {paymentReturnContext?.canReturn && (
+                <BookingPaymentReturn bookingReference={reference} initialContext={paymentReturnContext} />
+              )}
               {showTriploverSupplierStatus && (
                 <TriploverSupplierStatusPanel
                   key={reference}

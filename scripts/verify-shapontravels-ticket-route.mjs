@@ -15,6 +15,9 @@ function compile(file, imports) {
     fetch: async () => { throw new Error('External transport is forbidden'); },
     require(name) {
       if (name === 'server-only') return {};
+      if (file === 'lib/shapontravels/ticket.ts' && name === './booking-status') {
+        return compile('lib/shapontravels/booking-status.ts', {});
+      }
       assert.ok(Object.hasOwn(imports, name), `Unexpected import ${name}`);
       return imports[name];
     },
@@ -169,7 +172,7 @@ assert.equal(replay.captured, null);
 
 // Saved ticket review must accept the same proof without invoking a wallet or
 // supplier mutation. Both client route variants use the saved carrier context.
-async function review(savedItinerary) {
+async function review(savedItinerary, extraBody = {}) {
   let ticketReads = 0;
   const supplierPublicRef = 'STR261009000001';
   const saved = {
@@ -202,6 +205,10 @@ async function review(savedItinerary) {
   const query = { select: () => query, eq: () => query,
     single: async () => ({ data: { supplier_public_ref: supplierPublicRef }, error: null }) };
   const route = compile('app/api/flights/booking/shapon-status/route.ts', {
+    'node:crypto': { randomUUID: () => assert.fail('Ticket review cannot settle cancellation') },
+    '@/lib/db/booking-payment-resolution': { BOOKING_PAYMENT_EFFECTS: ['charge_wallet','capture_hold','already_paid'], previewShaponTicketPayment: forbidden },
+    '@/lib/email/booking-status-delivery': { dispatchBookingStatusEmails: forbidden },
+    '@/lib/shapontravels/cancellation-recovery': compile('lib/shapontravels/cancellation-recovery.ts', { './booking-status': status }),
     '@/lib/references': references,
     zod: { z },
     '@/lib/dashboard/session': { getDashboardSession: async () => ({ clerkId: 'synthetic-staff', role: 'staff_account' }) },
@@ -224,8 +231,13 @@ async function review(savedItinerary) {
     },
   });
   const result = await route.POST({ json: async () => ({
-    bookingReference: 'KTT261009000001', itinerary,
+    bookingReference: 'KTT261009000001', ...extraBody,
   }) });
+  if (Object.keys(extraBody).length) {
+    assert.equal(result.status, 400, 'Injected itinerary or sync flags are rejected before reading supplier records');
+    assert.equal(ticketReads, 0);
+    return null;
+  }
   assert.equal(result.status, 200);
   assert.equal(ticketReads, 1);
   return result.data.supplierTicket;
@@ -233,6 +245,7 @@ async function review(savedItinerary) {
 assert.deepEqual(JSON.parse(JSON.stringify(await review(itinerary))), {
   result: 'verified', ticketCount: 2, ticketCodeRef: receipt.item1.ticketCodeRef,
 });
+await review(itinerary, { itinerary });
 assert.equal((await review({ carrierCode: 'BG', legs: [] })).result, 'unverified',
   'A client-supplied IndiGo itinerary cannot authorize a non-IndiGo saved ticket');
 console.log('Shapon IndiGo Issue route: saved carrier context, unchanged request identity, exact receipt and replay/uncertainty guards passed');

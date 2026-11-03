@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { bookingScopeFor } from '@/lib/dashboard/bookings';
 import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
+import { BOOKING_PAYMENT_EFFECTS, previewShaponTicketPayment, type BookingPaymentEffect } from '@/lib/db/booking-payment-resolution';
 import { recordSecurityAuditEvent } from '@/lib/db/security';
 import { dispatchBookingStatusEmails } from '@/lib/email/booking-status-delivery';
 import { supabaseAdmin } from '@/lib/supabase/server';
@@ -23,6 +24,8 @@ const schema = z.object({
   bookingReference: z.string().regex(/^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/),
   requestId: z.string().uuid(),
   chargeWallet: z.boolean(),
+  expectedPaymentEffect: z.enum(BOOKING_PAYMENT_EFFECTS).optional(),
+  expectedAmount: z.number().finite().positive().optional(),
 });
 
 type ConfirmationResult = {
@@ -31,6 +34,7 @@ type ConfirmationResult = {
   replay?: boolean;
   chargeWallet?: boolean;
   chargedAmount?: number;
+  paymentEffect?: BookingPaymentEffect | 'external_no_charge';
   currency?: string;
   available?: number;
   required?: number;
@@ -93,6 +97,20 @@ export async function POST(request: Request) {
       if (!canOfferShaponExternalTicketConfirmation(booking)) {
         return walletFail(409, 'BOOKING_NOT_ELIGIBLE', failureMessages.BOOKING_NOT_ELIGIBLE);
       }
+      if (!parsed.data.chargeWallet || !parsed.data.expectedPaymentEffect ||
+          parsed.data.expectedAmount === undefined) {
+        return walletFail(409, 'PAYMENT_PREVIEW_REQUIRED', 'Refresh the ticket payment preview before confirming.');
+      }
+      const payment = await previewShaponTicketPayment({
+        bookingId: booking.id, actorUserId: session.clerkId, actorRole: session.role,
+      });
+      const expectedAmount = Math.round(parsed.data.expectedAmount * 100);
+      if (!payment.ok || !payment.eligible || payment.currency !== booking.currency ||
+          payment.paymentEffect !== parsed.data.expectedPaymentEffect ||
+          !Number.isSafeInteger(expectedAmount) || payment.amount !== expectedAmount ||
+          Math.abs(parsed.data.expectedAmount * 100 - expectedAmount) > 0.000001) {
+        return walletFail(409, 'PAYMENT_PREVIEW_CHANGED', 'The payment position changed. Refresh and review it before confirming.');
+      }
       const { data: identity, error } = await db.from('flight_bookings')
         .select('supplier_public_ref').eq('id', booking.id).single();
       if (error) return walletFail(503, 'CONFIRMATION_STORAGE_UNAVAILABLE', 'Booking storage is unavailable.');
@@ -110,6 +128,10 @@ export async function POST(request: Request) {
         return walletFail(409, 'SUPPLIER_TICKET_NOT_CONFIRMED',
           'A matching issued and paid supplier ticket is required. Refresh and check the supplier ticket.');
       }
+      evidence.ticketProof = { ...evidence.ticketProof,
+        expectedPaymentEffect: parsed.data.expectedPaymentEffect,
+        expectedPayableAmount: expectedAmount,
+      } as typeof evidence.ticketProof;
     }
     confirmationAttempted = true;
     const { data, error } = await db.rpc('confirm_shapon_external_ticket_v1', {
@@ -140,10 +162,19 @@ export async function POST(request: Request) {
           ...(typeof result.required === 'number' ? { required: result.required } : {}),
         });
     }
+    const alreadyPaid = result.paymentEffect === 'already_paid';
+    const validEffect = result.paymentEffect !== undefined &&
+      BOOKING_PAYMENT_EFFECTS.includes(result.paymentEffect as BookingPaymentEffect);
+    const historicalReplay = result.replay === true && parsed.data.expectedPaymentEffect === undefined;
+    const historicalNoCharge = result.replay === true && result.chargeWallet === false;
     if (typeof result.chargeWallet !== 'boolean' || result.chargeWallet !== parsed.data.chargeWallet ||
         !Number.isSafeInteger(result.chargedAmount) || Number(result.chargedAmount) < 0 ||
         result.currency !== booking.currency ||
-        (result.chargeWallet ? Number(result.chargedAmount) <= 0 : result.chargedAmount !== 0)) {
+        (!historicalNoCharge && !historicalReplay && (!validEffect ||
+          result.paymentEffect !== parsed.data.expectedPaymentEffect)) ||
+        (!alreadyPaid && !historicalNoCharge && !historicalReplay &&
+          result.chargedAmount !== Math.round(parsed.data.expectedAmount! * 100)) ||
+        ((alreadyPaid || historicalNoCharge) ? result.chargedAmount !== 0 : Number(result.chargedAmount) <= 0)) {
       return walletFail(503, 'CONFIRMATION_OUTCOME_UNKNOWN',
         'The saved confirmation result could not be verified. Retry the same wallet charge choice.');
     }
@@ -167,9 +198,10 @@ export async function POST(request: Request) {
       }
     }
     return walletOk({
-      confirmed: true, charged: result.chargeWallet === true,
+      confirmed: true, charged: result.chargeWallet === true && !alreadyPaid,
       amount: Number(result.chargedAmount ?? 0) / 100,
       currency: result.currency ?? booking.currency, replay: result.replay === true,
+      ...(validEffect ? { paymentEffect: result.paymentEffect } : {}),
     });
   } catch {
     return confirmationAttempted

@@ -41,17 +41,17 @@ for (const [status, label] of [
   ['unconfirmed', 'Unconfirmed'],
 ]) {
   assert.equal(format({ ...check, currentStatus: { ...current, status } }).headline,
-    `Current API booking status: ${label}.`);
+    `Shapon saved booking status: ${label}.`);
   cases++;
 }
 const cancelled = text(format(check));
 assert.match(cancelled, /14:43:33 \(Bangladesh time\)/);
 assert.match(cancelled, /Supplier reference: STRTESTCURRENT01/);
-assert.doesNotMatch(cancelled, /Created|22:00:00|Last verified supplier status|staff review/);
+assert.doesNotMatch(cancelled, /Created|22:00:00|Saved supplier status|staff review/);
 assert.match(cancelled, /Wallet and payment are unchanged/);
 assert.doesNotMatch(text(format({ ...check, currentStatus: {
   ...current, checkedAt: '2026-10-03T08:43:33Z',
-} })), /Last verified supplier status/, 'equal instants with different offsets are not duplicate evidence');
+} })), /Saved supplier status/, 'equal instants with different offsets are not duplicate evidence');
 cases++;
 
 // Receipt identity verification does not turn an Admin decision into a verified PNR read.
@@ -59,9 +59,9 @@ const admin = text(format({ ...check, currentStatus: {
   ...current, status: 'confirmed', source: 'admin_decision', verified: false,
   checkedAt: '2026-10-03T08:40:00Z', reviewRequired: true,
 } }));
-assert.match(admin, /Current API booking status: Confirmed/);
+assert.match(admin, /Shapon saved booking status: Confirmed/);
 assert.match(admin, /Admin decision \(not machine-verified\)/);
-assert.match(admin, /Last verified supplier status: Cancelled/);
+assert.match(admin, /Saved supplier status: Cancelled/);
 assert.match(admin, /14:40:00/);
 assert.match(admin, /14:43:33/);
 assert.match(admin, /staff review before further booking or financial action/);
@@ -72,7 +72,7 @@ const pending = text(format({ ...check, result: 'pending', currentStatus: {
   ...current, status: 'pending', source: 'saved_booking', verified: false,
   checkedAt: null, supplierStatus: null, supplierCheckedAt: null, lastCheck: null,
 } }));
-assert.match(pending, /Current API booking status: Pending/);
+assert.match(pending, /Shapon saved booking status: Pending/);
 assert.match(pending, /Saved booking record \(not machine-verified\)/);
 assert.match(pending, /No source timestamp/);
 cases++;
@@ -81,66 +81,79 @@ const publicReceipt = text(format({ ...check, currentStatus: {
   status: 'on-hold', bookingState: null, supplierStatus: null, supplierCheckedAt: null,
   verified: false, source: 'public_receipt', checkedAt: null, reviewRequired: false, lastCheck: null,
 } }));
-assert.match(publicReceipt, /Current API booking status: On Hold/);
+assert.match(publicReceipt, /Shapon saved booking status: On Hold/);
 assert.match(publicReceipt, /Public booking receipt \(not machine-verified\)/);
 assert.match(publicReceipt, /No source timestamp was supplied/);
-assert.doesNotMatch(publicReceipt, /Created|Last verified supplier status|Evidence time|staff review/);
+assert.doesNotMatch(publicReceipt, /Created|Saved supplier status|Evidence time|staff review/);
 assert.match(publicReceipt, /Wallet and payment are unchanged/);
 cases++;
+
+for (const verified of [true, false]) {
+  const savedSync = text(format({ ...check, currentStatus: {
+    ...current, source: 'supplier_sync', verified, bookingState: null, checkedAt: null, lastCheck: null,
+  } }));
+  assert.match(savedSync, /Shapon saved booking status: Cancelled/);
+  assert.match(savedSync, /Saved supplier sync observation/);
+  assert.match(savedSync, verified ? /verified when saved/ : /not machine-verified/);
+  assert.match(savedSync, /14:43:33/);
+  assert.doesNotMatch(savedSync, /22:00:00/, 'A saved source time is not replaced with the GET time');
+  assert.match(savedSync, /no new supplier sync or ticket request was sent/);
+  cases++;
+}
 
 // A failed latest check keeps the selected evidence and its original timestamp.
 for (const reasonCode of [null, 'SUPPLIER_TIMEOUT', 'SUPPLIER_READ_FAILED', 'SUPPLIER_RECONCILIATION_FAILED']) {
   const failed = text(format({ ...check, currentStatus: {
     ...current, lastCheck: { checkedAt: laterTime, verified: false, reasonCode },
   } }));
-  assert.match(failed, /Current API booking status: Cancelled/);
+  assert.match(failed, /Shapon saved booking status: Cancelled/);
   assert.match(failed, /14:43:33/);
-  assert.match(failed, /Latest supplier check was not verified at .*15:01:02/);
-  assert.match(failed, /prior status and supplier evidence above are retained/);
+  assert.match(failed, /Previously saved supplier check was not verified at .*15:01:02/);
+  assert.match(failed, /saved status and supplier evidence above are retained/);
   cases++;
 }
 
 const legacy = text(format({ ...check, currentStatus: null, currentStatusState: 'absent', supplierStatus: 'Created' }));
-assert.match(legacy, /Current API booking status unavailable/);
+assert.match(legacy, /Shapon saved booking status unavailable/);
 assert.match(legacy, /Historical Book receipt status: Created/);
-assert.doesNotMatch(legacy, /Current API booking status: Created/);
+assert.doesNotMatch(legacy, /Shapon saved booking status: Created/);
 const invalid = text(format({ ...check, currentStatus: null, currentStatusState: 'invalid', supplierStatus: 'Created' }));
-assert.match(invalid, /invalid current-status metadata/);
-assert.doesNotMatch(invalid, /Historical Book receipt status: Created|Current API booking status: Created/);
+assert.match(invalid, /invalid saved-status metadata/);
+assert.doesNotMatch(invalid, /Historical Book receipt status: Created|Shapon saved booking status: Created/);
 cases += 2;
 
 for (const result of ['mismatch', 'unverified', 'not_found']) {
   const message = text(format({ ...check, result }));
-  assert.match(message, /Current API booking status unavailable/);
-  assert.doesNotMatch(message, /Current API booking status: Cancelled|Source: Supplier|Supplier reference/);
+  assert.match(message, /Shapon saved booking status unavailable/);
+  assert.doesNotMatch(message, /Shapon saved booking status: Cancelled|Source: Supplier|Supplier reference/);
   cases++;
 }
-assert.match(text(format({ ...check, result: 'pending', currentStatus: null, currentStatusState: 'absent', originalBookingStatus: null })), /processing is still pending/);
+assert.match(text(format({ ...check, result: 'pending', currentStatus: null, currentStatusState: 'absent', originalBookingStatus: null })), /saved Shapon booking is still pending/);
 cases++;
 
 const saved = text(format({ ...check, currentStatusStorage: 'saved', projectionUpdated: true }));
 assert.match(saved, /Saved display evidence updated/);
 assert.doesNotMatch(saved, /local booking status.*unchanged|local booking status.*not change/);
 const unsaved = text(format({ ...check, currentStatusStorage: 'unavailable', projectionUpdated: false }));
-assert.match(unsaved, /Current API booking status: Cancelled/);
-assert.match(unsaved, /supplier lookup succeeded, but the saved display snapshot could not be updated/);
+assert.match(unsaved, /Shapon saved booking status: Cancelled/);
+assert.match(unsaved, /saved Shapon booking was read, but its local display snapshot could not be updated/);
 cases += 2;
 
 const localConflict = text(format({ ...check, currentStatus: {
   ...current, status: 'confirmed', source: 'ticket_operation',
 }, displayStatus: 'on-hold', displayReviewRequired: true }));
-assert.match(localConflict, /Current API booking status: Confirmed/);
+assert.match(localConflict, /Shapon saved booking status: Confirmed/);
 assert.match(localConflict, /Saved local booking status: On Hold/);
 assert.match(localConflict, /staff review before further booking or financial action/);
 assert.doesNotMatch(localConflict, /local booking status: Confirmed/i);
 cases++;
 
 const attempt = text(format(check, 'attempt'));
-assert.match(attempt, /Current API booking status: Cancelled/);
+assert.match(attempt, /Shapon saved booking status: Cancelled/);
 assert.match(attempt, /Supplier reference: STRTESTCURRENT01/);
 assert.match(attempt, /Keep this case open until staff resolve it/);
 assert.match(attempt, /Do not submit Book again/);
-assert.match(attempt, /Wallet and payment are unchanged\. No ticket request was sent by this check/);
+assert.match(attempt, /Wallet and payment are unchanged\..*saved status only; no new supplier sync or ticket request was sent/);
 cases++;
 
 // Exercise the real client callbacks without running effects, network or a DB.
@@ -235,17 +248,17 @@ const props = {
 for (const projectionUpdated of [false, true]) {
   actions.respond({ success: true, data: { ...check, projectionUpdated, currentStatusStorage: 'saved',
     supplierTicket: { result: 'verified', ticketCount: 1 } } });
-  await clickCheck(actions.render(actions.component, props), 'Verify Supplier Status');
+  await clickCheck(actions.render(actions.component, props), 'Refresh Status');
   const rendered = visibleText(actions.render(actions.component, props));
-  assert.match(rendered, /Current API booking status: Cancelled/);
-  assert.match(rendered, /Supplier ticket evidence matches 1 passenger/);
+  assert.match(rendered, /Shapon saved booking status: Cancelled/);
+  assert.match(rendered, /Saved Shapon ticket evidence matches 1 passenger/);
   assert.equal(actions.refreshes, projectionUpdated ? 1 : 0, 'only a changed saved projection refreshes the page');
   cases++;
 }
 actions.respond({ success: false, error: { errorMessage: 'Offline check failed.' } });
-await clickCheck(actions.render(actions.component, props), 'Verify Supplier Status');
+await clickCheck(actions.render(actions.component, props), 'Refresh Status');
 const retained = visibleText(actions.render(actions.component, props));
-assert.match(retained, /Current API booking status: Cancelled/);
+assert.match(retained, /Shapon saved booking status: Cancelled/);
 assert.match(retained, /14:43:33/);
 assert.match(retained, /Offline check failed/);
 assert.equal(actions.refreshes, 1, 'a failed check cannot refresh or remove the prior presentation');
@@ -265,13 +278,13 @@ assert.ok(attemptCheck);
 attempts.respond({ success: true, data: { ...check, projectionUpdated: true } });
 await clickCheck(attempts.render(attemptCheck.type, attemptCheck.props), 'Check supplier status');
 let attemptRendered = visibleText(attempts.render(attemptCheck.type, attemptCheck.props));
-assert.match(attemptRendered, /Current API booking status: Cancelled/);
+assert.match(attemptRendered, /Shapon saved booking status: Cancelled/);
 assert.match(attemptRendered, /Keep this case open until staff resolve it/);
 assert.equal(attempts.refreshes, 0, 'remote status never resolves or refreshes the attempt case');
 attempts.respond({ success: false, error: { errorMessage: 'Offline attempt check failed.' } });
 await clickCheck(attempts.render(attemptCheck.type, attemptCheck.props), 'Check supplier status');
 attemptRendered = visibleText(attempts.render(attemptCheck.type, attemptCheck.props));
-assert.match(attemptRendered, /Current API booking status: Cancelled/);
+assert.match(attemptRendered, /Shapon saved booking status: Cancelled/);
 assert.match(attemptRendered, /Offline attempt check failed/);
 assert.equal(attempts.refreshes, 0);
 assert.ok(attempts.requests.every(request => request.url === '/api/admin/booking-lifecycle/attempts/offline-attempt/shapon-status'));

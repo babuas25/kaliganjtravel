@@ -120,6 +120,7 @@ const shaponCalls = [];
 let shaponReply = null;
 const shaponIdentity = load('lib/shapontravels/ticket.ts', {
   '@/lib/triplover/ticket-payload': ticketPayload,
+  './booking-status': load('lib/shapontravels/booking-status.ts'),
   './client': { ShapontravelsWriteError, shapontravelsIssueRequest: async () => { throw new Error('Unexpected transport'); } },
 }).shapontravelsTicketIdentityReady;
 const routeDependencies = {

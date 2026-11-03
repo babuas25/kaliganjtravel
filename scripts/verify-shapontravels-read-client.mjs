@@ -244,7 +244,13 @@ async function savedBookingLookupOnlyReads() {
     if (url.pathname === '/auth/token') {
       return json({ access_token: 'stm_lookup', token_type: 'Bearer', expires_in: 1800 });
     }
+    assert.equal(init.method, 'GET', 'Saved status refresh must never dispatch a supplier write');
+    assert.equal(init.body, undefined);
+    assert.equal(url.search, '', 'Saved status reads must not request a forced supplier sync');
+    assert.ok(/^\/api\/bookings\/(?:[a-f0-9-]{36}(?:\/ticket)?|by-reference\/STR[A-Z0-9]+)$/.test(url.pathname),
+      'Only documented saved booking/ticket lookups are allowed');
     requests.push({ path: url.pathname, method: init.method });
+    if (url.pathname.endsWith('/ticket')) return json({ error: 'NOT_FOUND' }, 404);
     return new Response(JSON.stringify({ item1: { bookingStatus: 'Created' }, item2: { isSuccess: true } }), {
       status: 200,
       headers: { 'content-type': 'application/json', 'x-booking-reference': 'STRABC123ABC123' },
@@ -258,9 +264,16 @@ async function savedBookingLookupOnlyReads() {
   assert.deepEqual(requests, [{
     path: '/api/bookings/fa20f550-80b3-4adb-bd0b-4772eadf2c43', method: 'GET',
   }]);
+  await client.shapontravelsReadBooking({ reference: 'STRABC123ABC123' });
+  const ticket = await client.shapontravelsReadTicket('fa20f550-80b3-4adb-bd0b-4772eadf2c43');
+  assert.equal(ticket.httpStatus, 404, 'No saved issue reservation is retained as a read result');
+  assert.deepEqual(requests.slice(1), [
+    { path: '/api/bookings/by-reference/STRABC123ABC123', method: 'GET' },
+    { path: '/api/bookings/fa20f550-80b3-4adb-bd0b-4772eadf2c43/ticket', method: 'GET' },
+  ]);
   await assert.rejects(client.shapontravelsReadBooking({ bookingId: 'not-a-booking-id' }),
     error => error.code === 'INVALID_BOOKING_LOOKUP');
-  assert.equal(requests.length, 1);
+  assert.equal(requests.length, 3);
 }
 
 async function bookMapperRequiresTheAcceptedHold() {

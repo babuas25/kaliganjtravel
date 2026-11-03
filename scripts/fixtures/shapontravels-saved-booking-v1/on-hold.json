@@ -1,0 +1,528 @@
+{
+  "currentStatus": {
+    "reviewRequired": false,
+    "source": "saved_booking",
+    "status": "on-hold",
+    "supplierCheckedAt": null,
+    "supplierStatus": null,
+    "verified": false
+  },
+  "customerPaymentState": "unpaid",
+  "item1": {
+    "airlinesPNR": [
+      "AIR001"
+    ],
+    "bookingCodeRef": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd",
+    "bookingStatus": "Booked",
+    "contactInfo": {
+      "cityName": null,
+      "countryCode": null,
+      "email": "booking@example.invalid",
+      "phone": "+8801800000000",
+      "phoneCountryCode": null
+    },
+    "fareBreakdown": {
+      "ait": "20.00",
+      "baseFare": "2000.00",
+      "currency": "BDT",
+      "discount": "200.00",
+      "gross": "2400.00",
+      "passengers": {
+        "adt": {
+          "ait": "10.00",
+          "baseFare": "1000.00",
+          "count": 2,
+          "discount": "100.00",
+          "gross": "1200.00",
+          "payable": "1115.00",
+          "serviceCharge": "5.00",
+          "taxes": "200.00",
+          "tierAdjustment": "0.00"
+        }
+      },
+      "payable": "2230.00",
+      "serviceCharge": "10.00",
+      "taxes": "400.00",
+      "tierAdjustment": "0.00",
+      "version": 1
+    },
+    "flightInfo": {
+      "ait": 20,
+      "basePrice": 2000,
+      "currency": "BDT",
+      "directions": [
+        [
+          {
+            "from": "DAC",
+            "segments": [
+              {
+                "airline": "Biman Bangladesh Airlines",
+                "airlineCode": "BG",
+                "arrival": "2099-10-14T16:00:00+08:00",
+                "baggage": [
+                  {
+                    "amount": 30,
+                    "passengerTypeCode": "ADT",
+                    "units": "Kilograms"
+                  }
+                ],
+                "bookingClass": "V",
+                "cabinClass": "Economy",
+                "departure": "2099-10-14T10:00:00+06:00",
+                "flightNumber": "584",
+                "from": "DAC",
+                "fromAirport": "Dhaka Airport",
+                "handBaggage": "7 KG",
+                "operatingCarrierCode": "SQ",
+                "segmentCodeRef": "11111111-1111-4111-8111-111111111111",
+                "to": "SIN",
+                "toAirport": "Changi Airport"
+              }
+            ],
+            "to": "SIN"
+          }
+        ]
+      ],
+      "fareBreakdown": {
+        "ait": "20.00",
+        "baseFare": "2000.00",
+        "currency": "BDT",
+        "discount": "200.00",
+        "gross": "2400.00",
+        "passengers": {
+          "adt": {
+            "ait": "10.00",
+            "baseFare": "1000.00",
+            "count": 2,
+            "discount": "100.00",
+            "gross": "1200.00",
+            "payable": "1115.00",
+            "serviceCharge": "5.00",
+            "taxes": "200.00",
+            "tierAdjustment": "0.00"
+          }
+        },
+        "payable": "2230.00",
+        "serviceCharge": "10.00",
+        "taxes": "400.00",
+        "tierAdjustment": "0.00",
+        "version": 1
+      },
+      "passengerCounts": {
+        "adt": 2
+      },
+      "passengerFares": {
+        "adt": {
+          "ait": 10,
+          "basePrice": 1000,
+          "discountPrice": 100,
+          "serviceCharge": 5,
+          "taxes": 200,
+          "totalPrice": 1200
+        }
+      },
+      "platingCarrier": "BG",
+      "taxes": 400,
+      "totalPrice": 2400
+    },
+    "itemCodeRef": "d43bb79f-9874-49e1-a0b8-8ef8bd41cdb9",
+    "passengerInfoes": [
+      {
+        "contactInfo": {
+          "cityName": null,
+          "countryCode": null,
+          "email": "traveller0@example.invalid",
+          "phone": "+8801700000000",
+          "phoneCountryCode": null
+        },
+        "dateOfBirth": "1990-04-03",
+        "documentInfo": {
+          "birthPlace": null,
+          "documentNumber": "TEST0000",
+          "documentType": "Passport",
+          "expireDate": "2033-01-02",
+          "issueDate": "2023-01-02",
+          "issuePlace": null,
+          "issuingCountry": "BD",
+          "nationality": "BD",
+          "placeOfIssue": null,
+          "residenceCountry": null
+        },
+        "gender": "Male",
+        "isLeadPassenger": null,
+        "nameElement": {
+          "firstName": "Synthetic",
+          "lastName": "Saved0",
+          "middleName": null,
+          "title": "Mr"
+        },
+        "nationality": "BD",
+        "passengerId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd:passenger:0",
+        "passengerIndex": 0,
+        "passengerType": "ADT"
+      },
+      {
+        "contactInfo": {
+          "cityName": null,
+          "countryCode": null,
+          "email": "traveller1@example.invalid",
+          "phone": "+8801700000000",
+          "phoneCountryCode": null
+        },
+        "dateOfBirth": "1990-04-03",
+        "documentInfo": {
+          "birthPlace": null,
+          "documentNumber": "TEST0001",
+          "documentType": "Passport",
+          "expireDate": "2033-01-02",
+          "issueDate": "2023-01-02",
+          "issuePlace": null,
+          "issuingCountry": "BD",
+          "nationality": "BD",
+          "placeOfIssue": null,
+          "residenceCountry": null
+        },
+        "gender": "Male",
+        "isLeadPassenger": null,
+        "nameElement": {
+          "firstName": "Synthetic",
+          "lastName": "Saved1",
+          "middleName": null,
+          "title": "Mr"
+        },
+        "nationality": "BD",
+        "passengerId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd:passenger:1",
+        "passengerIndex": 1,
+        "passengerType": "ADT"
+      }
+    ],
+    "pnr": "SAVE01",
+    "priceCodeRef": "120c2d7c-614b-4a15-ab0c-337349019438",
+    "ticketingTimeLimit": "2099-10-14T09:00:00+06:00",
+    "uniqueTransID": "c0fb5120-74b2-4f83-a631-5cab08a08788"
+  },
+  "item2": {
+    "isSuccess": true
+  },
+  "publicReceipt": {
+    "actions": {
+      "canCancel": true,
+      "canIssue": true,
+      "canRefreshTimeLimit": false,
+      "canRequestServicing": false,
+      "canSetTimeLimit": false,
+      "needsSupport": false
+    },
+    "airlineBookingStatus": "Booked",
+    "airlinePnrs": [
+      "AIR001"
+    ],
+    "bookedAt": "2026-10-13T17:37:53.468047+00:00",
+    "cancelledAt": null,
+    "confirmedAt": null,
+    "deadline": {
+      "iso": "2099-10-14T09:00:00+06:00",
+      "raw": "2099-10-14T09:00:00+06:00",
+      "timeZone": "Asia/Dhaka"
+    },
+    "issuedAt": null,
+    "paymentState": "unpaid",
+    "pendingReview": false,
+    "pnr": "SAVE01",
+    "status": "on-hold",
+    "statusUpdatedAt": null,
+    "supportMessage": null,
+    "tickets": []
+  },
+  "requiresReconciliation": false,
+  "savedBooking": {
+    "airlinesPNR": [
+      "AIR001"
+    ],
+    "bookedAt": "2026-10-13T17:37:53.468047+00:00",
+    "bookingCodeRef": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd",
+    "bookingId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd",
+    "bookingStatus": "Booked",
+    "cancelledAt": null,
+    "contactInfo": {
+      "cityName": null,
+      "countryCode": null,
+      "email": "booking@example.invalid",
+      "phone": "+8801800000000",
+      "phoneCountryCode": null
+    },
+    "currentStatus": {
+      "reviewRequired": false,
+      "source": "saved_booking",
+      "status": "on-hold",
+      "supplierCheckedAt": null,
+      "supplierStatus": null,
+      "verified": false
+    },
+    "fareBreakdown": {
+      "ait": "20.00",
+      "baseFare": "2000.00",
+      "charge": "10.00",
+      "currency": "BDT",
+      "discount": "200.00",
+      "gross": "2400.00",
+      "passengerCount": 2,
+      "passengers": [
+        {
+          "ait": "10.00",
+          "baseFare": "1000.00",
+          "charge": "5.00",
+          "currency": "BDT",
+          "discount": "100.00",
+          "gross": "1200.00",
+          "passengerId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd:passenger:0",
+          "passengerIndex": 0,
+          "passengerType": "ADT",
+          "payable": "1115.00",
+          "serviceCharge": "5.00",
+          "taxes": "200.00"
+        },
+        {
+          "ait": "10.00",
+          "baseFare": "1000.00",
+          "charge": "5.00",
+          "currency": "BDT",
+          "discount": "100.00",
+          "gross": "1200.00",
+          "passengerId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd:passenger:1",
+          "passengerIndex": 1,
+          "passengerType": "ADT",
+          "payable": "1115.00",
+          "serviceCharge": "5.00",
+          "taxes": "200.00"
+        }
+      ],
+      "payable": "2230.00",
+      "serviceCharge": "10.00",
+      "taxes": "400.00"
+    },
+    "fareRules": [
+      {
+        "text": "Saved booking fare rules",
+        "type": "text"
+      }
+    ],
+    "issuedAt": null,
+    "itemCodeRef": "d43bb79f-9874-49e1-a0b8-8ef8bd41cdb9",
+    "missingFields": [
+      "/cancelledAt",
+      "/contactInfo/cityName",
+      "/contactInfo/countryCode",
+      "/contactInfo/phoneCountryCode",
+      "/currentStatus/supplierCheckedAt",
+      "/currentStatus/supplierStatus",
+      "/issuedAt",
+      "/passengerInfoes/0/contactInfo/cityName",
+      "/passengerInfoes/0/contactInfo/countryCode",
+      "/passengerInfoes/0/contactInfo/phoneCountryCode",
+      "/passengerInfoes/0/documentInfo/birthPlace",
+      "/passengerInfoes/0/documentInfo/issuePlace",
+      "/passengerInfoes/0/documentInfo/placeOfIssue",
+      "/passengerInfoes/0/documentInfo/residenceCountry",
+      "/passengerInfoes/0/isLeadPassenger",
+      "/passengerInfoes/0/nameElement/middleName",
+      "/passengerInfoes/1/contactInfo/cityName",
+      "/passengerInfoes/1/contactInfo/countryCode",
+      "/passengerInfoes/1/contactInfo/phoneCountryCode",
+      "/passengerInfoes/1/documentInfo/birthPlace",
+      "/passengerInfoes/1/documentInfo/issuePlace",
+      "/passengerInfoes/1/documentInfo/placeOfIssue",
+      "/passengerInfoes/1/documentInfo/residenceCountry",
+      "/passengerInfoes/1/isLeadPassenger",
+      "/passengerInfoes/1/nameElement/middleName",
+      "/payment/operationId",
+      "/payment/required",
+      "/payment/state",
+      "/publicReceipt/cancelledAt",
+      "/publicReceipt/confirmedAt",
+      "/publicReceipt/issuedAt",
+      "/publicReceipt/statusUpdatedAt",
+      "/publicReceipt/supportMessage",
+      "/segments/0/arrivalTerminal",
+      "/segments/0/baggageText",
+      "/segments/0/departureTerminal",
+      "/segments/0/details",
+      "/segments/0/fareBasisCode",
+      "/statusUpdatedAt",
+      "/ticketCodeRef"
+    ],
+    "passengerCount": 2,
+    "passengerInfoes": [
+      {
+        "contactInfo": {
+          "cityName": null,
+          "countryCode": null,
+          "email": "traveller0@example.invalid",
+          "phone": "+8801700000000",
+          "phoneCountryCode": null
+        },
+        "dateOfBirth": "1990-04-03",
+        "documentInfo": {
+          "birthPlace": null,
+          "documentNumber": "TEST0000",
+          "documentType": "Passport",
+          "expireDate": "2033-01-02",
+          "issueDate": "2023-01-02",
+          "issuePlace": null,
+          "issuingCountry": "BD",
+          "nationality": "BD",
+          "placeOfIssue": null,
+          "residenceCountry": null
+        },
+        "gender": "Male",
+        "isLeadPassenger": null,
+        "nameElement": {
+          "firstName": "Synthetic",
+          "lastName": "Saved0",
+          "middleName": null,
+          "title": "Mr"
+        },
+        "nationality": "BD",
+        "passengerId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd:passenger:0",
+        "passengerIndex": 0,
+        "passengerType": "ADT"
+      },
+      {
+        "contactInfo": {
+          "cityName": null,
+          "countryCode": null,
+          "email": "traveller1@example.invalid",
+          "phone": "+8801700000000",
+          "phoneCountryCode": null
+        },
+        "dateOfBirth": "1990-04-03",
+        "documentInfo": {
+          "birthPlace": null,
+          "documentNumber": "TEST0001",
+          "documentType": "Passport",
+          "expireDate": "2033-01-02",
+          "issueDate": "2023-01-02",
+          "issuePlace": null,
+          "issuingCountry": "BD",
+          "nationality": "BD",
+          "placeOfIssue": null,
+          "residenceCountry": null
+        },
+        "gender": "Male",
+        "isLeadPassenger": null,
+        "nameElement": {
+          "firstName": "Synthetic",
+          "lastName": "Saved1",
+          "middleName": null,
+          "title": "Mr"
+        },
+        "nationality": "BD",
+        "passengerId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd:passenger:1",
+        "passengerIndex": 1,
+        "passengerType": "ADT"
+      }
+    ],
+    "payment": {
+      "operationId": null,
+      "required": null,
+      "state": null
+    },
+    "paymentState": "unpaid",
+    "pnr": "SAVE01",
+    "priceCodeRef": "120c2d7c-614b-4a15-ab0c-337349019438",
+    "publicReceipt": {
+      "actions": {
+        "canCancel": true,
+        "canIssue": true,
+        "canRefreshTimeLimit": false,
+        "canRequestServicing": false,
+        "canSetTimeLimit": false,
+        "needsSupport": false
+      },
+      "airlineBookingStatus": "Booked",
+      "airlinePnrs": [
+        "AIR001"
+      ],
+      "bookedAt": "2026-10-13T17:37:53.468047+00:00",
+      "cancelledAt": null,
+      "confirmedAt": null,
+      "deadline": {
+        "iso": "2099-10-14T09:00:00+06:00",
+        "raw": "2099-10-14T09:00:00+06:00",
+        "timeZone": "Asia/Dhaka"
+      },
+      "issuedAt": null,
+      "paymentState": "unpaid",
+      "pendingReview": false,
+      "pnr": "SAVE01",
+      "status": "on-hold",
+      "statusUpdatedAt": null,
+      "supportMessage": null,
+      "tickets": []
+    },
+    "reference": "STR26101323375301",
+    "requiresReconciliation": false,
+    "reviewRequired": false,
+    "schemaVersion": 1,
+    "segments": [
+      {
+        "airline": "Biman Bangladesh Airlines",
+        "airlineCode": "BG",
+        "arrival": "2099-10-14T16:00:00+08:00",
+        "arrivalTerminal": null,
+        "arrivalTimeZone": "Asia/Singapore",
+        "arrivalUtcOffset": "+08:00",
+        "baggage": [
+          {
+            "amount": "30",
+            "passengerType": "ADT",
+            "units": "Kilograms"
+          }
+        ],
+        "baggageText": null,
+        "bookingClass": "V",
+        "cabinClass": "Economy",
+        "departure": "2099-10-14T10:00:00+06:00",
+        "departureTerminal": null,
+        "departureTimeZone": "Asia/Dhaka",
+        "departureUtcOffset": "+06:00",
+        "details": null,
+        "directionIndex": 0,
+        "fareBasisCode": null,
+        "fareRules": [
+          {
+            "text": "Saved fare rule",
+            "type": "change"
+          },
+          {
+            "text": "Saved refund rule",
+            "type": "refund"
+          }
+        ],
+        "flightNumber": "584",
+        "from": "DAC",
+        "fromAirport": "Dhaka Airport",
+        "handBaggage": "7 KG",
+        "operationCarrier": "SQ",
+        "segmentCodeRef": "11111111-1111-4111-8111-111111111111",
+        "segmentId": "76a3f702-bd74-4875-ad1a-8a4ceb2ffacd:segment:0",
+        "segmentIndex": 0,
+        "to": "SIN",
+        "toAirport": "Changi Airport"
+      }
+    ],
+    "source": "native",
+    "status": "on-hold",
+    "statusUpdatedAt": null,
+    "ticketCodeRef": null,
+    "ticketInfoes": [],
+    "ticketingDeadline": {
+      "iso": "2099-10-14T09:00:00+06:00",
+      "raw": "2099-10-14T09:00:00+06:00",
+      "timeZone": "Asia/Dhaka"
+    },
+    "ticketingState": "not_issued",
+    "uniqueTransID": "c0fb5120-74b2-4f83-a631-5cab08a08788"
+  },
+  "status": "on-hold"
+}

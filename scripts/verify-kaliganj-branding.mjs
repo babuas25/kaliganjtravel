@@ -13,7 +13,7 @@ function files(directory) {
 }
 // Historical migration source is deliberately outside the runtime scan. The
 // applied baseline must remain byte-for-byte identical to its installation receipt.
-const forbidden = /shapon|shopon|0016548|9638[- ]?032941|1921[- ]?232941|1989[- ]?715039|dhankhola|meherpur|shomobai/i;
+const forbidden = /best deal trip|bdtripint|BDTI|shapon|shopon|0016548|9638[- ]?032941|1921[- ]?232941|1989[- ]?715039|dhankhola|meherpur|shomobai/i;
 const runtimeFiles = ['app', 'components', 'lib', 'public'].flatMap(files)
   .filter((file) => /\.(?:tsx?|jsx?|mjs|css|json|svg|html)$/.test(file));
 // Supplier identifiers and their status-check code paths are not site identity.
@@ -21,7 +21,8 @@ const runtimeFiles = ['app', 'components', 'lib', 'public'].flatMap(files)
 for (const file of runtimeFiles) {
   const identityText = read(file)
     .replace(/shapon(?:travels|[-_]?status)/gi, '')
-    .replace(/\b(?:shapon_current_status|record_shapon_booking_current_status_v1|restoreUnsentShaponCancellation|restore_shapon_cancellation_not_sent_v1|canConfirmShaponExternalTicket|canOfferShaponExternalTicketConfirmation|verifyShaponExternalTicketConfirmation|shapon_external_ticket_confirmations|confirm_shapon_external_ticket_v1)\b/g, '');
+    .replace(/\b(?:shapon_current_status|record_shapon_booking_current_status_v1|restoreUnsentShaponCancellation|restore_shapon_cancellation_not_sent_v1|canConfirmShaponExternalTicket|canOfferShaponExternalTicketConfirmation|verifyShaponExternalTicketConfirmation|shapon_external_ticket_confirmations|confirm_shapon_external_ticket_v1|previewShaponTicketPayment|verifyShaponCancellationRecovery|isShaponTicketingRecovery|resolve_shapon_cancelled_refresh_v1|preview_shapon_ticket_payment_v1|shapon_saved_status|shapon_saved_booking_v1)\b/g, '')
+    .replace(/\bShapon(?:['’]s)?(?= (?:saved|booking|ticket|receipt|portal|status|returned|cancellation)\b)/g, '');
   assert.doesNotMatch(identityText, forbidden, file);
 }
 function load(file) {

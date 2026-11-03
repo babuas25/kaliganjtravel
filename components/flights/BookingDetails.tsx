@@ -34,6 +34,7 @@ import {
 import { BOOKING_STATUS_LABELS } from '@/lib/flights/booking-status';
 import { countryName } from '@/lib/flights/countries';
 import { ticketPrintReferences } from '@/lib/flights/ticket-print';
+import { bookingTicketDisplay } from '@/lib/flights/ticket-display';
 import {
   PASSENGER_NOTICE_TITLE,
   PASSENGER_NOTICES,
@@ -1039,13 +1040,7 @@ export default function BookingDetails({
     Object.entries(booking.passengerCounts) as [BookingPassengerType, number][]
   ).filter(([, count]) => count > 0);
 
-  // The supplier returns a flat list of ticket numbers with no passenger key.
-  // Pairing them by position is only safe when the counts line up exactly;
-  // Otherwise the downloaded booking copy lists them without assigning them
-  // to a passenger; individual copies explicitly state that mapping is missing.
-  const ticketsAlign =
-    booking.ticketNumbers.length > 0 &&
-    booking.ticketNumbers.length === namedTravellers.length;
+  const ticketDisplay = bookingTicketDisplay(booking, namedTravellers.length);
 
   const totalAit = booking.fares.reduce((sum, fare) => sum + fare.ait, 0);
   const hasMargin = booking.fares.some((fare) => fare.serviceMargin > 0);
@@ -1090,7 +1085,7 @@ export default function BookingDetails({
                       <HeadCell>Type</HeadCell>
                       <HeadCell>Gender</HeadCell>
                       <HeadCell className={styles.screenOnly}>Date of birth</HeadCell>
-                      {ticketsAlign && <HeadCell align="right">Ticket number</HeadCell>}
+                      {ticketDisplay.showPassengerColumn && <HeadCell align="right">{ticketDisplay.columnLabel}</HeadCell>}
                     </tr>
                   </thead>
                   {/* Uppercased wholesale, the way a carrier prints a
@@ -1128,7 +1123,7 @@ export default function BookingDetails({
                       ];
                       const showPrintedIdentity = passportRequired ||
                         Boolean(traveller.passportNumber?.trim()) ||
-                        (!ticketsAlign && booking.ticketNumbers.length > 0);
+                        ticketDisplay.unassignedTicketNumbers.length > 0;
 
                       return (
                         <Fragment key={`${traveller.passengerType}-${index}`}>
@@ -1159,19 +1154,19 @@ export default function BookingDetails({
                             <td className={`${styles.screenOnly} whitespace-nowrap px-3 py-2.5 text-[12px] text-neutral-600`}>
                               {formatDate(traveller.dateOfBirth)}
                             </td>
-                            {ticketsAlign && (
-                              <td className="whitespace-nowrap px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums text-navy-950">
-                                {booking.ticketNumbers[index]}
+                            {ticketDisplay.showPassengerColumn && (
+                              <td data-label={ticketDisplay.columnLabel} className="whitespace-nowrap px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums text-navy-950">
+                                {ticketDisplay.passengers[index]?.text ?? ticketDisplay.unavailableValue}
                               </td>
                             )}
                           </tr>
                           {showPrintedIdentity && (
                             <tr className={styles.printIdentityRow} data-print-passenger-index={index}>
-                              <td colSpan={ticketsAlign ? 4 : 3}>
+                              <td colSpan={ticketDisplay.showPassengerColumn ? 4 : 3}>
                                 {(passportRequired || traveller.passportNumber?.trim()) && (
                                   <Fact label="Passport" value={traveller.passportNumber?.trim() || '--'} />
                                 )}
-                                {!ticketsAlign && booking.ticketNumbers.length > 0 && (
+                                {ticketDisplay.unassignedTicketNumbers.length > 0 && (
                                   <span>Ticket number: passenger assignment unavailable</span>
                                 )}
                               </td>
@@ -1200,9 +1195,14 @@ export default function BookingDetails({
                 </p>
               </div>
             )}
-            {!ticketsAlign && booking.ticketNumbers.length > 0 && (
+            {ticketDisplay.sharedAirlinePnr && (
+              <p className="px-3 pt-2 text-xs text-neutral-600">
+                Airline PNR applies to this booking and is shared across its passengers.
+              </p>
+            )}
+            {ticketDisplay.unassignedTicketNumbers.length > 0 && (
               <div className={styles.printUnassignedTickets} data-print-unassigned-tickets>
-                <p><strong>Booking ticket numbers:</strong> {booking.ticketNumbers.join(', ')}</p>
+                <p><strong>Booking ticket numbers:</strong> {ticketDisplay.unassignedTicketNumbers.join(', ')}</p>
                 <p>Ticket numbers could not be matched to individual passengers.</p>
               </div>
             )}
@@ -1406,8 +1406,8 @@ export default function BookingDetails({
                 .filter(Boolean)
                 .join(' ') || `Passenger ${index + 1}`,
             fileName:
-              ticketed && ticketsAlign
-                ? booking.ticketNumbers[index]
+              ticketed && ticketDisplay.passengers[index]
+                ? ticketDisplay.passengers[index]!.value
                 : 'Booking Confirmation',
           }))}
         >

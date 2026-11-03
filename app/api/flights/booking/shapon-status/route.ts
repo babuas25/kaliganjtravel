@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getDashboardSession } from '@/lib/dashboard/session';
 import { canRefreshBookingSupplierDetails } from '@/lib/dashboard/booking-lifecycle';
@@ -5,15 +6,19 @@ import { bookingScopeFor } from '@/lib/dashboard/bookings';
 import { readBookingByPublicRef } from '@/lib/db/flight-bookings';
 import { saveShapontravelsTicketingTime } from '@/lib/db/booking-ticketing-time';
 import { shapontravelsTicketingTime } from '@/lib/shapontravels/ticketing-time';
+import { BOOKING_PAYMENT_EFFECTS, previewShaponTicketPayment, type BookingPaymentEffect } from '@/lib/db/booking-payment-resolution';
+import { dispatchBookingStatusEmails } from '@/lib/email/booking-status-delivery';
+import { verifyShaponCancellationRecovery } from '@/lib/shapontravels/cancellation-recovery';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { shapontravelsReadBooking, shapontravelsReadTicket, shapontravelsReadCancellation } from '@/lib/shapontravels/client';
-import { verifyShapontravelsBookingStatus } from '@/lib/shapontravels/booking-status';
+import { normalizeShapontravelsSavedBookingEnvelope, verifyShapontravelsBookingStatus } from '@/lib/shapontravels/booking-status';
 import { recordShapontravelsCurrentStatus } from '@/lib/shapontravels/current-status-store';
-import { parseShapontravelsTicketReceipt, shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
+import { parseShapontravelsTicketEvidence, shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
 import { parseShapontravelsCancellationReceipt, shapontravelsCancellationIdentityReady } from '@/lib/shapontravels/cancel';
 import {
   canConfirmShaponExternalTicket,
   canOfferShaponExternalTicketConfirmation,
+  isShaponTicketingRecovery,
   verifyShaponExternalTicketConfirmation,
 } from '@/lib/shapontravels/external-ticket-confirmation';
 import { walletFail, walletOk } from '@/lib/wallet/http';
@@ -24,9 +29,9 @@ export const maxDuration = 60;
 
 const schema = z.object({
   bookingReference: z.string().regex(/^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/),
-});
+}).strict();
 
-/** Staff-only verification; stores display evidence without financial writes. */
+/** Read Shapon's saved records; never request supplier sync or new issuance. */
 export async function POST(request: Request) {
   const session = await getDashboardSession();
   if (!session) return walletFail(401, 'SIGN_IN_REQUIRED', 'Please sign in.');
@@ -64,6 +69,12 @@ export async function POST(request: Request) {
   try {
     const requestStartedAt = new Date().toISOString();
     const read = await shapontravelsReadBooking({ bookingId: booking.booking_code_ref });
+    if (read.httpStatus === 200 && read.body && typeof read.body === 'object' &&
+        Object.hasOwn(read.body, 'savedBooking') &&
+        !normalizeShapontravelsSavedBookingEnvelope(read.body)) {
+      return walletFail(409, 'SUPPLIER_SAVED_STATUS_UNVERIFIED',
+        'The saved Shapon booking details are inconsistent. No booking change was made.');
+    }
     const expected = {
       uniqueTransId: refs.uniqueTransId,
       itemCodeRef: refs.itemCodeRef,
@@ -91,13 +102,51 @@ export async function POST(request: Request) {
       ticketCount?: number;
       ticketCodeRef?: string;
     } | null = null;
-    let externalTicketConfirmation: { eligible: true; amount: number; currency: string } | null = null;
+    let externalTicketConfirmation: {
+      eligible: true; amount: number; currency: string;
+      paymentEffect: BookingPaymentEffect;
+      recovery?: true; existingHoldAmount?: number;
+    } | null = null;
+    let cancellationResolved = false;
+    const resolveCancellation = async (
+      cancellation: NonNullable<ReturnType<typeof verifyShaponCancellationRecovery>>,
+    ) => {
+      const { data: resolved, error: resolutionError } = await db.rpc(
+        'resolve_shapon_cancelled_refresh_v1', {
+          p_booking_id: booking.id,
+          p_actor_user_id: session.clerkId,
+          p_actor_role: session.role,
+          p_request_id: randomUUID(),
+          p_receipt_identity: cancellation.receiptIdentity,
+          p_cancellation_proof: cancellation.cancellationProof,
+          p_checked_at: cancellation.checkedAt,
+        },
+      );
+      cancellationResolved = !resolutionError && resolved?.ok === true;
+      if (cancellationResolved && resolved?.replay !== true) {
+        try {
+          await dispatchBookingStatusEmails(booking.id);
+        } catch {
+          console.error('[shapontravels] cancellation notification delivery failed', {
+            bookingId: booking.id,
+          });
+        }
+      }
+    };
+    const mayResolveCancellation = canConfirmShaponExternalTicket(session.role) &&
+      status.currentStatus?.status === 'cancelled';
+    // Canonical saved-v1 explicitly contains the complete cancellation/payment/
+    // ticket state. An unticketed booking need not have a /ticket resource.
+    const savedCancellation = mayResolveCancellation
+      ? verifyShaponCancellationRecovery(booking, read, null, supplierPublicRef) : null;
+    if (savedCancellation) await resolveCancellation(savedCancellation);
+
     const cancellationActive = booking.operation_reason === 'cancellation' ||
       booking.operation_reason === 'cancellation_reconciliation';
     let supplierCancellation: {
       result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
     } | null = null;
-    if (cancellationActive) {
+    if (cancellationActive && !savedCancellation) {
       if (!shapontravelsCancellationIdentityReady(booking)) {
         supplierCancellation = { result: 'unverified' };
       } else {
@@ -115,9 +164,9 @@ export async function POST(request: Request) {
         }
       }
     }
-    if (!cancellationActive &&
+    if (!savedCancellation && (mayResolveCancellation || (!cancellationActive &&
         (booking.status === 'in-progress' || booking.payment_state === 'reconciliation' ||
-         status.currentStatus?.status === 'confirmed')) {
+          status.currentStatus?.status === 'confirmed')))) {
       if (!shapontravelsTicketIdentityReady(booking)) {
         supplierTicket = { result: 'unverified' };
       } else {
@@ -128,7 +177,13 @@ export async function POST(request: Request) {
           } else if (ticketRead.httpStatus === 404) {
             supplierTicket = { result: 'not_found' };
           } else {
-            const ticket = parseShapontravelsTicketReceipt(ticketRead.body, {
+            if (mayResolveCancellation) {
+              const cancellation = verifyShaponCancellationRecovery(
+                booking, read, ticketRead, supplierPublicRef,
+              );
+              if (cancellation) await resolveCancellation(cancellation);
+            }
+            const evidence = parseShapontravelsTicketEvidence(ticketRead.body, {
               ...refs,
               pnr: booking.pnr!,
               bookingRefNumber: booking.booking_ref_number!,
@@ -137,18 +192,33 @@ export async function POST(request: Request) {
               expectedPassengerCount: Object.values(booking.passenger_counts)
                 .reduce<number>((sum, value) => sum + (value ?? 0), 0),
             });
+            const ticket = evidence?.ticket;
             supplierTicket = ticket
-              ? { result: 'verified', ticketCount: ticket.ticketNumbers.length,
-                  ticketCodeRef: ticket.ticketCodeRef }
+              ? { result: 'verified', ticketCount: evidence!.passengerTickets.length,
+                  ...(ticket.ticketCodeRef ? { ticketCodeRef: ticket.ticketCodeRef } : {}) }
               : { result: 'unverified' };
+            if (cancellationResolved) supplierTicket = null;
             if (ticket && canConfirmShaponExternalTicket(session.role) &&
                 canOfferShaponExternalTicketConfirmation(booking) &&
                 verifyShaponExternalTicketConfirmation(booking, read, ticketRead, supplierPublicRef)) {
-              externalTicketConfirmation = {
-                eligible: true,
-                amount: Math.round(Number(booking.pricing_snapshot.sellingPrice) * 100) / 100,
-                currency: booking.currency,
-              };
+              const recovery = isShaponTicketingRecovery(booking);
+              const payment = await previewShaponTicketPayment({
+                bookingId: booking.id, actorUserId: session.clerkId, actorRole: session.role,
+              });
+              if (payment.ok && payment.eligible && payment.paymentEffect &&
+                  BOOKING_PAYMENT_EFFECTS.includes(payment.paymentEffect) &&
+                  Number.isSafeInteger(payment.amount) && Number(payment.amount) > 0 &&
+                  Number.isSafeInteger(payment.existingHoldAmount) && Number(payment.existingHoldAmount) >= 0 &&
+                  payment.currency === booking.currency) {
+                externalTicketConfirmation = {
+                  eligible: true,
+                  amount: payment.amount! / 100,
+                  currency: booking.currency,
+                  paymentEffect: payment.paymentEffect,
+                  existingHoldAmount: payment.existingHoldAmount! / 100,
+                  ...(recovery ? { recovery: true } : {}),
+                };
+              }
             }
           }
         } catch {
@@ -156,16 +226,21 @@ export async function POST(request: Request) {
         }
       }
     }
+    if (cancellationResolved) supplierCancellation = null;
     return walletOk({ ...status, supplierTicket, supplierCancellation, externalTicketConfirmation, ...storage,
+      lookupMode: 'shapon_saved_status', supplierSyncPerformed: false,
       ticketingTimeUpdated: savedDeadline?.updated === true,
       ...(savedDeadline ? { ticketingDeadlineAt: savedDeadline.ticketingDeadlineAt } : {}),
-    });
+      ...(cancellationResolved ? {
+        cancellationResolved: true, displayStatus: 'cancelled', displayReviewRequired: false,
+      } : {}),
+      projectionUpdated: storage.projectionUpdated || cancellationResolved });
   } catch (error) {
     console.error('[shapontravels] booking status read failed', {
       bookingId: booking.id,
       code: error instanceof Error ? error.message : 'unknown',
     });
     return walletFail(502, 'SUPPLIER_STATUS_UNAVAILABLE',
-      'Supplier status is temporarily unavailable. No booking change was made.');
+      'Saved Shapon status is temporarily unavailable. Refresh again to verify the local booking.');
   }
 }

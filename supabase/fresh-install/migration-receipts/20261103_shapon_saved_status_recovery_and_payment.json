@@ -1,0 +1,812 @@
+{
+  "projectRef": "ljzoizsogbirlvlsrwzi",
+  "completedAt": "2026-11-03T07:48:40.056Z",
+  "workdir": "supabase/fresh-install",
+  "mode": "database-only",
+  "migrationHashes": {
+    "20261103000000_shapon_public_current_status.sql": "5a871f9ffc23dff0d0e9990271fb24b75349e6c358cce6e5f6f5304e818cce8b",
+    "20261103000001_shapon_ticketing_recovery.sql": "3c9c350c46327a7b664cb1af90eacbd6c8e50dd6e32a6492cf79b53863c37444",
+    "20261103000002_shapon_payment_resolution.sql": "dfbc624877dee8a244c8b2fa905fa0b182c062fee1678329045f7cf3ca57664d",
+    "20261103000003_shapon_saved_supplier_sync_current_status.sql": "95d64e0253d93d4cc2e3c7a37a9a748c9076d6e60e715e0bce04a3793f0ba4ad"
+  },
+  "previousMigrationCount": 24,
+  "migrationCount": 28,
+  "tableCount": 89,
+  "functionCount": 330,
+  "pendingMigrations": [],
+  "verification": {
+    "ktt_reference_preserved": true,
+    "mandatory_payment": true,
+    "migration_versions": [
+      "20260911000000",
+      "20260911010000",
+      "20260911020000",
+      "20260911030000",
+      "20260912000000",
+      "20260912010000",
+      "20260912020000",
+      "20260912030000",
+      "20260915000000",
+      "20260926000000",
+      "20260927000000",
+      "20260927010000",
+      "20260927020000",
+      "20260927030000",
+      "20260930000000",
+      "20260930010000",
+      "20261002000000",
+      "20261003000000",
+      "20261006000000",
+      "20261006000100",
+      "20261008000000",
+      "20261008010000",
+      "20261010000000",
+      "20261013000000",
+      "20261103000000",
+      "20261103000001",
+      "20261103000002",
+      "20261103000003"
+    ],
+    "original_status_nullable": true,
+    "public_function_count": 330,
+    "return_accounting_private": true,
+    "return_decisions_immutable": true,
+    "return_table_private": true,
+    "saved_source_date": true,
+    "saved_sync_projection": true,
+    "saved_sync_recorder": true,
+    "service_rpc_only": true,
+    "table_count": 89,
+    "tables_without_rls": [],
+    "triplover_preserved": true
+  },
+  "existingTableSnapshots": {
+    "before": {
+      "adjustment_ref_counters": {
+        "rows": 15,
+        "sha256": "43c29e965912f16ecc9bbff790eb5c3664038621fefcfb1cacccf0a9ca33d0d4"
+      },
+      "agencies": {
+        "rows": 22,
+        "sha256": "aa9acd3d37412484fb7ba8ecabe4e4429e9701d141c0c99ec2534b67b242c8e7"
+      },
+      "announcement_slider_messages": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "announcement_slider_settings": {
+        "rows": 1,
+        "sha256": "5a46a805f55c09c571e89f6d0feb61274086e5ff4397466f0bfe13c5f9246f1e"
+      },
+      "app_users": {
+        "rows": 58,
+        "sha256": "8f2731e0e5f65720027d9154d66a3c9a716aa58c6f2ca3ec2002f0fc922b51da"
+      },
+      "booking_attempts": {
+        "rows": 145,
+        "sha256": "f40a3240f96461f7ea410f5f8fc06a8149628e84c650b7a8c366ed35778af0ad"
+      },
+      "booking_deadline_observations": {
+        "rows": 111,
+        "sha256": "397bd682755087ef626c9f52d4bf7f46999f4389e0a4c51cae637a8ee5108239"
+      },
+      "booking_deadline_read_budgets": {
+        "rows": 9,
+        "sha256": "90d5060650507261cc930d2add374187437756d9f1932ebb31f989b8efbf1fb4"
+      },
+      "booking_issued_sms_deliveries": {
+        "rows": 64,
+        "sha256": "3d8a9b0b1f14cb544ca4b9b340caddee21936d5a55efc05da0d851b69163c685"
+      },
+      "booking_lifecycle_worker_runs": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_local_time_limit_events": {
+        "rows": 4,
+        "sha256": "e97e444855a0a31c5e309a4b5e09fcd7cf348f3a5bd08f769383c77e222cf4fd"
+      },
+      "booking_local_time_limit_requests": {
+        "rows": 2,
+        "sha256": "a05481d7c3edad225f8ca630d4b5418865df6f7291c0a87b6aa768240cd14bd5"
+      },
+      "booking_manual_sms_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_notification_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_notification_outbox": {
+        "rows": 273,
+        "sha256": "f6cc4fdfcb357bb84c694abf86bf8c6ad39ff236276d06c1e857c532a9f33ebc"
+      },
+      "booking_operations": {
+        "rows": 87,
+        "sha256": "893fd1ed8711c8a37c2a28c861e5c9cf651939e8c1db40a79f3108a49aa7a025"
+      },
+      "booking_pnr_refresh_jobs": {
+        "rows": 16,
+        "sha256": "dbe80c1c739f2d266a7a7fafc56cd035ae23a9ce8ae4e1a03b7934fef6d1f5ef"
+      },
+      "booking_reconciliation_cases": {
+        "rows": 27,
+        "sha256": "f05c8b28af6ac8847ea3932f8cb7e4461aa8d5d8a3a2af61c791005266d666be"
+      },
+      "booking_reconciliation_observations": {
+        "rows": 27,
+        "sha256": "b82bcecd1cd1f840b0b516d6e0f867fb5ffd101c82077e14b2ebecdc9d887943"
+      },
+      "booking_reconciliation_proposal_supersessions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_ref_counters": {
+        "rows": 38,
+        "sha256": "8a5cda7759e888b9ec208d2768933278d17770a98ff84d1f649904381921e47e"
+      },
+      "booking_reference_aliases": {
+        "rows": 48,
+        "sha256": "12276a3ee1fd3370b588e036e3014d4e38ef022a8c6a61d79b684cb054930a36"
+      },
+      "booking_status_email_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_status_events": {
+        "rows": 273,
+        "sha256": "d419cd75f364108d82645933e228e0c33e81c6dc5fd39ae9024a56c27ced975e"
+      },
+      "booking_user_visibility_events": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "company_admin_sms_recipients": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "company_settings": {
+        "rows": 1,
+        "sha256": "913fab9e80aa1ac9000788957afdf2a64f625fd9fade511e702deef92358288e"
+      },
+      "deposit_approved_sms_deliveries": {
+        "rows": 4,
+        "sha256": "a010b977527f0406b0463a047b0a92c2079f5b7c6b6b34a109672c504effb1f7"
+      },
+      "deposit_ref_counters": {
+        "rows": 5,
+        "sha256": "86c6b5e97aa854f874f6332058ed705f30c21b23a113a89e6a142a019122f4db"
+      },
+      "deposit_request_admin_sms_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "flight_bookings": {
+        "rows": 110,
+        "sha256": "a1671e75b7a6607b58a5c15e81e05ba11b89c71836f9d6c8ef8f0efb296bdad8"
+      },
+      "flight_search_daily_counters": {
+        "rows": 289,
+        "sha256": "ca6e4493b7ab4349de61a6885c5895d293e30fbaa7aff1e0a8d725c5e0d93bb9"
+      },
+      "flight_search_history": {
+        "rows": 564,
+        "sha256": "1813b832cb8029baf03e3141fde3b03a93360b1f82e9846d74514b99d9ea020e"
+      },
+      "flight_search_quotes": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "flight_search_supplier_limits": {
+        "rows": 4,
+        "sha256": "fcb59111ed72df0aace16a504fdc3ba3a79c8763a3bf1535a9957090395591fe"
+      },
+      "flight_search_usage_events": {
+        "rows": 1531,
+        "sha256": "7f6d623172dac8c9519e1dea082896d3d71e341ab1a4b4c2a5b6788513f82f5d"
+      },
+      "flight_search_user_controls": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "homepage_offer_settings": {
+        "rows": 1,
+        "sha256": "82c9fcc8b5d6dffee9abf08d25336ff3d1cb3047e0b50316c317f1547f9d45ca"
+      },
+      "homepage_travel_offers": {
+        "rows": 3,
+        "sha256": "3ca085f7d78db93f01c1d034f07eabe1ae2b1d36200deb906bf65549f0eda95d"
+      },
+      "impexp_import_charge_authorizations": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "imported_ticketing_resolutions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "manual_booking_actions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "markup_rules": {
+        "rows": 66,
+        "sha256": "f7f46a4bfed71f1375678548c53e36ac5b6b4a0ed0e72c1f744f573bb53bb8ed"
+      },
+      "passenger_profile_ref_counters": {
+        "rows": 37,
+        "sha256": "cd4e7129605e67b814bdb092d9f0fa3d3578973dd711caf25914ffd45bfeded4"
+      },
+      "passenger_profiles": {
+        "rows": 116,
+        "sha256": "f666332364a15806cfb7865c931827ac9e75220236d7ecfb990ea74a5aa1e40d"
+      },
+      "promotional_popup_settings": {
+        "rows": 1,
+        "sha256": "a6f770aaae6ada29a34cfc920911fecfc2394fa63db5f49358d783c348fa7809"
+      },
+      "security_audit_events": {
+        "rows": 801,
+        "sha256": "6a7a2e106c93f35fe5afb684b914e61c6516f8e6e4617ef35d9dd61d6ea733ea"
+      },
+      "security_operation_locks": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "security_rate_limits": {
+        "rows": 14,
+        "sha256": "6ffd31ee34d93636db283455927f8a9ae984118e089bd1bc408dcd232a1b3f8a"
+      },
+      "shapon_booking_current_status_observations": {
+        "rows": 8,
+        "sha256": "22baa86ecb01b8b35758945442243435365392e7a2ede14d7b9d1b55597a9ea2"
+      },
+      "shapon_external_ticket_confirmations": {
+        "rows": 1,
+        "sha256": "36aea407d30ff9e15a6ed846062c16ab0032e6dc03c612969dde3f02c4f91dac"
+      },
+      "staff_details": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "superadmin_booking_deadline_overrides": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "superadmin_booking_decisions": {
+        "rows": 1,
+        "sha256": "1c15e2d75de20d78b09c6f94896585d4ea8a815be7d6fe4a4a9ea837c99cfef9"
+      },
+      "superadmin_manual_financial_resolutions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "supplier_operational_settings": {
+        "rows": 1,
+        "sha256": "d91b263db7d0ca21e58940b0636332fb847150e5072f997a0a847629c01c6934"
+      },
+      "supplier_reference_charge_authorizations": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_assignments": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_customer_decisions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_entitlement_claims": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_notification_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_notification_outbox": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_quotes": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_completions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_lineages": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_quote_allocations": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_quote_terms": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_request_events": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_request_routes": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_request_selections": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_requests": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_ticket_entitlements": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_void_completions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "triplover_booking_status_checks": {
+        "rows": 6,
+        "sha256": "4fedc1a8fd29ec78656e12aa3969e58bf9753de450ceb437b1d679ae1b505749"
+      },
+      "triplover_issued_hold_confirmations": {
+        "rows": 1,
+        "sha256": "9580b4d23be97b69bb3f9fdbc9b832a6f42396011bda39c19c6dc2d379b7b410"
+      },
+      "upgrade_requests": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "user_profiles": {
+        "rows": 17,
+        "sha256": "1e6f872791f413035c02c0476a6139a6e665236e582c7149f929cda019d6bf60"
+      },
+      "wallet_accounts": {
+        "rows": 56,
+        "sha256": "de6e884df0970c5c2de7898f6c21335abbe002259326a32d4bf42d64af570561"
+      },
+      "wallet_adjustment_requests": {
+        "rows": 21,
+        "sha256": "c5116002f097b12871e2fcc260f63c3b0c2e0c9a7dde66f2947240d8868e7bee"
+      },
+      "wallet_company_bangla_qr_accounts": {
+        "rows": 1,
+        "sha256": "b1576117c281aac561059b8f228111c409b2c630e53b21886a93e633664a6e84"
+      },
+      "wallet_company_bank_accounts": {
+        "rows": 11,
+        "sha256": "0a0af17fa555689dabf21c2d400190074b0ab3fb995d6cbff100415e025a380e"
+      },
+      "wallet_company_mfs_accounts": {
+        "rows": 6,
+        "sha256": "6794e5240ed7dd16789e504f37e28cfae8a0356bdc8912295639594ad6268714"
+      },
+      "wallet_deposit_requests": {
+        "rows": 6,
+        "sha256": "9e59a1a7ffe6ffe5100240d5d44e6f007f209e462cf49a2cfc15bfa4dce968bf"
+      },
+      "wallet_ledger_entries": {
+        "rows": 171,
+        "sha256": "b5680cd5291ab7486dd452e0f47156ca10ad9411c93467585fb162cd377f12aa"
+      },
+      "wallet_owner_bank_accounts": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "wallet_payment_branches": {
+        "rows": 1,
+        "sha256": "b53f5e54df6a97242b2352b3cb27d7b354abf75c7220feaafef37b094c830ab8"
+      },
+      "wallet_reservations": {
+        "rows": 67,
+        "sha256": "8f1e927987c55db3cc2dc3a57327cfb5b7b6a3bfd6b00e8c3e94354a5248642e"
+      },
+      "wallets": {
+        "rows": 56,
+        "sha256": "3de63fa137b7934aa0e30f7434ac223144984d90141ba84d7403a562fe55cbb3"
+      }
+    },
+    "after": {
+      "adjustment_ref_counters": {
+        "rows": 15,
+        "sha256": "43c29e965912f16ecc9bbff790eb5c3664038621fefcfb1cacccf0a9ca33d0d4"
+      },
+      "agencies": {
+        "rows": 22,
+        "sha256": "aa9acd3d37412484fb7ba8ecabe4e4429e9701d141c0c99ec2534b67b242c8e7"
+      },
+      "announcement_slider_messages": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "announcement_slider_settings": {
+        "rows": 1,
+        "sha256": "5a46a805f55c09c571e89f6d0feb61274086e5ff4397466f0bfe13c5f9246f1e"
+      },
+      "app_users": {
+        "rows": 58,
+        "sha256": "8f2731e0e5f65720027d9154d66a3c9a716aa58c6f2ca3ec2002f0fc922b51da"
+      },
+      "booking_attempts": {
+        "rows": 145,
+        "sha256": "f40a3240f96461f7ea410f5f8fc06a8149628e84c650b7a8c366ed35778af0ad"
+      },
+      "booking_deadline_observations": {
+        "rows": 111,
+        "sha256": "397bd682755087ef626c9f52d4bf7f46999f4389e0a4c51cae637a8ee5108239"
+      },
+      "booking_deadline_read_budgets": {
+        "rows": 9,
+        "sha256": "90d5060650507261cc930d2add374187437756d9f1932ebb31f989b8efbf1fb4"
+      },
+      "booking_issued_sms_deliveries": {
+        "rows": 64,
+        "sha256": "3d8a9b0b1f14cb544ca4b9b340caddee21936d5a55efc05da0d851b69163c685"
+      },
+      "booking_lifecycle_worker_runs": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_local_time_limit_events": {
+        "rows": 4,
+        "sha256": "e97e444855a0a31c5e309a4b5e09fcd7cf348f3a5bd08f769383c77e222cf4fd"
+      },
+      "booking_local_time_limit_requests": {
+        "rows": 2,
+        "sha256": "a05481d7c3edad225f8ca630d4b5418865df6f7291c0a87b6aa768240cd14bd5"
+      },
+      "booking_manual_sms_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_notification_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_notification_outbox": {
+        "rows": 273,
+        "sha256": "f6cc4fdfcb357bb84c694abf86bf8c6ad39ff236276d06c1e857c532a9f33ebc"
+      },
+      "booking_operations": {
+        "rows": 87,
+        "sha256": "893fd1ed8711c8a37c2a28c861e5c9cf651939e8c1db40a79f3108a49aa7a025"
+      },
+      "booking_pnr_refresh_jobs": {
+        "rows": 16,
+        "sha256": "dbe80c1c739f2d266a7a7fafc56cd035ae23a9ce8ae4e1a03b7934fef6d1f5ef"
+      },
+      "booking_reconciliation_cases": {
+        "rows": 27,
+        "sha256": "f05c8b28af6ac8847ea3932f8cb7e4461aa8d5d8a3a2af61c791005266d666be"
+      },
+      "booking_reconciliation_observations": {
+        "rows": 27,
+        "sha256": "b82bcecd1cd1f840b0b516d6e0f867fb5ffd101c82077e14b2ebecdc9d887943"
+      },
+      "booking_reconciliation_proposal_supersessions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_ref_counters": {
+        "rows": 38,
+        "sha256": "8a5cda7759e888b9ec208d2768933278d17770a98ff84d1f649904381921e47e"
+      },
+      "booking_reference_aliases": {
+        "rows": 48,
+        "sha256": "12276a3ee1fd3370b588e036e3014d4e38ef022a8c6a61d79b684cb054930a36"
+      },
+      "booking_status_email_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "booking_status_events": {
+        "rows": 273,
+        "sha256": "d419cd75f364108d82645933e228e0c33e81c6dc5fd39ae9024a56c27ced975e"
+      },
+      "booking_user_visibility_events": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "company_admin_sms_recipients": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "company_settings": {
+        "rows": 1,
+        "sha256": "913fab9e80aa1ac9000788957afdf2a64f625fd9fade511e702deef92358288e"
+      },
+      "deposit_approved_sms_deliveries": {
+        "rows": 4,
+        "sha256": "a010b977527f0406b0463a047b0a92c2079f5b7c6b6b34a109672c504effb1f7"
+      },
+      "deposit_ref_counters": {
+        "rows": 5,
+        "sha256": "86c6b5e97aa854f874f6332058ed705f30c21b23a113a89e6a142a019122f4db"
+      },
+      "deposit_request_admin_sms_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "flight_bookings": {
+        "rows": 110,
+        "sha256": "a1671e75b7a6607b58a5c15e81e05ba11b89c71836f9d6c8ef8f0efb296bdad8"
+      },
+      "flight_search_daily_counters": {
+        "rows": 289,
+        "sha256": "ca6e4493b7ab4349de61a6885c5895d293e30fbaa7aff1e0a8d725c5e0d93bb9"
+      },
+      "flight_search_history": {
+        "rows": 564,
+        "sha256": "1813b832cb8029baf03e3141fde3b03a93360b1f82e9846d74514b99d9ea020e"
+      },
+      "flight_search_quotes": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "flight_search_supplier_limits": {
+        "rows": 4,
+        "sha256": "fcb59111ed72df0aace16a504fdc3ba3a79c8763a3bf1535a9957090395591fe"
+      },
+      "flight_search_usage_events": {
+        "rows": 1531,
+        "sha256": "7f6d623172dac8c9519e1dea082896d3d71e341ab1a4b4c2a5b6788513f82f5d"
+      },
+      "flight_search_user_controls": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "homepage_offer_settings": {
+        "rows": 1,
+        "sha256": "82c9fcc8b5d6dffee9abf08d25336ff3d1cb3047e0b50316c317f1547f9d45ca"
+      },
+      "homepage_travel_offers": {
+        "rows": 3,
+        "sha256": "3ca085f7d78db93f01c1d034f07eabe1ae2b1d36200deb906bf65549f0eda95d"
+      },
+      "impexp_import_charge_authorizations": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "imported_ticketing_resolutions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "manual_booking_actions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "markup_rules": {
+        "rows": 66,
+        "sha256": "f7f46a4bfed71f1375678548c53e36ac5b6b4a0ed0e72c1f744f573bb53bb8ed"
+      },
+      "passenger_profile_ref_counters": {
+        "rows": 37,
+        "sha256": "cd4e7129605e67b814bdb092d9f0fa3d3578973dd711caf25914ffd45bfeded4"
+      },
+      "passenger_profiles": {
+        "rows": 116,
+        "sha256": "f666332364a15806cfb7865c931827ac9e75220236d7ecfb990ea74a5aa1e40d"
+      },
+      "promotional_popup_settings": {
+        "rows": 1,
+        "sha256": "a6f770aaae6ada29a34cfc920911fecfc2394fa63db5f49358d783c348fa7809"
+      },
+      "security_audit_events": {
+        "rows": 801,
+        "sha256": "6a7a2e106c93f35fe5afb684b914e61c6516f8e6e4617ef35d9dd61d6ea733ea"
+      },
+      "security_operation_locks": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "security_rate_limits": {
+        "rows": 14,
+        "sha256": "6ffd31ee34d93636db283455927f8a9ae984118e089bd1bc408dcd232a1b3f8a"
+      },
+      "shapon_booking_current_status_observations": {
+        "rows": 8,
+        "sha256": "22baa86ecb01b8b35758945442243435365392e7a2ede14d7b9d1b55597a9ea2"
+      },
+      "shapon_external_ticket_confirmations": {
+        "rows": 1,
+        "sha256": "36aea407d30ff9e15a6ed846062c16ab0032e6dc03c612969dde3f02c4f91dac"
+      },
+      "staff_details": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "superadmin_booking_deadline_overrides": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "superadmin_booking_decisions": {
+        "rows": 1,
+        "sha256": "1c15e2d75de20d78b09c6f94896585d4ea8a815be7d6fe4a4a9ea837c99cfef9"
+      },
+      "superadmin_manual_financial_resolutions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "supplier_operational_settings": {
+        "rows": 1,
+        "sha256": "d91b263db7d0ca21e58940b0636332fb847150e5072f997a0a847629c01c6934"
+      },
+      "supplier_reference_charge_authorizations": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_assignments": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_customer_decisions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_entitlement_claims": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_notification_deliveries": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_notification_outbox": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_quotes": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_completions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_lineages": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_quote_allocations": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_reissue_quote_terms": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_request_events": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_request_routes": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_request_selections": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_requests": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_ticket_entitlements": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "ticket_management_void_completions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "triplover_booking_status_checks": {
+        "rows": 6,
+        "sha256": "4fedc1a8fd29ec78656e12aa3969e58bf9753de450ceb437b1d679ae1b505749"
+      },
+      "triplover_issued_hold_confirmations": {
+        "rows": 1,
+        "sha256": "9580b4d23be97b69bb3f9fdbc9b832a6f42396011bda39c19c6dc2d379b7b410"
+      },
+      "upgrade_requests": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "user_profiles": {
+        "rows": 17,
+        "sha256": "1e6f872791f413035c02c0476a6139a6e665236e582c7149f929cda019d6bf60"
+      },
+      "wallet_accounts": {
+        "rows": 56,
+        "sha256": "de6e884df0970c5c2de7898f6c21335abbe002259326a32d4bf42d64af570561"
+      },
+      "wallet_adjustment_requests": {
+        "rows": 21,
+        "sha256": "c5116002f097b12871e2fcc260f63c3b0c2e0c9a7dde66f2947240d8868e7bee"
+      },
+      "wallet_company_bangla_qr_accounts": {
+        "rows": 1,
+        "sha256": "b1576117c281aac561059b8f228111c409b2c630e53b21886a93e633664a6e84"
+      },
+      "wallet_company_bank_accounts": {
+        "rows": 11,
+        "sha256": "0a0af17fa555689dabf21c2d400190074b0ab3fb995d6cbff100415e025a380e"
+      },
+      "wallet_company_mfs_accounts": {
+        "rows": 6,
+        "sha256": "6794e5240ed7dd16789e504f37e28cfae8a0356bdc8912295639594ad6268714"
+      },
+      "wallet_deposit_requests": {
+        "rows": 6,
+        "sha256": "9e59a1a7ffe6ffe5100240d5d44e6f007f209e462cf49a2cfc15bfa4dce968bf"
+      },
+      "wallet_ledger_entries": {
+        "rows": 171,
+        "sha256": "b5680cd5291ab7486dd452e0f47156ca10ad9411c93467585fb162cd377f12aa"
+      },
+      "wallet_owner_bank_accounts": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "wallet_payment_branches": {
+        "rows": 1,
+        "sha256": "b53f5e54df6a97242b2352b3cb27d7b354abf75c7220feaafef37b094c830ab8"
+      },
+      "wallet_reservations": {
+        "rows": 67,
+        "sha256": "8f1e927987c55db3cc2dc3a57327cfb5b7b6a3bfd6b00e8c3e94354a5248642e"
+      },
+      "wallets": {
+        "rows": 56,
+        "sha256": "3de63fa137b7934aa0e30f7434ac223144984d90141ba84d7403a562fe55cbb3"
+      }
+    }
+  },
+  "unchangedExistingTables": 88,
+  "preservedExistingFunctionAndViewOwnershipAndGrants": true,
+  "changedFunctions": [
+    "confirm_shapon_external_ticket_v1(uuid,text,text,uuid,boolean,jsonb,jsonb,timestamp with time zone)",
+    "project_shapon_booking_current_status_v1(flight_bookings,jsonb,text,timestamp with time zone)",
+    "record_shapon_booking_current_status_v1(uuid,timestamp with time zone,text,jsonb,jsonb)",
+    "shapon_booking_has_external_paid_settlement_v1(uuid)"
+  ],
+  "newFunctions": [
+    "booking_payment_return_accounting_v1(uuid)",
+    "prevent_booking_payment_return_mutation_v1()",
+    "preview_booking_payment_return_v1(uuid,text,text)",
+    "preview_shapon_ticket_payment_v1(uuid,text,text)",
+    "resolve_shapon_cancelled_refresh_v1(uuid,text,text,uuid,jsonb,jsonb,timestamp with time zone)",
+    "return_booking_payment_v1(uuid,text,text,uuid,uuid,bigint,bigint,bigint,bigint,boolean,text)"
+  ],
+  "changedViews": [
+    "booking_dashboard_list_v"
+  ],
+  "code": {
+    "head": "84a689360ba1c57e5e90d69107a119a2950014dd",
+    "branch": "codex/shapon-saved-status-recovery",
+    "committed": false,
+    "pushed": false,
+    "deployed": false
+  },
+  "businessActions": {
+    "supplierWrite": false,
+    "statusCommand": false,
+    "walletCommand": false,
+    "notificationDispatch": false
+  },
+  "queryTransport": "pinned configured database connection; Management API SQL endpoint returned403",
+  "compatibility": {
+    "oldChargeAndConfirm": "PAYMENT_PREVIEW_REQUIRED for new decisions",
+    "oldConfirmWithoutCharge": "PAYMENT_REQUIRED for new decisions",
+    "historicalExactRetries": "preserved",
+    "normalIssueCancelAndTriplover": "unchanged"
+  }
+}

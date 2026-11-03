@@ -108,13 +108,17 @@ async function invoke({ readStatus = 200, receipt = cancellationReceipt, readErr
     './client': client, './booking-status': bookingStatus,
   });
   const ticketAdapter = compile('lib/shapontravels/ticket.ts', {
-    './client': client, '@/lib/triplover/ticket-payload': ticketPayload,
+    './client': client, './booking-status': bookingStatus, '@/lib/triplover/ticket-payload': ticketPayload,
   });
   const externalConfirmation = compile('lib/shapontravels/external-ticket-confirmation.ts', {
     './booking-status': bookingStatus, './ticket': ticketAdapter,
   });
   const route = compile('app/api/flights/booking/shapon-status/route.ts', {
     zod: { z },
+    'node:crypto': { randomUUID: () => assert.fail('Staff read must not resolve a cancellation') },
+    '@/lib/db/booking-payment-resolution': { BOOKING_PAYMENT_EFFECTS: ['charge_wallet','capture_hold','already_paid'], previewShaponTicketPayment: forbiddenWrite },
+    '@/lib/email/booking-status-delivery': { dispatchBookingStatusEmails: forbiddenWrite },
+    '@/lib/shapontravels/cancellation-recovery': compile('lib/shapontravels/cancellation-recovery.ts', { './booking-status': bookingStatus }),
     '@/lib/dashboard/session': { getDashboardSession: async () => sessionOverride },
     '@/lib/dashboard/booking-lifecycle': { canRefreshBookingSupplierDetails: role => role === 'staff_account' },
     '@/lib/dashboard/bookings': {

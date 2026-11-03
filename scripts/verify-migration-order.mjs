@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { migrationNames as installedMigrationNames, publicStatusMigration,
+  ticketingRecoveryMigration, paymentResolutionMigration, savedSyncMigration,
+  verifyMigrationRegistration } from './helpers/shapon-recovery-database.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const migrationsDir = path.join(root, 'supabase', 'migrations');
@@ -148,4 +151,13 @@ for (const prerequisite of [
   );
 }
 
-console.log('migration ordering verification passed');
+// The active installed project has its own immutable fresh-install history.
+// Historical root migrations above remain reference/test sources only.
+verifyMigrationRegistration();
+const recoveryChain = ['20261013000000_triplover_supplier_status_confirmation.sql',
+  publicStatusMigration, ticketingRecoveryMigration, paymentResolutionMigration, savedSyncMigration];
+for (let index = 1; index < recoveryChain.length; index++) {
+  assert.ok(installedMigrationNames.indexOf(recoveryChain[index - 1]) <
+    installedMigrationNames.indexOf(recoveryChain[index]), 'Kaliganj Shapon forward dependencies must precede their consumers');
+}
+console.log('migration ordering verification passed, including the installed Kaliganj Shapon recovery chain');

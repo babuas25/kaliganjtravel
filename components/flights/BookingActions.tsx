@@ -109,16 +109,27 @@ type SmsPreview = {
   canSend: boolean;
 };
 
+type ExternalTicketPaymentEffect = 'capture_hold' | 'already_paid' | 'charge_wallet';
+
+function isExternalTicketPaymentEffect(value: unknown): value is ExternalTicketPaymentEffect {
+  return value === 'capture_hold' || value === 'already_paid' || value === 'charge_wallet';
+}
+
 type ExternalTicketConfirmation = {
   bookingReference: string;
   amount: number;
   currency: string;
+  existingHoldAmount: number;
+  recovery: boolean;
+  paymentEffect: ExternalTicketPaymentEffect;
 };
 
 type ExternalTicketConfirmationAttempt = {
   bookingReference: string;
   requestId: string;
   chargeWallet: boolean;
+  expectedPaymentEffect?: ExternalTicketPaymentEffect;
+  expectedAmount?: number;
 };
 
 const ISSUE_POST_TIMEOUT_MS = 130_000;
@@ -199,6 +210,8 @@ const EXTERNAL_CONFIRMATION_DEFINITE_CODES = new Set([
   'TICKET_EVIDENCE_UNVERIFIED',
   'TICKET_ALREADY_ASSIGNED',
   'BOOKING_STATE_CHANGED',
+  'PAYMENT_PREVIEW_CHANGED',
+  'PAYMENT_PREVIEW_REQUIRED',
 ]);
 
 async function responseJson<T>(response: Response): Promise<T> {
@@ -390,8 +403,6 @@ export default function BookingActions({
   const [confirmingExternal, setConfirmingExternal] = useState(false);
   const [externalConfirmationUncertain, setExternalConfirmationUncertain] = useState(false);
   const [externalConfirmationError, setExternalConfirmationError] = useState<string | null>(null);
-  const [externalConfirmationAttempt, setExternalConfirmationAttempt] =
-    useState<ExternalTicketConfirmationAttempt | null>(null);
   const externalConfirmationAttemptRef = useRef<ExternalTicketConfirmationAttempt | null>(null);
   const externalConfirmationInFlight = useRef(false);
   const activeBookingReference = useRef(bookingReference);
@@ -404,7 +415,6 @@ export default function BookingActions({
     setConfirmingExternal(false);
     setExternalConfirmationUncertain(false);
     setExternalConfirmationError(null);
-    setExternalConfirmationAttempt(null);
     externalConfirmationAttemptRef.current = null;
     externalConfirmationInFlight.current = false;
   }, [bookingReference]);
@@ -419,7 +429,6 @@ export default function BookingActions({
     externalTicketConfirmationRef.current = null;
     setExternalConfirmationOpen(false);
     setExternalConfirmationUncertain(false);
-    setExternalConfirmationAttempt(null);
     externalConfirmationAttemptRef.current = null;
   }, [ticketed]);
   const [syncRequestId, setSyncRequestId] = useState<string | null>(null);
@@ -630,7 +639,7 @@ export default function BookingActions({
     Boolean(issueActionStatus?.operationState);
   const externalTicketConfirmationReady =
     allowExternalTicketConfirmation && allowShaponStatusCheck &&
-    !ticketed && ['on-hold', 'pending', 'expired', 'unconfirmed'].includes(status) && !directTicketing &&
+    !ticketed && ['on-hold', 'pending', 'expired', 'unconfirmed', 'in-progress'].includes(status) && !directTicketing &&
     !importedBooking && !manualBooking &&
     externalTicketConfirmation?.bookingReference === bookingReference;
   const issueInteractionLocked =
@@ -662,7 +671,7 @@ export default function BookingActions({
   async function issue() {
     if (issuing || cancelling || confirmingExternal || externalConfirmationUncertain) return;
     if (externalTicketConfirmationReady) {
-      setMessage('The supplier ticket is already issued. Confirm the issued ticket below.');
+      setMessage('Shapon’s saved ticket is already issued. Confirm the issued ticket below.');
       return;
     }
     if (insufficient && preview) {
@@ -907,6 +916,9 @@ export default function BookingActions({
             eligible: boolean;
             amount: number;
             currency: string;
+            existingHoldAmount?: number;
+            recovery?: boolean;
+            paymentEffect?: ExternalTicketPaymentEffect;
           } | null;
         };
         error?: string | { errorMessage?: string };
@@ -931,16 +943,25 @@ export default function BookingActions({
         const externalConfirmation = body.data?.externalTicketConfirmation;
         const canConfirmExternal =
           allowExternalTicketConfirmation && allowShaponStatusCheck &&
-          ['on-hold', 'pending', 'expired', 'unconfirmed'].includes(status) &&
+          ['on-hold', 'pending', 'expired', 'unconfirmed', 'in-progress'].includes(status) &&
           !directTicketing && !importedBooking && !manualBooking &&
           externalConfirmation?.eligible === true &&
           Number.isFinite(externalConfirmation.amount) && externalConfirmation.amount > 0 &&
+          isExternalTicketPaymentEffect(externalConfirmation.paymentEffect) &&
+          (externalConfirmation.existingHoldAmount == null ||
+            (Number.isFinite(externalConfirmation.existingHoldAmount) &&
+              externalConfirmation.existingHoldAmount >= 0)) &&
+          (externalConfirmation.paymentEffect !== 'capture_hold' ||
+            externalConfirmation.existingHoldAmount === externalConfirmation.amount) &&
           externalConfirmation.currency === 'BDT';
         if (canConfirmExternal) {
           const confirmation = {
             bookingReference,
             amount: externalConfirmation.amount,
             currency: externalConfirmation.currency,
+            existingHoldAmount: externalConfirmation.existingHoldAmount ?? 0,
+            recovery: externalConfirmation.recovery === true,
+            paymentEffect: externalConfirmation.paymentEffect!,
           };
           externalTicketConfirmationRef.current = confirmation;
           setExternalTicketConfirmation(confirmation);
@@ -948,15 +969,15 @@ export default function BookingActions({
         const ticketFinding = body.data?.supplierTicket;
         const cancellationFinding = body.data?.supplierCancellation;
         const ticketMessage = canConfirmExternal
-          ? 'Supplier ticket is issued and paid. Confirm the booking below and choose whether to charge the booking owner’s wallet.'
+          ? 'Shapon’s saved ticket is issued and paid. Review the payment details below to confirm this booking.'
           : ticketFinding?.result === 'verified'
-          ? ` Supplier ticket evidence matches ${ticketFinding.ticketCount} passenger(s); staff must reconcile the local booking.`
+          ? ` Saved Shapon ticket evidence matches ${ticketFinding.ticketCount} passenger(s); staff must reconcile the local booking.`
           : ticketFinding?.result === 'pending'
-            ? ' Supplier ticketing is still pending; do not issue again.'
+            ? ' Shapon’s saved ticketing status is still pending; do not issue again.'
             : ticketFinding?.result === 'not_found'
-              ? ' No saved ticket was found. This is inconclusive; do not issue again until staff investigate.'
+              ? ' No saved Shapon ticket was found. This is inconclusive; do not issue again until staff investigate.'
               : ticketFinding
-                ? ' Supplier ticket evidence could not be verified; staff must investigate.'
+                ? ' Saved Shapon ticket evidence could not be verified; staff must investigate.'
                 : '';
         const cancellationMessage = cancellationFinding?.result === 'verified'
           ? 'Supplier cancellation evidence matches this booking; staff must reconcile the local booking and wallet. Do not cancel again.'
@@ -1010,7 +1031,7 @@ export default function BookingActions({
     }
   }, [allowExternalTicketConfirmation, allowImportedSync, allowShaponStatusCheck, bookingReference, directTicketing, importedBooking, manualBooking, router, status, syncRequestId]);
 
-  async function confirmExternalTicket(chargeWallet: boolean): Promise<void> {
+  async function confirmExternalTicket(): Promise<void> {
     if (
       activeBookingReference.current !== bookingReference ||
       !externalTicketConfirmationReady || !externalTicketConfirmation ||
@@ -1019,20 +1040,18 @@ export default function BookingActions({
       issuing || cancelling || completingImported || refreshingTicketingTime
     ) return;
     const priorAttempt = externalConfirmationAttemptRef.current;
-    if (priorAttempt && (
-      priorAttempt.bookingReference !== bookingReference ||
-      priorAttempt.chargeWallet !== chargeWallet
-    )) return;
+    if (priorAttempt && priorAttempt.bookingReference !== bookingReference) return;
     const attempt = priorAttempt ?? {
       bookingReference,
       requestId: crypto.randomUUID(),
-      chargeWallet,
+      chargeWallet: true,
+      expectedPaymentEffect: externalTicketConfirmation.paymentEffect,
+      expectedAmount: externalTicketConfirmation.amount,
     };
-    // Retain both the request identity and the financial choice until the
+    // Retain the request identity and approved payment preview until the
     // server confirms the result. A disconnected response may follow a debit.
     externalConfirmationAttemptRef.current = attempt;
     externalConfirmationInFlight.current = true;
-    setExternalConfirmationAttempt(attempt);
     setConfirmingExternal(true);
     setExternalConfirmationError(null);
     setMessage(null);
@@ -1050,10 +1069,17 @@ export default function BookingActions({
         confirmed: boolean;
         charged: boolean;
         replay?: boolean;
+        paymentEffect?: ExternalTicketPaymentEffect;
       }>>(response);
       if (activeBookingReference.current !== bookingReference) return;
+      const paymentEffect = body.data?.paymentEffect;
+      const historicalReplay = attempt.expectedPaymentEffect === undefined &&
+        attempt.expectedAmount === undefined && body.data?.replay === true &&
+        body.data.charged === attempt.chargeWallet;
       if (!response.ok || !body.success || body.data?.confirmed !== true ||
-        body.data.charged !== attempt.chargeWallet) {
+        (!historicalReplay && (!isExternalTicketPaymentEffect(paymentEffect) ||
+          body.data.charged !== (paymentEffect !== 'already_paid') ||
+          (attempt.expectedPaymentEffect != null && paymentEffect !== attempt.expectedPaymentEffect)))) {
         definiteRejection = response.status >= 400 && response.status < 500 &&
           EXTERNAL_CONFIRMATION_DEFINITE_CODES.has(body.error?.errorCode ?? '');
         throw issueRequestError(
@@ -1061,14 +1087,19 @@ export default function BookingActions({
           body.error?.errorCode,
         );
       }
-      const description = body.data.charged
-        ? 'Booking confirmed. The booking owner’s wallet was charged.'
-        : 'Booking confirmed without a wallet charge.';
+      const description = historicalReplay
+        ? attempt.chargeWallet
+          ? 'The saved booking confirmation was recovered. The recorded wallet payment was reused.'
+          : 'The saved booking confirmation was recovered. No wallet charge was recorded.'
+        : paymentEffect === 'already_paid'
+          ? 'Booking confirmed. The recorded payment was reused without an additional wallet debit.'
+          : paymentEffect === 'capture_hold'
+            ? 'Booking confirmed. The original wallet hold was captured once, without an additional wallet debit.'
+            : 'Booking confirmed. The saved payable amount was charged to the booking owner’s wallet.';
       setExternalConfirmedReference(bookingReference);
       setExternalTicketConfirmation(null);
       externalTicketConfirmationRef.current = null;
       setExternalConfirmationOpen(false);
-      setExternalConfirmationAttempt(null);
       externalConfirmationAttemptRef.current = null;
       setExternalConfirmationUncertain(false);
       setMessage(description);
@@ -1078,10 +1109,10 @@ export default function BookingActions({
       const detail = error instanceof Error ? error.message : 'The confirmation response is unavailable.';
       if (definiteRejection) {
         externalConfirmationAttemptRef.current = null;
-        setExternalConfirmationAttempt(null);
         setExternalConfirmationUncertain(false);
         setExternalConfirmationError(detail);
-        if ((error as IssueRequestError).code === 'BOOKING_STATE_CHANGED') {
+        if (['BOOKING_STATE_CHANGED', 'PAYMENT_PREVIEW_CHANGED', 'PAYMENT_PREVIEW_REQUIRED']
+          .includes((error as IssueRequestError).code ?? '')) {
           externalTicketConfirmationRef.current = null;
           setExternalTicketConfirmation(null);
           setExternalConfirmationOpen(false);
@@ -1090,7 +1121,7 @@ export default function BookingActions({
       } else {
         setExternalConfirmationUncertain(true);
         setExternalConfirmationError(
-          `The confirmation result is not yet verified. Retry the same option to check it safely. ${detail}`,
+          `The confirmation result is not yet verified. Retry confirmation to check the saved result safely. ${detail}`,
         );
       }
     } finally {
@@ -1110,6 +1141,7 @@ export default function BookingActions({
       }
     }
   }
+
 
   useEffect(() => {
     if (
@@ -1770,8 +1802,8 @@ export default function BookingActions({
                 aria-hidden
               />
               {refreshing
-                ? allowImportedSync ? 'Syncing…' : allowShaponStatusCheck ? 'Checking…' : 'Refreshing…'
-                : allowImportedSync ? 'Sync Imported Booking' : allowShaponStatusCheck ? 'Verify Supplier Status' : 'Refresh Ticket Details'}
+                ? allowImportedSync ? 'Syncing…' : allowShaponStatusCheck ? 'Reading saved status…' : 'Refreshing…'
+                : allowImportedSync ? 'Sync Imported Booking' : allowShaponStatusCheck ? 'Refresh Status' : 'Refresh Ticket Details'}
             </button>
             {externalTicketConfirmationReady && externalTicketConfirmation && (
               <AlertDialog
@@ -1802,11 +1834,11 @@ export default function BookingActions({
                     </span>
                     <AlertDialogHeader className="mt-4 text-left">
                       <AlertDialogTitle className="text-xl font-bold text-navy-950">
-                        Charge the booking owner’s wallet?
+                        Confirm the issued ticket?
                       </AlertDialogTitle>
                       <AlertDialogDescription className="leading-6 text-neutral-600">
-                        The supplier has verified this ticket as issued and paid.
-                        Both options will confirm this booking.
+                        Shapon’s saved record shows this ticket as issued and paid.
+                        {externalTicketConfirmation.recovery && ' The previous ticketing operation will be completed with this confirmation.'}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                   </div>
@@ -1822,16 +1854,26 @@ export default function BookingActions({
                       </div>
                       <div className="rounded-md border border-neutral-200 bg-navy-50 px-4 py-3">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                          Owner wallet charge
+                          Additional wallet debit
                         </p>
                         <p className="mt-1 font-bold text-brand-orange">
-                          {money(externalTicketConfirmation.amount * 100, externalTicketConfirmation.currency)}
+                          {money(externalTicketConfirmation.paymentEffect === 'charge_wallet'
+                            ? externalTicketConfirmation.amount * 100 : 0, externalTicketConfirmation.currency)}
                         </p>
                       </div>
                     </div>
+                    {externalTicketConfirmation.paymentEffect === 'capture_hold' && (
+                      <p className="rounded-md border border-brand-orange/20 bg-brand-orange-light px-4 py-3 text-xs leading-5 text-navy-950">
+                        This booking already has {money(externalTicketConfirmation.existingHoldAmount * 100, externalTicketConfirmation.currency)} held in the owner’s wallet.
+                        Confirming captures that original hold once. No additional wallet debit will be made.
+                      </p>
+                    )}
                     <p className="text-xs leading-5 text-neutral-600">
-                      Charge &amp; Confirm deducts the saved payable amount from the booking owner’s wallet.
-                      Confirm Without Charge confirms the booking without deducting wallet funds.
+                      {externalTicketConfirmation.paymentEffect === 'already_paid'
+                        ? `The recorded payment of ${money(externalTicketConfirmation.amount * 100, externalTicketConfirmation.currency)} will be reused. No additional wallet debit will be made.`
+                        : externalTicketConfirmation.paymentEffect === 'charge_wallet'
+                          ? `Confirming deducts the saved payable amount of ${money(externalTicketConfirmation.amount * 100, externalTicketConfirmation.currency)} from the booking owner’s wallet.`
+                          : 'The existing payment hold will be settled with this booking confirmation.'}
                     </p>
                     {externalConfirmationError && (
                       <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
@@ -1840,28 +1882,14 @@ export default function BookingActions({
                     )}
                     <AlertDialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
                       <AlertDialogAction
-                        disabled={confirmingExternal || (externalConfirmationUncertain && externalConfirmationAttempt?.chargeWallet !== true)}
+                        disabled={confirmingExternal}
                         onClick={(event) => {
                           event.preventDefault();
-                          void confirmExternalTicket(true);
+                          void confirmExternalTicket();
                         }}
-                        className="w-full bg-brand-orange text-navy-950 hover:bg-brand-orange-dark hover:text-white"
+                        className="w-full bg-brand-orange text-white hover:bg-brand-orange-dark hover:text-white"
                       >
-                        {confirmingExternal && externalConfirmationAttempt?.chargeWallet === true
-                          ? 'Confirming…'
-                          : 'Charge & Confirm'}
-                      </AlertDialogAction>
-                      <AlertDialogAction
-                        disabled={confirmingExternal || (externalConfirmationUncertain && externalConfirmationAttempt?.chargeWallet !== false)}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          void confirmExternalTicket(false);
-                        }}
-                        className="w-full border border-neutral-300 bg-white text-navy-950 hover:bg-navy-50"
-                      >
-                        {confirmingExternal && externalConfirmationAttempt?.chargeWallet === false
-                          ? 'Confirming…'
-                          : 'Confirm Without Charge'}
+                        {confirmingExternal ? 'Confirming…' : 'Confirm Booking'}
                       </AlertDialogAction>
                       <AlertDialogCancel
                         disabled={confirmingExternal || externalConfirmationUncertain}

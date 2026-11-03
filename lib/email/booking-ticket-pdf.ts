@@ -2,6 +2,7 @@ import 'server-only';
 
 import { PASSENGER_NOTICE_TITLE, PASSENGER_NOTICES } from '@/lib/flights/passenger-notice';
 import { ticketPrintReferences } from '@/lib/flights/ticket-print';
+import { bookingTicketDisplay } from '@/lib/flights/ticket-display';
 
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
@@ -155,9 +156,7 @@ export async function confirmedBookingTicketPdf(input: {
     const travellers = input.travellers.filter(
       (traveller) => traveller.lastName.trim() !== ''
     );
-    const ticketsAlign =
-      booking.ticketNumbers.length > 0 &&
-      booking.ticketNumbers.length === travellers.length;
+    const ticketDisplay = bookingTicketDisplay(booking, travellers.length);
     const references = ticketPrintReferences(booking);
     const document = new PDFDocument({
       size: 'A4',
@@ -296,7 +295,7 @@ export async function confirmedBookingTicketPdf(input: {
 
     sectionTitle('Passenger & Ticket Details', 'users', false);
     const passengerWidths = [width * 0.53, width * 0.13, width * 0.12, width * 0.22];
-    const passengerHeaders = ['Passenger', 'Type', 'Gender', 'Ticket Number'];
+    const passengerHeaders = ['Passenger', 'Type', 'Gender', ticketDisplay.columnLabel];
     let x = left;
     document.roundedRect(left, y, width, 23, 0).fill(COLORS.navyPale);
     passengerHeaders.forEach((header, index) => {
@@ -313,11 +312,13 @@ export async function confirmedBookingTicketPdf(input: {
     } else {
       travellers.forEach((traveller, index) => {
         const showPassport = booking.passportRequired || Boolean(traveller.passportNumber?.trim());
-        const passengerHeight = showPassport ? 51 : 30;
-        ensureSpace(passengerHeight + 3);
         const name = [traveller.title, traveller.firstName, traveller.lastName]
           .filter(Boolean).join(' ').toUpperCase();
-        const ticket = ticketsAlign ? booking.ticketNumbers[index] : 'Not available';
+        const ticket = ticketDisplay.passengers[index]?.text ?? 'Not available';
+        document.font('Helvetica-Bold').fontSize(7.8);
+        const passengerHeight = Math.max(showPassport ? 51 : 30,
+          document.heightOfString(ticket, { width: passengerWidths[3] - 14 }) + 18);
+        ensureSpace(passengerHeight + 3);
         const values = [
           name,
           PASSENGER_LABELS[traveller.passengerType],
@@ -333,8 +334,8 @@ export async function confirmedBookingTicketPdf(input: {
             .fillColor(emphasized ? COLORS.navy : COLORS.neutral)
             .text(value, x + 7, y + 9, {
               width: passengerWidths[valueIndex] - 14,
-              height: 16,
-              ellipsis: true,
+              height: passengerHeight - 18,
+              ellipsis: valueIndex !== 3,
               align: valueIndex === 3 ? 'right' : 'left',
             });
           x += passengerWidths[valueIndex];
@@ -349,6 +350,19 @@ export async function confirmedBookingTicketPdf(input: {
         }
         y += passengerHeight;
       });
+    }
+    const identifierNote = (value: string) => {
+      document.font('Helvetica').fontSize(7.2).fillColor(COLORS.neutral);
+      const height = document.heightOfString(value, { width });
+      ensureSpace(height + 8);
+      document.text(value, left, y + 4, { width });
+      y += height + 8;
+    };
+    if (ticketDisplay.sharedAirlinePnr) {
+      identifierNote('Airline PNR applies to this booking and is shared across its passengers.');
+    }
+    if (ticketDisplay.unassignedTicketNumbers.length > 0) {
+      identifierNote(`Ticket number: passenger assignment unavailable. Booking ticket numbers: ${ticketDisplay.unassignedTicketNumbers.join(', ')}. Ticket numbers could not be matched to individual passengers.`);
     }
     y += 11;
 

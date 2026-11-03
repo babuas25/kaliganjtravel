@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
+import { artifactPath, forwardMigrationNames, hash } from './helpers/shapon-recovery-database.mjs';
 
 // Complete forward migration chain, disposable PostgreSQL and synthetic funds.
 // No environment files, hosted database, supplier requests or notifications.
 const db = new PGlite({ extensions: { pgcrypto } });
-const directory = 'supabase/fresh-install/supabase/migrations';
+const directory = path.dirname(artifactPath);
+const migration = '20261010000000_shapon_external_ticket_confirmation.sql';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const one = async (sql, params = []) => (await db.query(sql, params)).rows[0];
 const value = async (sql, params = []) => (await one(sql, params)).result;
@@ -48,6 +51,7 @@ async function makeBooking({ count = 1, agency = null, sellingPrice = 500.25,
     ? 'create_shapontravels_booking_from_attempt_v1' : 'create_booking_from_attempt_v2';
   const booking = await one(`select (${finalizer}($1,$2,$3,$4)).*`,
     [attempt, key, digest(key), JSON.stringify(outcome)]);
+  assert.match(booking.public_ref, /^KTT[0-9]{12,16}$/, 'Native booking references retain the active Kaliganj brand');
   const identity = { ...refs, bookingCodeRef: outcome.bookingCodeRef,
     bookingRefNumber: outcome.bookingRefNumber, pnr: outcome.pnr,
     supplierPublicRef: outcome.supplierPublicRef, originalBookingStatus: 'Created' };
@@ -147,13 +151,77 @@ async function assertConfirmation(subject, charge, accountId = null) {
   }
 }
 
+async function makeUncertain(subject, kind = 'ticketing') {
+  const key = `recovery-${kind}:${randomUUID()}`;
+  const hash = digest(key);
+  const fn = kind === 'ticketing' ? 'wallet_begin_booking_issue_v2' : 'begin_booking_cancellation_v2';
+  const actor = subject.booking.audience === 'agency' ? 'external-ticket-b2b' : owner;
+  const role = subject.booking.audience === 'agency' ? 'b2b' : 'customer';
+  const claim = await value(`select ${fn}($1,$2,$3,$4,$5) as result`,
+    [subject.booking.id, actor, role, key, hash]);
+  assert.equal(claim.ok, true, JSON.stringify(claim));
+  assert.equal((await value('select mark_booking_operation_supplier_call_started($1,$2,$3) as result',
+    [claim.operationId, key, hash])).started, true);
+  const facts = { failureClass: 'uncertain', automaticReplayAllowed: false };
+  const uncertainty = await value('select record_supplier_write_uncertainty_v2($1,null,$2,$3,$4,$5,$6,$7,$8,true,true,$9,$10,$11) as result',
+    [subject.booking.id, claim.operationId, actor, role, key, hash,
+      'incomplete_response', kind === 'ticketing' ? 202 : 409, JSON.stringify(facts), digest(JSON.stringify(facts)),
+      `Synthetic uncertain ${kind}`]);
+  assert.equal(uncertainty.ok, true, JSON.stringify(uncertainty));
+  return { ...subject, operationId: claim.operationId, caseId: uncertainty.caseId };
+}
+function savedProof(subject) {
+  return { ...subject.proof, source: 'supplier_saved_ticket_details', schemaVersion: 1, ticketCodeRef: null };
+}
+async function cancelledRefresh(subject, options = {}) {
+  const proof = options.proof ?? { verified: true, cancelled: true, source: 'supplier_booking_details',
+    status: 'cancelled', pendingReview: false, requiresReconciliation: false, pnr: subject.booking.pnr, ticketCount: 0 };
+  return value('select resolve_shapon_cancelled_refresh_v1($1,$2,$3,$4,$5,$6,$7) as result',
+    [subject.booking.id, options.actor ?? admin, options.role ?? 'admin', options.requestId ?? subject.requestId,
+      JSON.stringify(options.identity ?? subject.identity), JSON.stringify(proof), options.checkedAt ?? now()]);
+}
+async function assertRecovery(subject, charge) {
+  const booking = await one('select * from flight_bookings where id=$1', [subject.booking.id]);
+  assert.equal(booking.status, 'confirmed');
+  assert.equal(booking.payment_state, charge ? 'captured' : 'unpaid');
+  assert.equal(booking.active_operation_id, null);
+  for (const key of ['operation_kind','operation_reason','operation_request_id','operation_actor_user_id','operation_started_at','operation_prior_status']) {
+    assert.equal(booking[key], null, key);
+  }
+  const operation = await one('select * from booking_operations where id=$1', [subject.operationId]);
+  assert.equal(operation.state, 'succeeded'); assert.ok(operation.completed_at);
+  const caseRow = await one('select * from booking_reconciliation_cases where id=$1', [subject.caseId]);
+  assert.equal(caseRow.state, 'resolved'); assert.equal(caseRow.resolution_outcome, 'ticketed');
+  assert.equal(caseRow.resolved_by_user_id, admin);
+  assert.equal(caseRow.financial_disposition, charge ? 'capture_existing_hold' : 'release_existing_hold');
+  const reservation = await one('select * from wallet_reservations where booking_id=$1', [subject.booking.id]);
+  assert.equal(reservation.state, charge ? 'captured' : 'released');
+  const event = await one("select * from booking_status_events where booking_id=$1 and supplier_operation='ExternalTicketConfirmation'", [subject.booking.id]);
+  assert.equal(event.operation_id, subject.operationId); assert.equal(event.reconciliation_case_id, subject.caseId);
+  assert.equal(event.event_snapshot.recovery, true);
+  assert.equal((await one('select count(*)::int as n from booking_notification_outbox where lifecycle_event_id=$1', [event.id])).n, 1);
+  assert.equal((await one('select payment_conflict_code from booking_lifecycle_staff_v where booking_id=$1', [subject.booking.id])).payment_conflict_code, null);
+  assert.equal((await one("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='booking_confirm'", [subject.booking.id])).n, charge ? 1 : 0);
+  assert.equal((await one("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='hold_release'", [subject.booking.id])).n, charge ? 0 : 1);
+}
+
 try {
+  const receipt = JSON.parse(fs.readFileSync('supabase/fresh-install/installation.json', 'utf8'));
+  assert.equal(hash(fs.readFileSync(artifactPath, 'utf8')), receipt.baselineSha256,
+    'The installed Kaliganj baseline must remain immutable');
+  // Historical charge/no-charge contract remains immutable through this release.
+  // The subsequent mandatory-payment policy is covered by its own full-chain suite.
+  const reviewedFiles = [path.basename(artifactPath), ...forwardMigrationNames];
+  const files = reviewedFiles.filter(file => file <= '20261103000001_shapon_ticketing_recovery.sql');
+  assert.ok(files.includes(migration), 'Review the external-confirmation forward migration in forwardMigrationNames');
+  assert.deepEqual(fs.readdirSync(directory).filter(file => file.endsWith('.sql')).sort(), reviewedFiles,
+    'Rehearse every explicitly reviewed migration in the active Kaliganj chain');
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth; create schema storage; create schema extensions;
     create extension pgcrypto with schema extensions;`);
   const originalViewColumns = {};
-  for (const file of fs.readdirSync(directory).filter(file => file.endsWith('.sql')).sort()) {
-    if (file === '20261010000000_shapon_external_ticket_confirmation.sql') {
+  for (const file of files) {
+    if (file === migration) {
       for (const view of changedViews) originalViewColumns[view] = await columns(view);
     }
     await db.exec(fs.readFileSync(`${directory}/${file}`, 'utf8'));
@@ -163,6 +231,12 @@ try {
     assert.equal((await one('select has_table_privilege(\'service_role\',$1,\'SELECT\') as allowed', [view])).allowed, true);
     assert.equal((await one('select has_table_privilege(\'authenticated\',$1,\'SELECT\') as allowed', [view])).allowed, false);
   }
+  const catalog = await one(`select
+    (select count(*)::int from pg_tables where schemaname='public') as tables,
+    (select count(*)::int from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.prokind='f') as functions`);
+  assert.deepEqual(catalog, { tables: 88, functions: 325 },
+    'Historical recovery chain includes the installed Kaliganj and Triplover schema without unrelated project migrations');
   await db.exec(`insert into app_users(clerk_id,role) values
     ('${owner}','customer'),('${admin}','admin'),('external-ticket-superadmin','superadmin'),
     ('external-ticket-support','staff_support'),('external-ticket-accounts','staff_account'),
@@ -334,6 +408,46 @@ try {
     [activeIssue.booking.id, owner, 'customer', issueKey, digest(issueKey)]);
   assert.equal(issueClaim.ok, true, JSON.stringify(issueClaim));
   await rejectUnchanged(activeIssue, { charge: false }, 'BOOKING_CONFIRMATION_CONFLICT');
+  const activeCancel = await makeBooking();
+  const cancelKey = `external-cancel:${randomUUID()}`;
+  const cancelClaim = await value('select begin_booking_cancellation_v2($1,$2,$3,$4,$5) as result',
+    [activeCancel.booking.id, owner, 'customer', cancelKey, digest(cancelKey)]);
+  assert.equal(cancelClaim.ok, true, JSON.stringify(cancelClaim));
+  await rejectUnchanged(activeCancel, { charge: false }, 'BOOKING_CONFIRMATION_CONFLICT');
+  const restoredCancel = await value('select restore_shapon_cancellation_not_sent_v1($1,$2,$3,$4,$5) as result',
+    [activeCancel.booking.id, owner, cancelKey, digest(cancelKey), cancelClaim.operationId]);
+  assert.equal(restoredCancel.ok, true, JSON.stringify(restoredCancel));
+  const priorCancel = await one('select * from booking_operations where id=$1', [cancelClaim.operationId]);
+  assert.equal(priorCancel.state, 'failed');
+  assert.equal((await confirm(activeCancel, { charge: false })).ok, true,
+    'A safely restored never-sent cancellation may subsequently accept verified external issuance');
+  assert.deepEqual(await one('select * from booking_operations where id=$1', [cancelClaim.operationId]), priorCancel,
+    'External confirmation does not rewrite an earlier failed cancellation operation');
+  for (const completed of [charged, noCharge]) {
+    const operationSnapshot = await snapshot();
+    const laterIssueKey = `later-issue:${randomUUID()}`;
+    const laterIssue = await value('select wallet_begin_booking_issue_v2($1,$2,$3,$4,$5) as result',
+      [completed.booking.id, owner, 'customer', laterIssueKey, digest(laterIssueKey)]);
+    assert.equal(laterIssue.ok, false, 'Either external-confirmation choice must block another Issue');
+    assert.ok(['ALREADY_CAPTURED', 'BOOKING_NOT_ISSUABLE'].includes(laterIssue.code), JSON.stringify(laterIssue));
+    const laterCancelKey = `later-cancel:${randomUUID()}`;
+    const laterCancel = await value('select begin_booking_cancellation_v2($1,$2,$3,$4,$5) as result',
+      [completed.booking.id, owner, 'customer', laterCancelKey, digest(laterCancelKey)]);
+    assert.equal(laterCancel.ok, false, 'An issued ticket is not eligible for held cancellation');
+    assert.equal(laterCancel.code, 'BOOKING_NOT_CANCELLABLE');
+    const afterRejectedClaims = await snapshot();
+    // Existing durable claims retain a failed local-claim audit occurrence.
+    // Their rejected intent never advances to a supplier or financial effect.
+    delete operationSnapshot.booking_operations;
+    delete afterRejectedClaims.booking_operations;
+    assert.deepEqual(afterRejectedClaims, operationSnapshot, 'Issue/cancellation rejection cannot mutate booking, financial or lifecycle/event rows');
+    const rejectedAudits = (await db.query(`select state,supplier_call_started_at,supplier_response_received_at
+      from booking_operations where booking_id=$1 and request_key in ($2,$3)`,
+    [completed.booking.id, laterIssueKey, laterCancelKey])).rows;
+    assert.equal(rejectedAudits.length, 2, 'Preserve the existing failed-claim audit behavior');
+    for (const audit of rejectedAudits) assert.deepEqual(audit,
+      { state: 'failed', supplier_call_started_at: null, supplier_response_received_at: null });
+  }
   const reconciliation = await makeBooking();
   await db.query(`insert into booking_reconciliation_cases(subject_booking_id,case_type,
     reason_code,opened_source,opened_by_user_id,opened_by_role)
@@ -364,7 +478,151 @@ try {
   await db.exec('set role service_role');
   await assert.rejects(db.query('insert into shapon_external_ticket_confirmations(booking_id) values ($1)', [atomic.booking.id]), /permission denied/);
   await db.exec('reset role');
-  console.log('Shapon external-confirmation DB passed: charge/no-charge owner settlement, B2C/B2B accounts, immutable exact replay, competing choices, frozen/insufficient guards, complete supplier identity/passenger/6E proof, lifecycle/outbox and atomic rollback.');
+
+  // Native saved-v1 receipts omit the old ticket UUID. Their actual complete
+  // numeric passenger tickets remain authoritative and globally non-reusable.
+  const savedIdle = await makeBooking();
+  savedIdle.proof = savedProof(savedIdle);
+  assert.equal((await confirm(savedIdle, { charge: false })).ok, true);
+  assert.equal((await one('select ticket_code_ref from flight_bookings where id=$1', [savedIdle.booking.id])).ticket_code_ref, null);
+  assert.equal((await one('select shapon_booking_has_external_paid_settlement_v1($1) as yes', [savedIdle.booking.id])).yes, true);
+  const absentTicketCode = await makeBooking();
+  absentTicketCode.proof = savedProof(absentTicketCode); delete absentTicketCode.proof.ticketCodeRef;
+  await rejectUnchanged(absentTicketCode, { charge: false }, 'TICKET_EVIDENCE_UNVERIFIED');
+  const missingSavedSchema = await makeBooking();
+  missingSavedSchema.proof = savedProof(missingSavedSchema); delete missingSavedSchema.proof.schemaVersion;
+  await rejectUnchanged(missingSavedSchema, { charge: false }, 'TICKET_EVIDENCE_UNVERIFIED');
+  const legacyNullCode = await makeBooking(); legacyNullCode.proof.ticketCodeRef = null;
+  await rejectUnchanged(legacyNullCode, { charge: false }, 'TICKET_EVIDENCE_UNVERIFIED');
+  const duplicateSaved = await makeBooking();
+  duplicateSaved.proof = { ...savedIdle.proof };
+  await rejectUnchanged(duplicateSaved, { charge: false }, 'TICKET_ALREADY_ASSIGNED');
+
+  for (const charge of [true, false]) {
+    const recovery = await makeUncertain(await makeBooking());
+    recovery.proof = savedProof(recovery);
+    const before = await one('select available_balance,hold_balance from wallet_accounts where id=$1', [account.id]);
+    const reservationId = (await one('select id from wallet_reservations where booking_id=$1', [recovery.booking.id])).id;
+    const result = await confirm(recovery, { charge });
+    assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.recovery, true);
+    await assertRecovery(recovery, charge);
+    assert.equal((await one('select id from wallet_reservations where booking_id=$1', [recovery.booking.id])).id, reservationId,
+      'Resolve the original hold, never replace it with a second debit');
+    const after = await one('select available_balance,hold_balance from wallet_accounts where id=$1', [account.id]);
+    assert.equal(Number(after.hold_balance), Number(before.hold_balance)-50025);
+    assert.equal(Number(after.available_balance), Number(before.available_balance)+(charge ? 0 : 50025));
+    const committed = await snapshot();
+    assert.equal((await confirm(recovery, { charge, identity: null, proof: null, checkedAt: null })).replay, true);
+    assert.deepEqual(await snapshot(), committed);
+    await rejectUnchanged(recovery, { charge: !charge }, 'CONFIRMATION_REQUEST_CONFLICT');
+    await rejectUnchanged(recovery, { charge, requestId: randomUUID() }, 'BOOKING_ALREADY_CONFIRMED');
+  }
+  for (const charge of [true,false]) {
+    const subject = await makeUncertain(await makeBooking({agency:'ST-B2B000001'}));
+    const userBefore = await one('select available_balance,hold_balance from wallet_accounts where id=$1',[account.id]);
+    const agencyBefore = await one('select available_balance,hold_balance from wallet_accounts where id=$1',[agencyAccount.id]);
+    assert.equal((await confirm(subject,{charge})).ok,true);
+    await assertRecovery(subject,charge);
+    const agencyAfter = await one('select available_balance,hold_balance from wallet_accounts where id=$1',[agencyAccount.id]);
+    assert.equal(Number(agencyAfter.available_balance),Number(agencyBefore.available_balance)+(charge?0:50025));
+    assert.equal(Number(agencyAfter.hold_balance),Number(agencyBefore.hold_balance)-50025);
+    assert.deepEqual(await one('select available_balance,hold_balance from wallet_accounts where id=$1',[account.id]),userBefore,
+      'Recovery must resolve the assigned agency reservation, never the staff/user wallet');
+  }
+  // Even a genuine supplier ticket cannot override another review/proposal,
+  // consume somebody else's reservation or settle inconsistent accounting.
+  for (const kind of ['proposal','case-type','operation-identity','amount','account-owner','missing-case','insufficient-hold']) {
+    const subject = await makeUncertain(await makeBooking());
+    if (kind==='proposal') await db.query('update booking_reconciliation_cases set proposal=$2 where id=$1', [subject.caseId,JSON.stringify({reason:'existing reviewed proposal'})]);
+    if (kind==='case-type') await db.query("update booking_reconciliation_cases set case_type='legacy_review' where id=$1", [subject.caseId]);
+    if (kind==='operation-identity') await db.query('update booking_operations set supplier_pnr=$2 where id=$1', [subject.operationId,'OTHER1']);
+    if (kind==='amount') await db.query('update wallet_reservations set amount=amount+1 where booking_id=$1', [subject.booking.id]);
+    if (kind==='account-owner') await db.query('update wallet_reservations set wallet_account_id=$2 where booking_id=$1', [subject.booking.id,adminAccount.id]);
+    if (kind==='missing-case') await db.query("update booking_reconciliation_cases set state='closed_no_change',resolved_at=now(),closed_at=now() where id=$1", [subject.caseId]);
+    const accountBefore = await one('select hold_balance from wallet_accounts where id=$1', [account.id]);
+    if (kind==='insufficient-hold') await db.query('update wallet_accounts set hold_balance=0 where id=$1', [account.id]);
+    const before = await snapshot();
+    const result = await confirm(subject, { charge: false });
+    assert.equal(result.ok, false, `${kind}: ${JSON.stringify(result)}`);
+    assert.ok(['RECONCILIATION_REQUIRED','ACTIVE_HOLD_ACCOUNTING_CONFLICT','RESERVATION_ACCOUNT_CONFLICT'].includes(result.code), `${kind}: ${JSON.stringify(result)}`);
+    assert.deepEqual(await snapshot(), before, `${kind} must be atomic and mutation-free`);
+    if (kind==='insufficient-hold') await db.query('update wallet_accounts set hold_balance=$2 where id=$1', [account.id,accountBefore.hold_balance]);
+    // Keep the deliberately damaged synthetic reservation from polluting the
+    // account-wide backing check used by subsequent independent cases.
+    await db.query("update wallet_reservations set state='released',released_at=now(),release_reason='Test fixture isolated' where booking_id=$1", [subject.booking.id]);
+  }
+  for (const charge of [true, false]) {
+    const subject = await makeUncertain(await makeBooking());
+    await db.exec(`create function reject_recovery_test() returns trigger language plpgsql as $$
+      begin if new.supplier_operation='ExternalTicketConfirmation' then raise exception 'recovery rollback test'; end if; return new; end; $$;
+      create trigger reject_recovery_test before insert on booking_status_events for each row execute function reject_recovery_test();`);
+    const before = await snapshot();
+    await assert.rejects(confirm(subject, { charge }), /recovery rollback test/);
+    assert.deepEqual(await snapshot(), before, 'Both recovery choices roll back hold, booking, operation, case, immutable decision and outbox together');
+    await db.exec('drop trigger reject_recovery_test on booking_status_events; drop function reject_recovery_test();');
+    assert.equal((await confirm(subject, { charge })).ok, true);
+  }
+
+  // Current-status display evidence accepts explicit absent history only.
+  const statusSubject = await makeBooking();
+  const metadata = { status:'on-hold', reviewRequired:false, source:'public_receipt', verified:false,
+    bookingState:null,supplierStatus:null,checkedAt:null,supplierCheckedAt:null,lastCheck:null };
+  const statusIdentity = { ...statusSubject.identity, originalBookingStatus:null };
+  const recorder = async identity => value('select record_shapon_booking_current_status_v1($1,$2,$3,$4,$5) as result',
+    [statusSubject.booking.id, now(), statusIdentity.supplierPublicRef, JSON.stringify(identity), JSON.stringify(metadata)]);
+  const storedNull = await recorder(statusIdentity);
+  assert.equal(storedNull.recorded, true, JSON.stringify(storedNull));
+  assert.equal(storedNull.currentStatus.originalBookingStatus, null);
+  assert.equal((await one('select original_booking_status from shapon_booking_current_status_observations where booking_id=$1', [statusSubject.booking.id])).original_booking_status, null);
+  for (const original of [undefined,42,false,'','  ','invalid\nstatus',{},[]]) {
+    const identity = { ...statusIdentity, originalBookingStatus:original };
+    if (original===undefined) delete identity.originalBookingStatus;
+    assert.equal((await recorder(identity)).recorded, false, JSON.stringify(original));
+  }
+
+  // Admin Refresh may finish a verified unpaid cancellation without touching
+  // any money row, and every request is replay-safe and role/evidence bound.
+  const cancelled = await makeUncertain(await makeBooking(), 'cancellation');
+  const moneyBeforeCancel = await one('select md5(jsonb_agg(to_jsonb(a) order by id)::text) as hash from wallet_accounts a');
+  const cancellation = await cancelledRefresh(cancelled);
+  assert.equal(cancellation.ok, true, JSON.stringify(cancellation));
+  assert.equal(cancellation.walletMutation, false);
+  assert.equal((await one('select status,active_operation_id from flight_bookings where id=$1', [cancelled.booking.id])).status, 'cancelled');
+  assert.equal((await one('select state from booking_operations where id=$1', [cancelled.operationId])).state, 'succeeded');
+  assert.equal((await one('select state from booking_reconciliation_cases where id=$1', [cancelled.caseId])).state, 'resolved');
+  assert.deepEqual(await one('select md5(jsonb_agg(to_jsonb(a) order by id)::text) as hash from wallet_accounts a'), moneyBeforeCancel);
+  const cancellationSnapshot = await snapshot();
+  assert.equal((await cancelledRefresh(cancelled)).replay, true);
+  assert.deepEqual(await snapshot(), cancellationSnapshot);
+  assert.equal((await cancelledRefresh(cancelled, { actor:'external-ticket-superadmin',role:'superadmin' })).code, 'CONFIRMATION_REQUEST_CONFLICT');
+  assert.equal((await cancelledRefresh(cancelled, { proof:42 })).code, 'CONFIRMATION_REQUEST_CONFLICT');
+  assert.equal((await cancelledRefresh(cancelled, { identity:42 })).code, 'CONFIRMATION_REQUEST_CONFLICT');
+  const cancellationRpc = 'resolve_shapon_cancelled_refresh_v1(uuid,text,text,uuid,jsonb,jsonb,timestamptz)';
+  for (const role of ['anon','authenticated']) assert.equal((await one('select has_function_privilege($1,$2,\'EXECUTE\') as yes',[role,cancellationRpc])).yes,false);
+  assert.equal((await one('select has_function_privilege(\'service_role\',$1,\'EXECUTE\') as yes',[cancellationRpc])).yes,true);
+  for (const options of [
+    { actor:owner,role:'customer' }, { role:'superadmin' }, { checkedAt:'2000-01-01T00:00:00Z' },
+    { identity:{...cancelled.identity,pnr:'OTHER1'} },
+    ...[{verified:false},{ticketCount:1},{requiresReconciliation:true},{pendingReview:true},{status:'confirmed'},{cancelledAt:'2026-11-02T10:00:00'}]
+      .map(change=>({ proof:{verified:true,cancelled:true,source:'supplier_booking_details',status:'cancelled',pendingReview:false,
+        requiresReconciliation:false,pnr:'ABC123',ticketCount:0,...change} })),
+  ]) {
+    const subject = await makeUncertain(await makeBooking(), 'cancellation');
+    const before = await snapshot();
+    const result = await cancelledRefresh(subject,options);
+    assert.equal(result.ok,false,JSON.stringify(options));
+    assert.deepEqual(await snapshot(),before);
+  }
+  const cancelRollback = await makeUncertain(await makeBooking(), 'cancellation');
+  await db.exec(`create function reject_cancel_refresh_test() returns trigger language plpgsql as $$
+    begin if new.supplier_operation='ShaponCancelledRefresh' then raise exception 'cancel refresh rollback test'; end if; return new; end; $$;
+    create trigger reject_cancel_refresh_test before insert on booking_status_events for each row execute function reject_cancel_refresh_test();`);
+  const cancelRollbackBefore = await snapshot();
+  await assert.rejects(cancelledRefresh(cancelRollback), /cancel refresh rollback test/);
+  assert.deepEqual(await snapshot(), cancelRollbackBefore);
+  await db.exec('drop trigger reject_cancel_refresh_test on booking_status_events; drop function reject_cancel_refresh_test();');
+  assert.equal((await cancelledRefresh(cancelRollback)).ok,true);
+  console.log(`Kaliganj Shapon external-confirmation DB passed (${catalog.tables} tables, ${catalog.functions} functions): complete active migration chain, KTT references, charge/no-charge owner settlement, B2C/B2B accounts, immutable exact replay, competing choices, frozen/insufficient guards, complete supplier identity/passenger/6E proof, prior issue/cancellation safety, numeric saved-v1 proof, protected-hold capture/release recovery, unpaid cancelled Refresh, nullable original status, lifecycle/outbox and atomic rollback.`);
 } finally {
   await db.close();
 }

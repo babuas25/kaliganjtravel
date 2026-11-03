@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import nextEnv from '@next/env';
 import { expectedProjectRef, root } from './helpers/fresh-database.mjs';
+import { migrationNames, verifyMigrationRegistration } from './helpers/shapon-recovery-database.mjs';
 
 // Read-only hosted verification. No migration, fixtures, SMS or email calls.
 nextEnv.loadEnvConfig(root);
@@ -12,6 +13,35 @@ assert.equal(api.hostname, `${expectedProjectRef}.supabase.co`);
 assert.equal(api.protocol, 'https:');
 const workdir = path.join(root, 'supabase/fresh-install');
 assert.equal(fs.readFileSync(path.join(workdir, 'supabase/.temp/project-ref'), 'utf8').trim(), expectedProjectRef);
+// The original mode below is intentionally frozen to its installation-only
+// empty-state contract. This opt-in verifies today's reviewed installed schema
+// without assuming customer/business tables are empty or changing any setting.
+if (process.argv.includes('--current')) {
+  verifyMigrationRegistration();
+  const cliEnv = { ...process.env };
+  delete cliEnv.DATABASE_URL;
+  const query = spawnSync('npx', ['--offline', 'supabase', 'db', 'query', '--linked',
+    '--project-ref', expectedProjectRef, '--workdir', workdir, '--file',
+    path.join(workdir, 'verify-shapon-recovery.sql'), '--output', 'json', '--log-level', 'error'],
+  { cwd: root, env: cliEnv, encoding: 'utf8', timeout: 45000, maxBuffer: 2 * 1024 * 1024 });
+  if (query.status !== 0) throw new Error(`Current hosted read-only catalog verification failed (exit ${query.status ?? 'timeout'}).`);
+  const verification = JSON.parse(query.stdout).rows[0].verification;
+  assert.equal(verification.table_count, 89);
+  assert.equal(verification.public_function_count, 330);
+  assert.deepEqual(verification.tables_without_rls, []);
+  assert.deepEqual(verification.migration_versions, migrationNames.map(name => name.split('_')[0]));
+  for (const key of ['saved_sync_recorder','saved_sync_projection','original_status_nullable',
+    'saved_source_date','mandatory_payment','return_decisions_immutable','return_table_private',
+    'return_accounting_private','service_rpc_only','triplover_preserved','ktt_reference_preserved']) {
+    assert.equal(verification[key], true, `${key} must match the reviewed current schema`);
+  }
+  console.log(JSON.stringify({ status: 'passed', mode: 'current', projectRef: expectedProjectRef,
+    tableCount: verification.table_count, functionCount: verification.public_function_count,
+    allTablesHaveRls: true, migrationVersions: verification.migration_versions,
+    savedStatusRecovery: true, mandatoryPayment: true, privatePaymentReturn: true,
+    triploverPreserved: true, kttReferencesPreserved: true, readOnly: true }, null, 2));
+  process.exit(0);
+}
 const source = new URL(process.env.DATABASE_URL);
 assert.ok(source.hostname === `db.${expectedProjectRef}.supabase.co` ||
   (source.hostname.endsWith('.pooler.supabase.com') && decodeURIComponent(source.username) === `postgres.${expectedProjectRef}`));

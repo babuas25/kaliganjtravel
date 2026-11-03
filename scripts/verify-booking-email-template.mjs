@@ -7,6 +7,18 @@ import { createRequire } from 'node:module';
 import ts from 'typescript';
 
 const root = process.cwd();
+const ticketDisplayModule = { exports: {} };
+const ticketDisplaySource = ts.transpileModule(fs.readFileSync('lib/flights/ticket-display.ts', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+});
+new vm.Script(ticketDisplaySource.outputText).runInNewContext({
+  module: ticketDisplayModule, exports: ticketDisplayModule.exports,
+  require(specifier) {
+    if (specifier === '@/lib/flights/airline-pnr') return airlinePnrModule;
+    if (specifier === '@/lib/flights/ticket-display') return ticketDisplayModule.exports;
+    throw new Error(`Unexpected ticket display dependency: ${specifier}`);
+  },
+});
 const BOOKING_ICON_NAMES = [
   'phone',
   'mail',
@@ -38,6 +50,7 @@ const context = vm.createContext({
   exports: module.exports,
   require(specifier) {
     if (specifier === '@/lib/flights/airline-pnr') return airlinePnrModule;
+    if (specifier === '@/lib/flights/ticket-display') return ticketDisplayModule.exports;
     throw new Error(`Unexpected runtime import in pure email renderer: ${specifier}`);
   },
   Intl,
@@ -272,7 +285,7 @@ for (const [status, subject, label] of [
 const pdfSourcePath = path.join(root, 'lib', 'email', 'booking-ticket-pdf.ts');
 const pdfSource = fs.readFileSync(pdfSourcePath, 'utf8');
 for (const required of [
-  "['Passenger', 'Type', 'Gender', 'Ticket Number']",
+  "['Passenger', 'Type', 'Gender', ticketDisplay.columnLabel]",
   'contact.logoUrl',
   'https://images.kiwi.com/airlines/64x64/',
   "['images.kiwi.com']",
@@ -321,6 +334,7 @@ new vm.Script(ticketPrintTranspiled.outputText, { filename: ticketPrintPath }).r
   exports: ticketPrintModule.exports,
   require(specifier) {
     if (specifier === '@/lib/flights/airline-pnr') return airlinePnrModule;
+    if (specifier === '@/lib/flights/ticket-display') return ticketDisplayModule.exports;
     throw new Error(`Unexpected runtime import in ticket print helper: ${specifier}`);
   },
 });
@@ -330,6 +344,7 @@ const pdfContext = vm.createContext({
   exports: pdfModule.exports,
   require(specifier) {
     if (specifier === '@/lib/flights/airline-pnr') return airlinePnrModule;
+    if (specifier === '@/lib/flights/ticket-display') return ticketDisplayModule.exports;
     if (specifier === '@/lib/flights/passenger-notice') return passengerNoticeModule.exports;
     if (specifier === '@/lib/flights/ticket-print') return ticketPrintModule.exports;
     if (specifier === 'server-only') return {};

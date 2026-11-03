@@ -4,6 +4,89 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Shapon saved-status recovery and payment policy — database installed, 2026-11-03; application not deployed:**
+
+Four new forward migrations preserve this project's installed baseline, KTT
+references, customer data and existing Triplover status-confirmation feature:
+
+1. `20261103000000_shapon_public_current_status.sql` records the public saved
+   airline status shape and uses its original supplier timestamp for list dates.
+2. `20261103000001_shapon_ticketing_recovery.sql` adds narrowly bound uncertain
+   Issue/Cancel completion and preserves an explicitly null historical status.
+3. `20261103000002_shapon_payment_resolution.sql` requires accounting-derived
+   payment for new confirmations and adds a separate audited payment Return.
+4. `20261103000003_shapon_saved_supplier_sync_current_status.sql` accepts saved
+   `supplier_sync` provenance without inventing fresh airline/private evidence.
+
+**Refresh Status** reads Shapon's saved GET endpoints. It never requests
+a new supplier/airline synchronization, Issue, Cancel, charge, capture or Return.
+An exactly matching already-cancelled unpaid uncertain cancellation can finish
+its original local operation/case without money movement. Verified issued
+tickets require an explicit **Confirm Booking** command: capture the protected
+Hold once, reuse a complete existing capture without another debit, or charge
+the saved payable when neither exists. New no-charge confirmations are rejected;
+historical committed decisions retain their exact read-only replay.
+
+The separate **Return Booking Payment** decision returns the full remaining real
+original capture to its verified owner wallet after preview and a required
+reason. It leaves booking status, supplier and review operations/cases unchanged.
+Both financial commands recheck exact previews and accounting under locks;
+immutable decisions and linked ledger/event records prevent duplicate effects.
+
+The full local chain has **28 migrations, 89 public tables and 330 functions**.
+Offline verification uses disposable PostgreSQL and synthetic money only:
+
+```bash
+node scripts/verify-migration-order.mjs
+node scripts/verify-shapon-recovery-database.mjs
+node scripts/verify-shapontravels-current-status-db.mjs
+node scripts/verify-shapontravels-external-confirmation-db.mjs
+node scripts/verify-shapon-payment-resolution-db.mjs
+node scripts/verify-triplover-status-confirmation-db.mjs
+```
+
+The application port also includes the scoped recovery-operation reader,
+mandatory confirmation preview, separate payment Return UI/API, and shared
+ticket-number/Airline-PNR display for the booking page, email and PDF. Kaliganj's
+existing Cancel preflight, PNR mirror, unsent-operation restoration, saved
+cancellation diagnostics and canonical deadline handling are preserved. New
+confirmation proof rejects contradictory canonical and legacy saved records
+before any payment RPC.
+
+TypeScript, ESLint, production build, saved-status/confirmation/Return tests,
+existing cancellation and Triplover suites, deadline tests, branding guards and
+synthetic ticket display/PDF checks pass. `verify:shapontravels-external-confirmation`
+includes the saved-status and payment-policy suites; `verify:shapon-recovery-database`
+rehearses the complete current schema. No real booking or wallet was used for
+these checks.
+
+The external-confirmation suite retains the earlier historical policy through
+the recovery migration; the payment suite rehearses the final full chain and
+superseding mandatory-payment rules. The full-chain verifier checks every old
+business row and protected synthetic Hold/operation, all view columns/grants,
+the KTT allocator and the exact existing Triplover functions/tables/guards.
+The four migrations above were applied to the pinned Kaliganj hosted project on
+**2026-11-03**, under explicit database-only authorization. The follow-up dry run
+has no pending migrations. Hosted catalog, RLS, permissions, status/payment
+guards, KTT references and Triplover checks pass: **28 migrations, 89 tables and
+330 functions**. Before/after hashes of the original columns in all **88
+pre-existing public tables** match exactly. Existing function/view owners and
+grants are preserved. See the [database rollout receipt](migration-receipts/20261103_shapon_saved_status_recovery_and_payment.json).
+
+`verify-shapon-recovery.sql` is the read-only current catalog/RLS/permission gate
+used by `npm run verify:hosted-database -- --current`. The Management API SQL
+endpoint returned HTTP 403 for the CLI account during this rollout, so the same
+verification SQL was executed through the project's existing pinned database
+connection. The original initial-empty verifier remains separate.
+
+**No application deployment, Git commit or Git push was performed.** Until the
+matching application is deployed, the old Charge & Confirm request lacks the
+required payment preview and new decisions fail with `PAYMENT_PREVIEW_REQUIRED`;
+old Confirm Without Charge fails with `PAYMENT_REQUIRED`. These failures occur
+before financial/status mutation; historical exact retries remain supported.
+Normal Issue/Cancel and Triplover commands are unchanged. No supplier action,
+booking resolution, wallet command or notification was executed for this rollout.
+
 **Triplover Refresh Status, 2026-10-13 — applied and verified:**
 Applied only `20261013000000_triplover_supplier_status_confirmation.sql`
 to `ljzoizsogbirlvlsrwzi` through this workdir. The follow-up dry run has no

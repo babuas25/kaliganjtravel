@@ -5,6 +5,11 @@ import type { SupplierWriteLifecycleHooks } from '@/lib/triplover/client';
 import { completeTicketNumbers } from '@/lib/triplover/ticket-payload';
 import type { TicketIssueOutcome } from '@/lib/triplover/ticket';
 import { ShapontravelsWriteError, shapontravelsIssueRequest } from './client';
+import {
+  normalizeShapontravelsReceiptEnvelope,
+  normalizeShapontravelsSavedTicketRows,
+  parseShapontravelsCurrentStatus,
+} from './booking-status';
 
 export type ShapontravelsTicketInput = PrivateBookingRefs & {
   pnr: string;
@@ -152,5 +157,65 @@ export function parseShapontravelsTicketReceipt(
       ? Array.from(new Set<string>(receipt.airlinesPNR)) : [input.pnr],
     warnings: [],
     message: null,
+  };
+}
+
+export type ShapontravelsTicketEvidence = {
+  ticket: Omit<ShapontravelsTicketOutcome, 'ticketCodeRef'> & { ticketCodeRef: string | null };
+  passengerTickets: Array<{ ticketNumbers: string[]; ticketNumberSource: 'airline_pnr' | null }>;
+  source: 'supplier_ticket_details' | 'supplier_saved_ticket_details';
+  schemaVersion?: 1;
+};
+
+/**
+ * Saved ticket reads can omit a ticket UUID after a supplier Admin decision.
+ * Their numeric passenger tickets still prove issuance when the complete saved
+ * identity and both public projections agree. This never authorizes NewTicket.
+ */
+export function parseShapontravelsTicketEvidence(
+  body: unknown,
+  input: ShapontravelsTicketInput
+): ShapontravelsTicketEvidence | null {
+  const normalized = normalizeShapontravelsReceiptEnvelope(body);
+  if (!normalized) return null;
+  const { envelope, receipt, savedBooking } = normalized;
+  if (!savedBooking) {
+    const ticket = parseShapontravelsTicketReceipt(body, input);
+    if (!ticket || !Array.isArray(receipt.ticketInfoes)) return null;
+    return { ticket, source: 'supplier_ticket_details', passengerTickets: receipt.ticketInfoes.map(row => ({
+      ticketNumbers: [...row.ticketNumbers],
+      ticketNumberSource: row.ticketNumberSource === 'airline_pnr' ? 'airline_pnr' : null,
+    })) };
+  }
+  const current = parseShapontravelsCurrentStatus(envelope.currentStatus);
+  const publicReceipt = envelope.publicReceipt as Record<string, unknown>;
+  if (savedBooking.status !== 'confirmed' || savedBooking.reviewRequired !== false ||
+      savedBooking.requiresReconciliation !== false || savedBooking.paymentState !== 'paid' ||
+      current?.status !== 'confirmed' || current.reviewRequired !== false ||
+      publicReceipt.status !== 'confirmed' || publicReceipt.pendingReview !== false ||
+      publicReceipt.paymentState !== 'paid' || publicReceipt.pnr !== input.pnr ||
+      receipt.pnr !== input.pnr || receipt.uniqueTransID !== input.uniqueTransId ||
+      receipt.itemCodeRef !== input.itemCodeRef || receipt.priceCodeRef !== input.priceCodeRef ||
+      receipt.bookingCodeRef !== input.bookingCodeRef ||
+      savedBooking.passengerCount !== input.expectedPassengerCount ||
+      !(receipt.ticketCodeRef === null ||
+        typeof receipt.ticketCodeRef === 'string' && uuid.test(receipt.ticketCodeRef))) return null;
+  const rows = normalizeShapontravelsSavedTicketRows(savedBooking);
+  if (!rows) return null;
+  const ticketNumbers = receiptTicketNumbers(envelope, { ...receipt, ticketInfoes: rows }, input);
+  if (!ticketNumbers || (receipt.ticketCodeRef === null &&
+      !ticketNumbers.every(number => /^[0-9]{10,16}$/.test(number)))) return null;
+  return {
+    ticket: {
+      pnr: input.pnr, bookingStatus: 'Confirmed', ticketCodeRef: receipt.ticketCodeRef as string | null,
+      ticketNumbers,
+      airlinesPnr: Array.isArray(receipt.airlinesPNR) && receipt.airlinesPNR.length > 0 &&
+        receipt.airlinesPNR.every(value => typeof value === 'string' && /^[A-Z0-9]{6}$/.test(value))
+        ? Array.from(new Set<string>(receipt.airlinesPNR)) : [input.pnr],
+      warnings: [], message: null,
+    },
+    passengerTickets: rows.map(row => ({ ticketNumbers: [...row.ticketNumbers as string[]],
+      ticketNumberSource: row.ticketNumberSource === 'airline_pnr' ? 'airline_pnr' : null })),
+    source: 'supplier_saved_ticket_details', schemaVersion: 1,
   };
 }

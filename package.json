@@ -172,7 +172,8 @@
     "verify:triplover-status": "node scripts/verify-triplover-status-flow.mjs && node scripts/verify-triplover-status-ui.mjs && node scripts/verify-triplover-status-confirmation-db.mjs",
     "verify:shapontravels-saved-status": "node scripts/verify-booking-recovery-operation-context.mjs && node scripts/verify-shapontravels-saved-current-status.mjs && node scripts/verify-shapontravels-saved-envelope.mjs && node scripts/verify-shapontravels-cancellation-recovery.mjs",
     "verify:booking-payment-policy": "node scripts/verify-booking-payment-return-route.mjs && node scripts/verify-booking-payment-return-ui.mjs && node scripts/verify-booking-ticket-display.mjs && node scripts/verify-shapon-payment-resolution-db.mjs",
-    "verify:shapon-recovery-database": "node scripts/verify-shapon-recovery-database.mjs"
+    "verify:shapon-recovery-database": "node scripts/verify-shapon-recovery-database.mjs",
+    "verify:dependency-security": "node scripts/verify-dependency-security-compatibility.mjs && node scripts/verify-zod4-compatibility.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.6.1",
@@ -219,7 +220,7 @@
     "input-otp": "^1.2.4",
     "lucide-react": "^0.446.0",
     "next-themes": "^0.3.0",
-    "nodemailer": "^10.0.16",
+    "nodemailer": "^10.1.4",
     "pdfkit": "^0.19.1",
     "playwright-core": "^1.62.1",
     "postcss": "8.5.26",
@@ -238,12 +239,12 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "5.2.2",
     "vaul": "^0.9.9",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
-    "@next/eslint-plugin-next": "16.3.8",
-    "@next/swc-wasm-nodejs": "16.3.8",
+    "@next/eslint-plugin-next": "16.4.4",
+    "@next/swc-wasm-nodejs": "16.4.4",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -251,7 +252,7 @@
     "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^10.9.0",
     "fast-glob": "file:vendor/next-eslint-glob",
-    "next": "16.3.8"
+    "next": "16.4.4"
   },
   "overrides": {
     "@next/eslint-plugin-next": {
@@ -264,8 +265,9 @@
       "unzipper": "^0.12.3",
       "uuid": "^11.1.0"
     },
-    "minimatch@10.2.5": {
-      "brace-expansion": "^5.0.12"
+    "minimatch@>=10 <11": "11.0.1",
+    "@sparticuz/chromium-min": {
+      "follow-redirects": "1.16.2"
     },
     "next": {
       "postcss": "8.5.26",

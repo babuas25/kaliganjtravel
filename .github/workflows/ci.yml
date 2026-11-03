@@ -32,6 +32,7 @@ jobs:
         run: npm audit
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run verify:dependency-security
       - run: npm run verify:promotion-upload
       - run: npm run verify:next-eslint-root-dirs
       - run: npm run verify:tailwind-compatibility

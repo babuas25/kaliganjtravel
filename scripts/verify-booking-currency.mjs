@@ -42,7 +42,7 @@ function load(path, modules = {}) {
 }
 
 const manual = load('lib/impexp/manual-validation.ts');
-const currencySchema = manual.manualBookingImportSchema.innerType().shape.currency;
+const currencySchema = manual.manualBookingImportSchema.shape.currency;
 assert.equal(currencySchema.parse(' bdt '), BOOKING_CURRENCY);
 for (const value of ['USD', 'EUR', 'JPY', '', null, undefined]) {
   assert.equal(currencySchema.safeParse(value).success, false, 'manual imports require explicit BDT');

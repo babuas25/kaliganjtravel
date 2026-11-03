@@ -84,7 +84,7 @@ const searchSchema = z
     // Reject unsupported fare preferences instead of stripping them and
     // silently returning ordinary fares.
     fareType: z.literal('regular', {
-      errorMap: () => ({ message: 'Only regular fares are currently available.' }),
+      error: 'Only regular fares are currently available.',
     }).optional(),
     routes: z.array(routeSchema).min(1).max(MAX_ROUTES),
     adults: z.number().int().min(1).max(MAX_SEATS),

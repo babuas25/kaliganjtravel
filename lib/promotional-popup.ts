@@ -45,7 +45,7 @@ export type PromotionDisplay = z.infer<typeof promotionDisplaySchema>;
 export const DEFAULT_PROMOTION_DISPLAY = promotionDisplaySchema.parse({});
 export const promotionSchema = z.object({
   enabled: z.boolean(),
-  display: promotionDisplaySchema.default({}),
+  display: promotionDisplaySchema.prefault({}),
   autoCloseSeconds: z.union([z.literal(10), z.literal(15), z.literal(20), z.literal(25), z.literal(30)]).default(10),
   slides: z.array(promotionSlideSchema).max(6),
 }).refine((value) => !value.enabled || value.slides.some((slide) => slide.active), 'Add at least one active promotion before enabling the popup.');

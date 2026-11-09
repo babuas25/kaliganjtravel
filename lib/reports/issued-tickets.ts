@@ -62,6 +62,7 @@ export type IssuedTicketRow = {
   id: string;
   orderReference: string;
   pnr: string;
+  ticketNumbers: string[];
   airlineCode: string;
   airlineName: string;
   totalSegments: number;
@@ -96,6 +97,9 @@ type ReportBooking = {
   public_ref: string;
   pnr: string | null;
   airlines_pnr: unknown;
+  supplier: string;
+  shapon_unverified_airline_pnr: string | null;
+  ticket_numbers: unknown;
   itinerary: BookedItinerary | null;
   passenger_counts: Partial<Record<BookingPassengerType, number>>;
   passengers: unknown;
@@ -120,7 +124,7 @@ type AppUser = {
   last_name: string | null;
 };
 
-const SELECT = 'id, public_ref, pnr, airlines_pnr, itinerary, passenger_counts, passengers, currency, pricing_snapshot, supplier_gross_amount, user_payable_amount, created_at, issued_at, booked_by_user_id';
+const SELECT = 'id, public_ref, pnr, airlines_pnr, supplier, shapon_unverified_airline_pnr, ticket_numbers, itinerary, passenger_counts, passengers, currency, pricing_snapshot, supplier_gross_amount, user_payable_amount, created_at, issued_at, booked_by_user_id';
 const FINANCIAL_SELECT = 'currency, pricing_snapshot, supplier_gross_amount, user_payable_amount, passenger_counts';
 
 function userLabel(user: AppUser): string {
@@ -135,15 +139,18 @@ function travellers(value: unknown): BookingTraveller[] {
   return Array.isArray(list) ? (list as BookingTraveller[]) : [];
 }
 
-function displayPnr(row: Pick<ReportBooking, 'pnr' | 'airlines_pnr'>): string {
+function displayPnr(row: Pick<ReportBooking, 'pnr' | 'airlines_pnr' | 'supplier' | 'shapon_unverified_airline_pnr'>): string {
   const airlinePnrs = Array.isArray(row.airlines_pnr)
     ? row.airlines_pnr
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
       .map((value) => value.trim())
     : [];
-  return airlinePnrs.length > 0
-    ? airlinePnrs.join(', ')
-    : row.pnr?.trim() || '—';
+  if (row.supplier === 'shapontravels') {
+    const unverified = row.shapon_unverified_airline_pnr?.trim().toUpperCase();
+    return airlinePnrs.length === 1 && airlinePnrs[0].toUpperCase() === unverified
+      ? '—' : airlinePnrs.join(', ') || '—';
+  }
+  return airlinePnrs.join(', ') || row.pnr?.trim() || '—';
 }
 
 function majorAmount(snapshotAmount: unknown, minorAmount: unknown): number | null {
@@ -189,6 +196,9 @@ function toRow(row: ReportBooking, userNames: Map<string, string>): IssuedTicket
     id: row.id,
     orderReference: row.public_ref,
     pnr: displayPnr(row),
+    ticketNumbers: Array.isArray(row.ticket_numbers)
+      ? row.ticket_numbers.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      : [],
     airlineCode: itinerary?.carrierCode || '—',
     airlineName: itinerary?.carrierName || itinerary?.carrierCode || 'Unknown airline',
     totalSegments: itinerary?.legs.reduce((sum, leg) => sum + leg.segments.length, 0) ?? 0,

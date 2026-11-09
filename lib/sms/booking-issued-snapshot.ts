@@ -21,12 +21,13 @@ function leadPassengerName(value: unknown): string {
 export function bookingIssuedSmsSnapshotFromBooking(
   booking: BookingRow
 ): Record<string, unknown> {
+  const locators = validAirlinePnrs(booking.airlines_pnr);
+  const unverified = booking.shapon_unverified_airline_pnr?.trim().toUpperCase();
+  const pnr = locators.length === 1 && locators[0].toUpperCase() === unverified ? null : locators[0];
   return {
     version: 1,
     bookingReference: booking.public_ref,
-    pnr:
-      validAirlinePnrs(booking.airlines_pnr)[0] ||
-      'Not available',
+    pnr: pnr || 'Not available',
     pnrType: 'airline',
     passengerName: leadPassengerName(booking.passengers),
     airlineCode: booking.itinerary?.carrierCode ?? '',

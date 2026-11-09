@@ -133,6 +133,11 @@ for (const status of ['in-progress', 'confirmed', 'cancelled']) {
 assert.equal(cancelButton({ allowCancellation: false }), undefined);
 assert.equal(cancelButton({ directTicketing: true }), undefined);
 assert.ok(cancelButton({ localTimeLimit: { featureAvailable: true, requestRequired: true } }));
+for (const status of ['on-hold', 'unconfirmed', 'expired']) {
+  assert.ok(cancelButton({ status, shaponPlatformCancellation: true }));
+}
+assert.equal(cancelButton({ status: 'pending', shaponPlatformCancellation: true }), undefined);
+assert.equal(cancelButton({ paymentState: 'released', shaponPlatformCancellation: true }), undefined);
 
 // Invoke the real confirmation callback and rerender the retained booking.
 // A lost supplier outcome must not leave stale On Hold props able to submit again.
@@ -140,6 +145,9 @@ const hookState = [];
 let hookIndex = 0;
 let routerRefreshes = 0;
 const recoveryCalls = [];
+const sessionStorage = new Map();
+let shaponHarness = false;
+let shaponRetrySucceeds = false;
 const recoveryActions = compile('components/flights/BookingActions.tsx', {
   ...actionImports,
   react: {
@@ -150,14 +158,30 @@ const recoveryActions = compile('components/flights/BookingActions.tsx', {
         hookState[slot] = typeof value === 'function' ? value(hookState[slot]) : value;
       }];
     },
-    useRef: current => ({ current }), useEffect() {}, useCallback: callback => callback,
+    useRef(current) {
+      const slot = hookIndex++;
+      return hookState[slot] ??= { current };
+    },
+    useEffect() {}, useCallback: callback => callback,
   },
   'next/navigation': { useRouter: () => ({ refresh() { routerRefreshes++; }, push() {} }) },
 }, {
   crypto: { randomUUID: () => 'cancel-request' }, AbortController,
-  window: { setTimeout: () => 0, clearTimeout() {} },
+  window: { setTimeout: () => 0, clearTimeout() {}, sessionStorage: {
+    getItem: key => sessionStorage.get(key) ?? null,
+    setItem: (key, value) => sessionStorage.set(key, value),
+    removeItem: key => sessionStorage.delete(key),
+  } },
   fetch: async (url, options) => {
-    recoveryCalls.push({ url, method: options.method ?? 'GET' });
+    const method = options.method ?? 'GET';
+    const payload = shaponHarness && options.body ? JSON.parse(options.body) : undefined;
+    recoveryCalls.push({ url, method, ...(payload ? { payload } : {}) });
+    if (shaponHarness && method === 'PATCH') {
+      return { ok: true, text: async () => JSON.stringify({ success: true, data: { status: 'retry-available' } }) };
+    }
+    if (shaponHarness && shaponRetrySucceeds && method === 'POST') {
+      return { ok: true, text: async () => JSON.stringify({ success: true, data: { cancellation: { status: 'cancelled' } } }) };
+    }
     const cancellationPost = url === '/api/flights/booking/cancel';
     const body = cancellationPost
       ? { success: false, error: { errorCode: 'CANCEL_OUTCOME_UNKNOWN', errorMessage: 'Unknown supplier outcome' } }
@@ -175,7 +199,7 @@ const recoveryProps = {
 };
 function recoveryTree() {
   hookIndex = 0;
-  return recoveryActions(recoveryProps);
+  return recoveryActions({ ...recoveryProps, shaponPlatformCancellation: shaponHarness });
 }
 function allNodes(tree, result = []) {
   if (Array.isArray(tree)) tree.forEach(child => allNodes(child, result));
@@ -205,6 +229,29 @@ assert.deepEqual(recoveryCalls, [
   { url: `/api/flights/booking/issue/status?reference=${base.public_ref}`, method: 'GET' },
 ], 'recovery makes one Cancel POST and one read-only status GET');
 assert.ok(nodeLabel(recoveredTree).includes('Checking cancellation result / Needs Reconciliation'));
+
+shaponHarness = true;
+hookState.length = 0;
+recoveryCalls.length = 0;
+const clickAction = label => {
+  const node = allNodes(recoveryTree()).find(node =>
+    nodeLabel(node.props?.children) === label && node.props?.onClick);
+  assert.ok(node, label);
+  node.props.onClick();
+};
+clickAction('Yes, Cancel Booking');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(sessionStorage.get(`shapon-cancel:${base.public_ref}`), 'cancel-request');
+clickAction('Check Cancellation Result');
+await new Promise(resolve => setTimeout(resolve, 0));
+shaponRetrySucceeds = true;
+clickAction('Retry Original Cancellation');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.deepEqual(recoveryCalls.map(({ method, payload }) => [method, payload.requestId, payload.retryOriginal]), [
+  ['POST', 'cancel-request', undefined], ['PATCH', 'cancel-request', undefined], ['POST', 'cancel-request', true],
+], 'Shapon checks saved state and retries only the original request identity');
+assert.equal(sessionStorage.size, 0);
+assert.ok(nodeLabel(recoveryTree()).includes('Your wallet balance was unchanged'));
 
 // Exercise the server page's real capability composition with read-only stubs.
 const pageFile = 'app/(dashboard)/dashboard/bookings/[reference]/page.tsx';

@@ -1,4 +1,3 @@
-import { SHAPON_CUTOVER_FAILURE, shaponCutoverPaused } from '@/lib/shapontravels/cutover';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BOOKING_CURRENCY, isBookingCurrency, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
@@ -228,7 +227,6 @@ export async function POST(request: NextRequest) {
       'Accept the updated fare before continuing.'
     );
   }
-  if (shaponCutoverPaused(search.supplierAccount)) return fail(...SHAPON_CUTOVER_FAILURE);
   if (search.supplierAccount === 'shapontravels') {
     const controls = await getSupplierOperationalControls();
     if (!controls.bookingEnabled) {

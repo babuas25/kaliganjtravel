@@ -1,4 +1,3 @@
-import { SHAPON_CUTOVER_FAILURE, shaponCutoverPaused } from '@/lib/shapontravels/cutover';
 import { z } from 'zod';
 
 import { getDashboardSession } from '@/lib/dashboard/session';
@@ -80,7 +79,6 @@ export async function POST(request: Request) {
   if (!limit.ok) return walletFail(429, 'RATE_LIMITED', 'Too many ticket confirmation requests.');
   const booking = await readBookingByPublicRef(parsed.data.bookingReference, bookingScopeFor(session));
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
-  if (shaponCutoverPaused(booking.supplier)) return walletFail(...SHAPON_CUTOVER_FAILURE);
   const db = supabaseAdmin();
   if (!db) return walletFail(503, 'CONFIRMATION_STORAGE_UNAVAILABLE', 'Ticket confirmation storage is unavailable.');
 

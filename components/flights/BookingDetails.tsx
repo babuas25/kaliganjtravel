@@ -34,7 +34,7 @@ import {
 import { BOOKING_STATUS_LABELS } from '@/lib/flights/booking-status';
 import { countryName } from '@/lib/flights/countries';
 import { ticketPrintReferences } from '@/lib/flights/ticket-print';
-import { bookingTicketDisplay } from '@/lib/flights/ticket-display';
+import { bookingTicketDisplay, ticketTerminalLabel } from '@/lib/flights/ticket-display';
 import {
   PASSENGER_NOTICE_TITLE,
   PASSENGER_NOTICES,
@@ -443,6 +443,7 @@ function DocumentHeader({
   onTicketingTimeRefreshChange: (refreshing: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const displayStatus = booking.displayStatus ?? booking.status;
   const activity =
     booking.status === 'confirmed'
       ? ['Issued at', booking.issuedAt]
@@ -496,9 +497,11 @@ function DocumentHeader({
         </div>
         <div className={styles.printReservation}>
           <p><strong>Airline PNR: {printReferences.airlinePnr}</strong></p>
-          <p className={styles.printReservationPnr}><strong>Reservation PNR: {printReferences.reservationPnr}</strong></p>
-          <p className={styles.printStatus} style={{ backgroundColor: STATUS_BADGE_COLORS[booking.status] }}>
-            {BOOKING_STATUS_LABELS[booking.status]}
+          {printReferences.reservationPnr && (
+            <p className={styles.printReservationPnr}><strong>Reservation PNR: {printReferences.reservationPnr}</strong></p>
+          )}
+          <p className={styles.printStatus} style={{ backgroundColor: STATUS_BADGE_COLORS[displayStatus] }}>
+            {BOOKING_STATUS_LABELS[displayStatus]}
           </p>
         </div>
         <div className={styles.printMetadata}>
@@ -587,14 +590,14 @@ function DocumentHeader({
           )}
           <span
             className={`${styles.status} mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-black`}
-            style={{ backgroundColor: `${STATUS_BADGE_COLORS[booking.status]}18`, color: STATUS_BADGE_COLORS[booking.status], border: `1px solid ${STATUS_BADGE_COLORS[booking.status]}40` }}
+            style={{ backgroundColor: `${STATUS_BADGE_COLORS[displayStatus]}18`, color: STATUS_BADGE_COLORS[displayStatus], border: `1px solid ${STATUS_BADGE_COLORS[displayStatus]}40` }}
           >
             {ticketed ? (
               <Ticket className="h-3.5 w-3.5" aria-hidden />
             ) : (
               <BadgeCheck className="h-3.5 w-3.5" aria-hidden />
             )}
-            {BOOKING_STATUS_LABELS[booking.status]}
+            {BOOKING_STATUS_LABELS[displayStatus]}
           </span>
           {booking.statusMessage && (
             <p className="mt-1 max-w-[18rem] text-[11px] leading-snug text-black sm:ml-auto">
@@ -697,11 +700,9 @@ function Terminus({
       <p className="mt-1.5 text-[13px] font-bold leading-none text-navy-950">
         {code}
       </p>
-      {terminal !== null && terminal !== undefined && terminal !== '' && (
-        <p className="mt-1 text-[11px] font-medium leading-none text-neutral-500">
-          Terminal {terminal}
-        </p>
-      )}
+      <p className="mt-1 text-[11px] font-medium leading-none text-neutral-500">
+        {ticketTerminalLabel(terminal)}
+      </p>
       {date && <p className="mt-1 text-[11px] text-neutral-500">{date}</p>}
       {airport && (
         // Clamped because "Hazrat Shahjalal International Airport" is four
@@ -787,7 +788,7 @@ function SegmentBlock({
             <td>{timeOf(segment.departure) || '--:--'}</td>
             <td>
               Departs: <strong>{segment.from}</strong>
-              {segment.departureTerminal && ` - Terminal ${segment.departureTerminal}`}
+              {` - ${ticketTerminalLabel(segment.departureTerminal)}`}
               {segment.fromAirport && <span className={styles.printAirport}>{segment.fromAirport}</span>}
             </td>
             <td rowSpan={2}>{segment.duration || '--'}</td>
@@ -806,7 +807,7 @@ function SegmentBlock({
             <td>{timeOf(segment.arrival) || '--:--'}{overnight > 0 && <sup> +{overnight}</sup>}</td>
             <td>
               Arrival: <strong>{segment.to}</strong>
-              {segment.arrivalTerminal && ` - Terminal ${segment.arrivalTerminal}`}
+              {` - ${ticketTerminalLabel(segment.arrivalTerminal)}`}
               {segment.toAirport && <span className={styles.printAirport}>{segment.toAirport}</span>}
             </td>
           </tr>
@@ -972,6 +973,7 @@ export default function BookingDetails({
   showStepper = true,
   passengerPrivacyNotice,
   allowCancellation = false,
+  shaponPlatformCancellation = false,
   allowSupplierRefresh = false,
   allowShaponStatusCheck = false,
   allowExternalTicketConfirmation = false,
@@ -998,6 +1000,7 @@ export default function BookingDetails({
   showStepper?: boolean;
   passengerPrivacyNotice?: string;
   allowCancellation?: boolean;
+  shaponPlatformCancellation?: boolean;
   allowSupplierRefresh?: boolean;
   allowShaponStatusCheck?: boolean;
   allowExternalTicketConfirmation?: boolean;
@@ -1368,6 +1371,7 @@ export default function BookingDetails({
           statusMessage={booking.statusMessage}
           directTicketing={booking.directTicketing}
           allowCancellation={allowCancellation}
+          shaponPlatformCancellation={shaponPlatformCancellation}
           allowSupplierRefresh={allowSupplierRefresh}
           allowShaponStatusCheck={allowShaponStatusCheck}
           allowExternalTicketConfirmation={allowExternalTicketConfirmation}
@@ -1407,7 +1411,7 @@ export default function BookingDetails({
                 .join(' ') || `Passenger ${index + 1}`,
             fileName:
               ticketed && ticketDisplay.passengers[index]
-                ? ticketDisplay.passengers[index]!.value
+                ? ticketDisplay.passengers[index]!.value.replaceAll('/', '-')
                 : 'Booking Confirmation',
           }))}
         >

@@ -40,8 +40,13 @@ export const forwardMigrationNames = [
   ticketingRecoveryMigration,
   paymentResolutionMigration,
   savedSyncMigration,
+  '20261109000000_shapon_platform_ticket_numbers.sql',
+  '20261109010000_shapon_platform_cancellation.sql',
+  '20261109020000_shapon_platform_status_display.sql',
+  '20261109030000_shapon_airline_pnr_display_provenance.sql',
 ];
 export const migrationNames = [path.basename(artifactPath), ...forwardMigrationNames];
+export const expectedCurrentSchema = { tables: 89, functions: 339 };
 export function verifyMigrationRegistration() {
   assert.deepEqual(fs.readdirSync(migrationDirectory).filter(name => name.endsWith('.sql')).sort(),
     migrationNames, 'Review and register every Kaliganj fresh-install forward migration explicitly');

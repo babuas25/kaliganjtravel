@@ -228,6 +228,7 @@ async function verifySavedSupplierSync() {
     await db.exec(fs.readFileSync(path.join(path.dirname(artifactPath), file), 'utf8'));
   }
 
+  const businessAfterMigrations = await businessSnapshot();
   const recorded = await record(savedCancelled, metadata, instant(5_000),
     { ...savedCancelled.identity, originalBookingStatus: null });
   assert.equal(recorded.recorded, true);
@@ -255,7 +256,7 @@ async function verifySavedSupplierSync() {
   assert.equal(savedThroughApp.checked.currentStatusState, 'available');
   assert.equal(savedThroughApp.storage.currentStatusStorage, 'saved',
     'The actual parser/store and real SQL recorder accept the saved six-field source together');
-  assert.deepEqual(savedThroughApp.response.currentStatus.currentStatus, metadata);
+  assert.deepEqual(savedThroughApp.response.currentStatus.currentStatus, { ...metadata, canIssue: false });
 
   const hold = await record(savedHold, { ...metadata, status: 'on-hold', supplierStatus: 'Created' });
   assert.equal(hold.recorded, true);
@@ -275,7 +276,7 @@ async function verifySavedSupplierSync() {
   };
   const unverifiedThroughApp = await recordApi(savedUnverified, unverifiedApi, instant(7_000));
   assert.equal(unverifiedThroughApp.storage.currentStatusStorage, 'saved');
-  assert.deepEqual(unverifiedThroughApp.response.currentStatus.currentStatus, unverified,
+  assert.deepEqual(unverifiedThroughApp.response.currentStatus.currentStatus, { ...unverified, canIssue: true },
     'Actual parser/store preserves unverified saved provenance and null timestamps at the RPC boundary');
   const unverifiedDated = await record(savedUnverifiedDated, { ...metadata, verified: false });
   assert.equal(unverifiedDated.recorded, true);
@@ -294,7 +295,7 @@ async function verifySavedSupplierSync() {
   assert.equal(review.recorded, true);
   assert.equal(review.currentStatus.reviewRequired, true);
   assert.equal((await walletClaim(savedReview)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_ISSUE');
-  assert.deepEqual(await businessSnapshot(), businessBefore,
+  assert.deepEqual(await businessSnapshot(), businessAfterMigrations,
     'Saved status reads do not settle money, close operations, change raw booking status or create notifications');
 
   const validObservations = await observationSnapshot();
@@ -343,7 +344,7 @@ async function verifySavedSupplierSync() {
     values($1,now(),'{}',null,'{}')`, [savedCancelled.booking.id]), /permission denied/);
   assert.equal((await record(savedHold, { ...metadata, status: 'on-hold', supplierStatus: null }, instant(10_000))).recorded, true);
   await db.exec('reset role');
-  assert.deepEqual(await businessSnapshot(), businessBefore);
+  assert.deepEqual(await businessSnapshot(), businessAfterMigrations);
 
   // A saved read also cannot touch an existing protected wallet Hold/Issue.
   const wallet = (await db.query("select(wallet_ensure_account('agency','ST-B2B100001','BDT')).*")).rows[0];
@@ -356,8 +357,89 @@ async function verifySavedSupplierSync() {
   const activeBefore = await businessSnapshot();
   assert.equal((await record(savedActive, metadata)).recorded, true);
   assert.equal((await detail(savedActive)).lifecycle_status, 'in-progress');
+  const latest = await record(savedActive, compactMetadata('confirmed'), instant(9_000),
+    { ...savedActive.identity, canCancel: false });
+  assert.equal(latest.recorded, true);
+  assert.equal(latest.currentStatus.currentStatus.canCancel, false);
+  assert.equal(latest.currentStatus.effectiveStatus, 'in-progress');
+  const displayed = (await db.query(`select lifecycle_status,status_order
+    from booking_dashboard_creator_v where id=$1 and lifecycle_status='confirmed'`,
+  [savedActive.booking.id])).rows[0];
+  assert.deepEqual(displayed, { lifecycle_status: 'confirmed', status_order: 3 },
+    'My Bookings displays, filters and sorts by the Shapon platform status while local Issue remains guarded');
+  const older = await record(savedActive, compactMetadata('on-hold'), instant(8_000),
+    { ...savedActive.identity, canCancel: true });
+  assert.equal(older.projectionUpdated, false);
+  assert.equal(older.currentStatus.currentStatus.status, 'confirmed');
+  assert.equal(older.currentStatus.currentStatus.canCancel, false);
   assert.deepEqual(await businessSnapshot(), activeBefore,
     'Saved cancelled evidence cannot release/capture an active Hold or complete its Issue/case');
+  const issueRace = await createHold('issuerace');
+  const issueIdentity = { ...issueRace.identity, issueResponse: true, canCancel: false };
+  const raceBefore = await businessSnapshot();
+  await record(issueRace, compactMetadata('on-hold'), instant(3_000));
+  const pendingIssue = await record(issueRace, compactMetadata('in-progress', true), instant(4_000), issueIdentity);
+  assert.equal(pendingIssue.projectionUpdated, true);
+  assert.equal((await detail(issueRace)).shapon_current_status.currentStatus.status, 'in-progress');
+  const readStartedDuringIssue = instant(5_000);
+  const issueReplyAt = instant(6_000);
+  await record(issueRace, compactMetadata('on-hold'), readStartedDuringIssue);
+  const confirmedIssue = await record(issueRace, compactMetadata('confirmed'), issueReplyAt, issueIdentity);
+  assert.equal(confirmedIssue.projectionUpdated, true,
+    'A successful Issue outranks a GET started while the Issue was still running');
+  for (const readStartedAt of [readStartedDuringIssue, issueReplyAt]) {
+    const staleHold = await record(issueRace, compactMetadata('on-hold'), readStartedAt);
+    assert.equal(staleHold.recorded, true);
+    assert.equal(staleHold.projectionUpdated, false);
+    assert.equal(staleHold.currentStatus.currentStatus.status, 'confirmed');
+  }
+  const delayedIssue = await record(issueRace, compactMetadata('in-progress', true), instant(7_000), issueIdentity);
+  assert.equal(delayedIssue.code, 'STALE_ISSUE_STATUS');
+  assert.equal((await detail(issueRace)).shapon_current_status.currentStatus.status, 'confirmed');
+  const newerCancellation = await record(issueRace, compactMetadata('cancelled'), instant(8_000));
+  assert.equal(newerCancellation.projectionUpdated, true);
+  const delayedConfirmation = await record(issueRace, compactMetadata('confirmed'), instant(9_000), issueIdentity);
+  assert.equal(delayedConfirmation.code, 'STALE_ISSUE_STATUS');
+  assert.equal((await detail(issueRace)).shapon_current_status.currentStatus.status, 'cancelled');
+  assert.deepEqual(await businessSnapshot(), raceBefore,
+    'Provider display observations never mutate local bookings, payment or outbox');
+
+  const missingLocator = await createHold('nolocator');
+  const expiredLocator = await createHold('expiredlocator');
+  await db.query("update flight_bookings set airlines_pnr='[]'::jsonb where id in ($1,$2)",
+    [missingLocator.booking.id, expiredLocator.booking.id]);
+  await db.query("update flight_bookings set supplier_ticketing_deadline_at=now()-interval '1 hour' where id=$1",
+    [expiredLocator.booking.id]);
+  const allowed = { ...missingLocator.identity, canIssue: true };
+  const blockedBefore = await businessSnapshot();
+  assert.equal((await walletClaim(missingLocator)).code, 'BOOKING_UNCONFIRMED',
+    'A missing airline locator still requires verified explicit Shapon permission');
+  assert.equal((await record(missingLocator, compactMetadata(), instant(2_000),
+    { ...allowed, bookingCodeRef: randomUUID() })).code, 'SUPPLIER_IDENTITY_UNVERIFIED');
+  assert.equal((await record(missingLocator, compactMetadata(), instant(2_000),
+    { ...allowed, canIssue: 'true' })).code, 'INVALID_CURRENT_STATUS');
+  assert.equal((await walletClaim(missingLocator)).code, 'BOOKING_UNCONFIRMED');
+  await record(missingLocator, compactMetadata('unconfirmed'), instant(3_000), allowed);
+  assert.equal((await walletClaim(missingLocator)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_ISSUE');
+  await record(missingLocator, compactMetadata(), instant(4_000), { ...allowed, canIssue: false });
+  assert.equal((await walletClaim(missingLocator)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_ISSUE');
+  await record(expiredLocator, compactMetadata(), instant(4_000), { ...expiredLocator.identity, canIssue: true });
+  assert.notEqual((await detail(expiredLocator)).lifecycle_status, 'on-hold');
+  assert.equal((await walletClaim(expiredLocator)).ok, false, 'An elapsed local deadline still blocks Issue');
+  assert.deepEqual(await businessSnapshot(), blockedBefore, 'Denied Issue claims leave wallet and booking rows untouched');
+
+  await record(missingLocator, compactMetadata(), instant(6_000), allowed);
+  const heldWithoutLocator = await detail(missingLocator);
+  assert.equal(heldWithoutLocator.lifecycle_status, 'on-hold');
+  assert.equal(heldWithoutLocator.shapon_current_status.currentStatus.canIssue, true);
+  const noDisplayedLocator = (await db.query('select airline_pnr from booking_dashboard_creator_v where id=$1',
+    [missingLocator.booking.id])).rows[0];
+  assert.equal(noDisplayedLocator.airline_pnr, '', 'Reservation PNR remains absent from display');
+  const issueKey = `shapon-no-airline-locator:${randomUUID()}`;
+  const issueClaim = (await db.query("select wallet_begin_booking_issue_v2($1,'shapon-current-owner','b2b_sub',$2,$3) as result",
+    [missingLocator.booking.id, issueKey, digest(issueKey)])).rows[0].result;
+  assert.equal(issueClaim.ok, true, 'The ordinary atomic wallet Issue claim accepts a bound native Shapon hold');
+  assert.equal((await detail(missingLocator)).status, 'in-progress');
   console.log(`Saved supplier_sync DB compatibility passed: full active chain ${catalogBefore.tables}/${catalogBefore.functions}, source/original time/null evidence, verified/unverified guards, ACL/owner/view preservation and unchanged money/business/outbox.`);
 }
 

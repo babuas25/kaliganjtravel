@@ -67,7 +67,11 @@ function transport(fetchImpl, envOverride = {}) {
     Response, URL, Buffer, AbortSignal, Date, JSON, Number, Error, Promise,
   });
   const adapter = compile('lib/shapontravels/cancel.ts', {
-    './client': client, './booking-status': bookingStatus,
+    './client': client,
+    './current-status-projection': compile('lib/shapontravels/current-status-projection.ts', {
+      './booking-status': bookingStatus,
+      '@/lib/flights/booking-status': compile('lib/flights/booking-status.ts', {}),
+    }),
   });
   const classifier = compile('lib/booking-lifecycle/supplier-uncertainty.ts', {
     '@/lib/booking-lifecycle/supplier-write-hooks': { SupplierWriteBoundaryError: BoundaryError },
@@ -82,25 +86,26 @@ const savedBooking = {
   pnr: input.pnr, booking_ref_number: input.bookingRefNumber,
   booking_code_ref: input.bookingCodeRef, supplier_refs: input,
 };
-assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady(savedBooking), true);
-assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({
+assert.equal(parsed.adapter.shapontravelsCancellationReferencesReady(savedBooking), true);
+assert.equal(parsed.adapter.shapontravelsCancellationReferencesReady({
   ...savedBooking, booking_ref_number: legacyReference,
 }), true, 'Historical saved UUID booking references remain supported');
 for (const field of ['pnr', 'booking_ref_number', 'booking_code_ref', 'supplier_refs']) {
-  assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({ ...savedBooking, [field]: null }), false);
+  assert.equal(parsed.adapter.shapontravelsCancellationReferencesReady({ ...savedBooking, [field]: null }), false);
 }
 for (const field of ['uniqueTransId', 'itemCodeRef', 'priceCodeRef']) {
-  assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({
+  assert.equal(parsed.adapter.shapontravelsCancellationReferencesReady({
     ...savedBooking, supplier_refs: { ...input, [field]: input.pnr },
   }), false, `${field} requires a saved platform UUID`);
 }
 for (const booking_ref_number of ['', 'OTHER1', ' ABC123 ']) {
-  assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({ ...savedBooking, booking_ref_number }), false);
+  assert.equal(parsed.adapter.shapontravelsCancellationReferencesReady({ ...savedBooking, booking_ref_number }), false);
 }
-assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({ ...savedBooking, pnr: ' ABC123 ' }), false);
+assert.equal(parsed.adapter.shapontravelsCancellationReferencesReady({ ...savedBooking, pnr: ' ABC123 ' }), false);
 
 assert.deepEqual(clone(parsed.adapter.parseShapontravelsCancellationReceipt(receipt, input)), {
-  isCancel: true, uniqueTransId: input.uniqueTransId, netRefund: null, refundPenalty: null,
+  isCancel: true, status: 'cancelled', walletMutation: false, uniqueTransId: input.uniqueTransId,
+  itemCodeRef: input.itemCodeRef, priceCodeRef: input.priceCodeRef, bookingCodeRef: input.bookingCodeRef,
 });
 for (const item1 of [
   ...['uniqueTransID', 'itemCodeRef', 'priceCodeRef', 'bookingCodeRef'].map(field => ({ ...receipt.item1, [field]: legacyReference })),
@@ -123,55 +128,19 @@ assert.equal(parsed.adapter.parseShapontravelsCancellationReceipt({
   ...receipt, item1: { ...receipt.item1, netRefund: 0, refundPenalty: null },
 }, input).isCancel, true);
 
-const heldRead = {
-  httpStatus: 200, supplierPublicRef: input.supplierPublicRef,
-  body: {
-    item1: { ...receipt.item1, pnr: input.pnr, bookingRefNumber: input.pnr, bookingStatus: 'Created' },
-    item2: { isSuccess: true },
-    currentStatus: { status: 'on-hold', reviewRequired: false },
-    publicReceipt: {
-      status: 'on-hold', pendingReview: false, tickets: [],
-      actions: { canIssue: false, canCancel: true },
-    },
-  },
-};
-assert.equal(bookingStatus.verifyShapontravelsBookingStatus(heldRead, input).currentStatus.reviewRequired, true,
-  'The Issue parser conservatively treats canIssue=false as review');
-assert.equal(parsed.adapter.verifyShapontravelsCancellationEligibility(heldRead, input), true,
-  'An explicit Cancel grant remains usable when Issue is blocked by a cutoff');
-assert.equal(parsed.adapter.verifyShapontravelsCancellationEligibility(heldRead, {
-  ...input, bookingRefNumber: legacyReference,
-}), true);
-for (const status of ['pending', 'on-hold', 'unconfirmed', 'expired']) {
-  const read = clone(heldRead);
-  read.body.currentStatus.status = status;
-  read.body.publicReceipt.status = status;
-  assert.equal(parsed.adapter.verifyShapontravelsCancellationEligibility(read, input), true, status);
+for (const lifecycle_status of ['on-hold', 'unconfirmed', 'expired']) {
+  assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({
+    ...savedBooking, lifecycle_status, payment_state: 'unpaid',
+  }), true, lifecycle_status);
 }
-const eligibilityFailures = [
-  read => { read.httpStatus = 202; },
-  read => { read.supplierPublicRef = 'STROTHER123'; },
-  read => { read.body.item1.uniqueTransID = legacyReference; },
-  read => { read.body.item1.pnr = 'OTHER1'; },
-  read => { read.body.item1.ticketCodeRef = legacyReference; },
-  read => { read.body.item1.ticketInfoes = [{ ticketNumbers: ['1234567890123'] }]; },
-  read => { read.body.currentStatus.reviewRequired = true; },
-  read => { delete read.body.currentStatus.reviewRequired; },
-  read => { read.body.publicReceipt.pendingReview = true; },
-  read => { delete read.body.publicReceipt.actions.canCancel; },
-  read => { read.body.publicReceipt.actions.canCancel = false; },
-  read => { read.body.publicReceipt.actions.canCancel = 'true'; },
-  read => { read.body.publicReceipt.tickets = ['1234567890123']; },
-  read => { read.body.publicReceipt.status = 'expired'; },
-];
-for (const mutate of eligibilityFailures) {
-  const read = clone(heldRead); mutate(read);
-  assert.equal(parsed.adapter.verifyShapontravelsCancellationEligibility(read, input), false);
-}
-for (const status of ['confirmed', 'in-progress', 'cancelled']) {
-  const read = clone(heldRead);
-  read.body.currentStatus.status = status; read.body.publicReceipt.status = status;
-  assert.equal(parsed.adapter.verifyShapontravelsCancellationEligibility(read, input), false);
+assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({
+  ...savedBooking, pnr: null, booking_ref_number: null, lifecycle_status: 'unconfirmed', payment_state: 'unpaid',
+}), true, 'A verified native booking can be cancelled without a locator');
+for (const changes of [{ lifecycle_status: 'pending' }, { lifecycle_status: 'in-progress' },
+  { payment_state: 'released' }, { ticket_numbers: ['1234567890123'] }]) {
+  assert.equal(parsed.adapter.shapontravelsCancellationIdentityReady({
+    ...savedBooking, lifecycle_status: 'on-hold', payment_state: 'unpaid', ...changes,
+  }), false);
 }
 
 async function verifyWrite({ status = 200, body = receipt, network = false, invalidJson = false, tooLarge = false,
@@ -219,7 +188,7 @@ async function verifyWrite({ status = 200, body = receipt, network = false, inva
   let failure;
   try {
     const outcome = await adapter.cancelShapontravelsBooking(saved, key, hooks);
-    assert.deepEqual(clone(outcome), { isCancel: true, uniqueTransId: input.uniqueTransId, netRefund: null, refundPenalty: null });
+    assert.deepEqual(clone(outcome), { isCancel: true, status: 'cancelled', walletMutation: false, uniqueTransId: input.uniqueTransId, itemCodeRef: input.itemCodeRef, priceCodeRef: input.priceCodeRef, bookingCodeRef: input.bookingCodeRef });
   } catch (error) { failure = error; }
   const expectedFailure = status !== 200 || body !== receipt || network || invalidJson || tooLarge ||
     failBefore || failResponse || authFailure || !envOverride.CLIENT_SECRET && Object.hasOwn(envOverride, 'CLIENT_SECRET') ||

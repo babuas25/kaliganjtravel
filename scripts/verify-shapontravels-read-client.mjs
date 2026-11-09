@@ -221,6 +221,36 @@ async function bookTransportFailureIsUncertain() {
   assert.equal(calls, 1);
 }
 
+async function issueRetainsPrivatePendingReceipt() {
+  const receipt = { state: 'pending', currentStatus: { status: 'in-progress' } };
+  for (const status of [202, 503]) {
+    let calls = 0;
+    const events = [];
+    const client = createClient(async url => {
+      if (url.pathname === '/auth/token') {
+        return json({ access_token: 'stm_issue', token_type: 'Bearer', expires_in: 1800 });
+      }
+      assert.equal(url.pathname, '/api/ticket/NewTicket');
+      calls++;
+      return json(receipt, status);
+    });
+    await assert.rejects(client.shapontravelsIssueRequest({}, 'operation:v1:fixed', {
+      beforeRequest: async () => { events.push('before'); },
+      onResponse: async response => {
+        assert.ok(Number.isFinite(Date.parse(response.receivedAt)));
+        events.push(response.httpStatus);
+      },
+    }), error => {
+      assert.equal(error.status, status);
+      assert.deepEqual(error.pendingIssueReceipt, status === 202 ? receipt : undefined);
+      assert.doesNotMatch(JSON.stringify(error), /currentStatus|in-progress/);
+      return true;
+    });
+    assert.equal(calls, 1);
+    assert.deepEqual(events, ['before', status]);
+  }
+}
+
 async function bookCapturesStableReferenceHeader() {
   const client = createClient(async (url) => {
     if (url.pathname === '/auth/token') {
@@ -281,6 +311,11 @@ async function bookMapperRequiresTheAcceptedHold() {
   const transpiled = ts.transpileModule(fs.readFileSync(bookSource, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
+  const statusModule = { exports: {} };
+  const statusSource = ts.transpileModule(fs.readFileSync('lib/shapontravels/booking-status.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  new vm.Script(statusSource).runInNewContext({ module: statusModule, exports: statusModule.exports });
   const refs = {
     uniqueTransId: 'transaction-1', itemCodeRef: 'item-1', priceCodeRef: 'price-1',
   };
@@ -292,6 +327,8 @@ async function bookMapperRequiresTheAcceptedHold() {
       fareBreakdown: { payable: '5084.36' },
     },
     item2: { isSuccess: true },
+    status: 'on-hold', currentStatus: { status: 'on-hold', reviewRequired: false },
+    publicReceipt: { status: 'on-hold', pendingReview: false, actions: { canIssue: true, canCancel: true } },
   };
   let response = { body: receipt, supplierPublicRef: 'STRABC123ABC123' };
   let sent;
@@ -303,6 +340,7 @@ async function bookMapperRequiresTheAcceptedHold() {
     module, exports: module.exports,
     require(name) {
       if (name === 'server-only') return {};
+      if (name === './booking-status') return statusModule.exports;
       if (name === '@/lib/flights/booking') {
         return { BOOKING_CONTACT_DEFAULTS: { countryCode: 'BD', cityName: 'Kaligonj' } };
       }
@@ -326,7 +364,14 @@ async function bookMapperRequiresTheAcceptedHold() {
   assert.equal(booked.outcome.status, 'held');
   assert.equal(booked.outcome.pnr, 'ABC123');
   assert.equal(booked.outcome.supplierPublicRef, 'STRABC123ABC123');
-  assert.deepEqual(Array.from(booked.outcome.airlinesPnr), ['ABC123']);
+  assert.deepEqual(Array.from(booked.outcome.airlinesPnr), []);
+  assert.equal(booked.shaponCurrentStatus?.status, 'on-hold');
+  assert.equal(booked.shaponCurrentStatus?.canIssue, true);
+  response = { body: { ...receipt, item1: { ...receipt.item1, airlinesPNR: ['AIR123'] } },
+    supplierPublicRef: 'STRABC123ABC123' };
+  assert.deepEqual(Array.from((await run()).outcome.airlinesPnr), ['AIR123']);
+  response = { body: { ...receipt, bookingId: 'different-booking' }, supplierPublicRef: 'STRABC123ABC123' };
+  assert.equal((await run()).shaponCurrentStatus, undefined, 'A conflicting Book resource cannot grant Issue authority');
   assert.equal(sent.key, 'operation:v1:fixed');
   assert.equal(sent.payload.directIssueIntent, false);
   assert.equal(sent.payload.passengerInfoes[0].contactInfo.phone, '1712345678');
@@ -349,6 +394,7 @@ await unauthorizedReadRenewsOnce();
 await errorsStayRedacted();
 await bookNeverReplaysAnUnknownOutcome();
 await bookTransportFailureIsUncertain();
+await issueRetainsPrivatePendingReceipt();
 await bookCapturesStableReferenceHeader();
 await savedBookingLookupOnlyReads();
 await bookMapperRequiresTheAcceptedHold();

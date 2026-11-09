@@ -1,16 +1,54 @@
 import 'server-only';
 
 import type { BookingRow } from '@/lib/db/flight-bookings';
+import type { ShaponSavedCancellation, ShapontravelsCancellationInput } from './cancel';
 import type { ShapontravelsBookingRead, ShapontravelsTicketRead } from './client';
 import {
   normalizeShapontravelsReceiptEnvelope,
   normalizeShapontravelsSavedBookingEnvelope,
   verifyShapontravelsBookingStatus,
+  type ShapontravelsBookingStatus,
 } from './booking-status';
 
 const object = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown> : null;
+
+/** Verify the exact native saved resource and its current platform actions. */
+export function readShaponCancellationState(
+  read: ShapontravelsBookingRead,
+  input: ShapontravelsCancellationInput,
+  supplierPublicRef: string,
+): { closure: ShaponSavedCancellation | null; canRetry: boolean; observation: ShapontravelsBookingStatus } | null {
+  const saved = normalizeShapontravelsSavedBookingEnvelope(read.body);
+  if (read.httpStatus !== 200 || !saved?.savedBooking ||
+      saved.savedBooking.bookingId !== input.bookingCodeRef ||
+      saved.savedBooking.reference !== supplierPublicRef) return null;
+  const status = verifyShapontravelsBookingStatus(read, {
+    ...input, bookingRefNumber: input.bookingRefNumber || null, pnr: input.pnr || null, supplierPublicRef,
+  });
+  const receipt = object(saved.envelope.publicReceipt);
+  const payment = object(saved.savedBooking.payment);
+  if (status.result !== 'verified' || status.currentStatusState !== 'available' ||
+      !status.currentStatus || (saved.receipt.pnr ?? null) !== (input.pnr || null)) return null;
+  if (status.ticketedEvidencePresent || saved.savedBooking.paymentState !== 'unpaid' ||
+      saved.savedBooking.issuedAt != null || receipt?.paymentState !== 'unpaid' || receipt.issuedAt != null ||
+      (payment?.state != null && payment.state !== 'unpaid' && payment.state !== 'released') ||
+      !Array.isArray(receipt.tickets) || receipt.tickets.length !== 0) {
+    return { closure: null, canRetry: false, observation: status };
+  }
+
+  const canRetry = ['on-hold', 'unconfirmed', 'expired'].includes(status.currentStatus.status) &&
+    status.currentStatus.canCancel === true;
+  const closed = status.currentStatus.status === 'cancelled' &&
+    status.currentStatus.reviewRequired === false && saved.savedBooking.requiresReconciliation === false;
+  return { canRetry, observation: status, closure: closed ? {
+    isCancel: true, status: 'cancelled', walletMutation: false,
+    uniqueTransId: input.uniqueTransId, itemCodeRef: input.itemCodeRef,
+    priceCodeRef: input.priceCodeRef, bookingCodeRef: input.bookingCodeRef,
+    supplierPublicRef, savedBookingId: input.bookingCodeRef,
+  } : null };
+}
 
 /** Stored Shapon cancellation evidence can finish only its original unpaid operation. */
 export function verifyShaponCancellationRecovery(
@@ -79,6 +117,7 @@ export function verifyShaponCancellationRecovery(
         (Object.hasOwn(envelope, 'paymentState') && envelope.paymentState !== 'unpaid') ||
         (Object.hasOwn(envelope, 'customerPaymentState') && envelope.customerPaymentState !== 'unpaid') ||
         (savedBooking && (savedBooking.reference !== supplierPublicRef ||
+          savedBooking.bookingId !== booking.booking_code_ref ||
           savedBooking.requiresReconciliation !== false || savedBooking.reviewRequired !== false ||
           savedBooking.paymentState !== 'unpaid' || savedBooking.issuedAt != null ||
           savedBooking.ticketCodeRef != null || !Array.isArray(savedBooking.ticketInfoes) ||

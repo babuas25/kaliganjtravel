@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import AirlineLogo from '@/components/flights/AirlineLogo';
+import { ticketTerminalLabel } from '@/lib/flights/ticket-display';
 import {
   dateOf,
   formatDuration,
@@ -69,11 +70,13 @@ function Endpoint({
   stamp,
   code,
   airport,
+  terminal,
   align = 'left',
 }: {
   stamp: string;
   code: string;
   airport: string;
+  terminal?: string | null;
   align?: 'left' | 'right';
 }) {
   const right = align === 'right';
@@ -86,11 +89,8 @@ function Endpoint({
       <p className="mt-1 truncate text-[11px] leading-tight text-neutral-500">
         {travelDate(stamp)}
       </p>
-      {/* The supplier sends no terminal on any segment. The row is kept so the
-          layout matches the one on the checkout and ticket pages, and reads as
-          "not provided" rather than as an omission. */}
       <p className="mt-0.5 truncate text-[11px] leading-tight text-neutral-400">
-        Terminal: -
+        {ticketTerminalLabel(terminal)}
       </p>
       <p className="mt-1 truncate text-xs font-semibold leading-tight text-navy-700">
         {code}
@@ -172,6 +172,7 @@ function SegmentDetails({
               stamp={segment.departure}
               code={segment.from}
               airport={segment.fromAirport}
+              terminal={segment.departureTerminal}
             />
 
             <div className="flex flex-col items-center pt-0.5">
@@ -191,6 +192,7 @@ function SegmentDetails({
               stamp={segment.arrival}
               code={segment.to}
               airport={segment.toAirport}
+              terminal={segment.arrivalTerminal}
               align="right"
             />
           </div>

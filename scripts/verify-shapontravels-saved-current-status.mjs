@@ -31,7 +31,22 @@ for(const name of ['on-hold','issued','cancelled']) {
   if(name==='on-hold')baseline={read,expected};
 }
 const summary={status:'on-hold',reviewRequired:false,source:null,verified:null,supplierStatus:null,supplierCheckedAt:null};
-const check=current=>verify({...baseline.read,body:{...baseline.read.body,currentStatus:current}},baseline.expected);
+const {savedBooking: savedHold, ...legacyBody}=baseline.read.body;
+const check=(current,publicReceipt=legacyBody.publicReceipt)=>
+  verify({...baseline.read,body:{...legacyBody,currentStatus:current,publicReceipt}},baseline.expected);
+const contradictory=verify({...baseline.read,body:{...baseline.read.body,
+  currentStatus:{...summary,status:'confirmed'}}},baseline.expected);
+assert.equal(contradictory.currentStatus,null,'A wrapped reply cannot override savedBooking status');
+const unconfirmedStatus={...summary,status:'unconfirmed'};
+const unconfirmedReceipt={...savedHold.publicReceipt,status:'unconfirmed',pnr:null,
+  actions:{...savedHold.publicReceipt.actions,canIssue:false,canCancel:true}};
+const unconfirmed=verify({...baseline.read,body:{currentStatus:unconfirmedStatus,publicReceipt:unconfirmedReceipt,
+  savedBooking:{...savedHold,status:'unconfirmed',pnr:null,bookingRefNumber:null,
+    currentStatus:unconfirmedStatus,publicReceipt:unconfirmedReceipt}}},
+{...baseline.expected,pnr:null,bookingRefNumber:null});
+assert.equal(unconfirmed.result,'verified');
+assert.equal(unconfirmed.currentStatus.status,'unconfirmed');
+assert.equal(unconfirmed.currentStatus.canCancel,true);
 for(const values of [{source:null,verified:null},{source:null,verified:false},{source:null,verified:true},{source:'saved_import',verified:null},{source:'saved_booking',verified:false},{source:'ticket_operation',verified:true},{source:'cancellation_operation',verified:true}]) {
   const result=check({...summary,...values});
   assert.equal(result.currentStatusState,'available');assert.equal(result.currentStatus.source,'public_receipt');
@@ -86,12 +101,12 @@ for(const publicReceipt of [null,{},
   {...baseline.read.body.publicReceipt,status:'cancelled'},
   {...baseline.read.body.publicReceipt,pendingReview:null},
   {...baseline.read.body.publicReceipt,actions:{canIssue:'true'}},
-])assert.equal(verify({...baseline.read,body:{...baseline.read.body,currentStatus:summary,publicReceipt}},baseline.expected).currentStatusState,'invalid');
+])assert.equal(check(summary,publicReceipt).currentStatusState,'invalid');
 for(const changes of [{pendingReview:true},{actions:{canIssue:false}}]) {
-  const result=verify({...baseline.read,body:{...baseline.read.body,currentStatus:summary,publicReceipt:{...baseline.read.body.publicReceipt,...changes}}},baseline.expected);
+  const result=check(summary,{...legacyBody.publicReceipt,...changes});
   assert.equal(result.currentStatusState,'available');assert.equal(result.currentStatus.reviewRequired,true,'Receipt capabilities cannot be bypassed by a false summary review flag');
 }
-for(const changes of [{supplierPublicRef:'STRFOREIGN123'}, {body:{...baseline.read.body,item1:{...baseline.read.body.item1,pnr:'OTHER1'}}}]) {
+for(const changes of [{supplierPublicRef:'STRFOREIGN123'}, {body:{...legacyBody,item1:{...legacyBody.item1,pnr:'OTHER1'}}}]) {
   const result=verify({...baseline.read,...changes},baseline.expected);
   assert.equal(result.result,'mismatch');assert.equal(result.currentStatus,null);
 }

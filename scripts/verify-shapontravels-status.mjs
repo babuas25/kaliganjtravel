@@ -102,8 +102,9 @@ for (const status of ['pending', 'on-hold', 'confirmed', 'in-progress', 'cancell
   const value = verify(compactRead({ status, reviewRequired: false }), expected);
   assert.equal(value.result, 'verified');
   assert.equal(value.currentStatusState, 'available');
-  assert.deepEqual(plain(value.currentStatus), publicCurrent(status));
-  assert.deepEqual(plain(parseCurrent(value.currentStatus)), publicCurrent(status),
+  const withAction = { ...publicCurrent(status), canIssue: status === 'on-hold' };
+  assert.deepEqual(plain(value.currentStatus), withAction);
+  assert.deepEqual(plain(parseCurrent(value.currentStatus)), withAction,
     'normalized public receipt metadata can be saved and read without private evidence');
   assert.equal(value.originalBookingStatus, 'Created');
   assert.equal(value.supplierStatus, null);
@@ -115,10 +116,11 @@ for (const publicReceipt of [
   { status: 'on-hold', pendingReview: true, actions: { canIssue: true } },
 ]) {
   assert.deepEqual(plain(verify(compactRead({ status: 'on-hold', reviewRequired: false }, publicReceipt), expected).currentStatus),
-    publicCurrent('on-hold', true), 'a compact hold must also explicitly allow Issue without public review');
+    { ...publicCurrent('on-hold', true), canIssue: publicReceipt.actions.canIssue },
+    'a compact hold must also explicitly allow Issue without public review');
 }
 assert.deepEqual(plain(verify(compactRead({ status: 'on-hold', reviewRequired: true }), expected).currentStatus),
-  publicCurrent('on-hold', true), 'an Issue capability cannot clear the original review flag');
+  { ...publicCurrent('on-hold', true), canIssue: true }, 'an Issue capability cannot clear the original review flag');
 for (const publicReceipt of [
   null, {}, { status: 'cancelled', pendingReview: false, actions: { canIssue: true } },
   { status: 'on-hold', pendingReview: null, actions: { canIssue: true } },

@@ -36,7 +36,7 @@ const mocks = {
   '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async () =>
     ({ projectionUpdated: false, currentStatusStorage: 'not_recorded' }) },
   '@/lib/shapontravels/ticket': { parseShapontravelsTicketEvidence: forbidden, shapontravelsTicketIdentityReady: forbidden },
-  '@/lib/shapontravels/cancel': { parseShapontravelsCancellationReceipt: forbidden, shapontravelsCancellationIdentityReady: forbidden },
+  '@/lib/shapontravels/cancel': { parseShapontravelsCancellationReceipt: forbidden, shapontravelsCancellationReferencesReady: forbidden },
   '@/lib/shapontravels/external-ticket-confirmation': {
     canConfirmShaponExternalTicket: role => role === 'admin' || role === 'superadmin',
     canOfferShaponExternalTicketConfirmation: forbidden, isShaponTicketingRecovery: forbidden,

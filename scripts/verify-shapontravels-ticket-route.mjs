@@ -34,6 +34,7 @@ const refs = {
 };
 const bookingId = '55555555-5555-4555-8555-555555555555';
 const nonce = '77777777-7777-4777-8777-777777777777';
+const responseReceivedAt = '2026-10-03T10:00:00.123Z';
 const itinerary = { carrierCode: '6E', legs: [{ segments: [{ airlineCode: '6E' }] }] };
 const receipt = {
   item1: { uniqueTransID: refs.uniqueTransId, itemCodeRef: refs.itemCodeRef,
@@ -56,6 +57,7 @@ class WriteError extends Error {
 async function run(options = {}) {
   const events = [];
   let captured = null;
+  let recordedStatus = null;
   const booking = {
     id: bookingId, public_ref: 'KTT261009000001', currency: 'BDT',
     supplier: 'shapontravels', supplier_account: 'shapontravels', import_source: null,
@@ -69,16 +71,22 @@ async function run(options = {}) {
     clientRequestNonce: nonce, action: 'ticketing', subjectType: 'booking', subjectId: booking.id,
     payload: { ...refs, expectedPassengerCount: 2, supplier: 'shapontravels' },
   });
-  const hooks = { boundarySnapshot: () => ({ supplierCallStarted: events.includes('issue') }) };
+  const hooks = { boundarySnapshot: () => ({ supplierCallStarted: events.includes('issue') }), onResponse: async () => {} };
   const client = {
     ShapontravelsWriteError: WriteError, isShapontravelsConfigured: () => true,
-    shapontravelsIssueRequest: async (body, key) => {
+    shapontravelsIssueRequest: async (body, key, requestHooks) => {
       events.push('issue');
       assert.equal(key, expectedOperation.requestKey);
       assert.deepEqual(JSON.parse(JSON.stringify(body)), {
         PNR: refs.pnr, BookingRefNumber: refs.pnr, UniqueTransID: refs.uniqueTransId,
         ItemCodeRef: refs.itemCodeRef, PriceCodeRef: refs.priceCodeRef, BookingCodeRef: refs.bookingCodeRef,
       });
+      await requestHooks.onResponse({ httpStatus: options.pendingReceipt ? 202 : 200, receivedAt: responseReceivedAt });
+      if (options.pendingReceipt) {
+        const error = new WriteError('pending', 'ISSUE_OUTCOME_UNKNOWN', 202);
+        error.pendingIssueReceipt = options.pendingReceipt;
+        throw error;
+      }
       return options.receipt ?? receipt;
     },
   };
@@ -133,6 +141,13 @@ async function run(options = {}) {
     '@/lib/triplover/ticket': { issueTicket: forbidden },
     '@/lib/shapontravels/ticket': ticket,
     '@/lib/shapontravels/client': client,
+    '@/lib/shapontravels/booking-status': compile('lib/shapontravels/booking-status.ts', {}),
+    '@/lib/shapontravels/current-status-store': {
+      async recordShapontravelsWriteStatus(_booking, status, observedAt, options) {
+        events.push('record-status');
+        recordedStatus = { status, observedAt, options };
+      },
+    },
     '@/lib/wallet/http': {
       walletOk: data => ({ status: 200, data }),
       walletFail: (status, code) => ({ status, code }), walletOperationResponse: forbidden,
@@ -144,7 +159,7 @@ async function run(options = {}) {
     // This untrusted field must not override the saved itinerary in either direction.
     itinerary: options.requestItinerary ?? { carrierCode: 'BG', legs: [] },
   }) });
-  return { result, events, captured };
+  return { result, events, captured, recordedStatus };
 }
 
 const issued = await run();
@@ -169,6 +184,44 @@ const replay = await run({ replay: true });
 assert.equal(replay.result.status, 200);
 assert.deepEqual(replay.events, ['claim']);
 assert.equal(replay.captured, null);
+
+const pendingReceipt = {
+  bookingId: refs.bookingCodeRef, issueId: nonce, state: 'pending', status: 'in-progress',
+  requiresReconciliation: true, automaticRetryAllowed: false,
+  statusUrl: `/api/bookings/${refs.bookingCodeRef}/ticket`,
+  currentStatus: { status: 'in-progress', reviewRequired: true },
+  publicReceipt: { status: 'in-progress', pendingReview: true, actions: { canIssue: false, canCancel: false } },
+};
+const pending = await run({ pendingReceipt });
+assert.equal(pending.result.status, 503);
+assert.equal(pending.captured, null);
+assert.deepEqual(pending.events, ['claim', 'issue', 'reconcile', 'record-status']);
+assert.equal(pending.recordedStatus.status.status, 'in-progress');
+assert.equal(pending.recordedStatus.observedAt, responseReceivedAt);
+assert.equal(pending.recordedStatus.options.issueResponse, true);
+const { status: _status, currentStatus: _currentStatus, publicReceipt: _publicReceipt, ...barePending } = pendingReceipt;
+const olderProvider = await run({ pendingReceipt: { ...barePending, state: 'outcome_unknown' } });
+assert.equal(olderProvider.recordedStatus.status.status, 'in-progress');
+assert.equal(olderProvider.recordedStatus.status.reviewRequired, true);
+assert.equal(olderProvider.captured, null);
+for (const bad of [
+  { ...pendingReceipt, bookingId },
+  { ...pendingReceipt, statusUrl: `/api/bookings/${bookingId}/ticket` },
+  { ...pendingReceipt, issueId: null },
+  { ...pendingReceipt, currentStatus: { status: 'confirmed', reviewRequired: true } },
+  { ...pendingReceipt, publicReceipt: { ...pendingReceipt.publicReceipt, actions: { canIssue: false, canCancel: true } } },
+]) {
+  const rejected = await run({ pendingReceipt: bad });
+  assert.equal(rejected.captured, null);
+  assert.deepEqual(rejected.events, ['claim', 'issue', 'reconcile']);
+}
+const canonicalConfirmed = await run({ receipt: { ...receipt,
+  currentStatus: { status: 'confirmed', reviewRequired: false },
+  publicReceipt: { ...receipt.publicReceipt, actions: { canIssue: false, canCancel: false } },
+} });
+assert.deepEqual(canonicalConfirmed.events, ['claim', 'issue', 'capture', 'record-status']);
+assert.equal(canonicalConfirmed.recordedStatus.status.status, 'confirmed');
+assert.equal(canonicalConfirmed.recordedStatus.observedAt, responseReceivedAt);
 
 // Saved ticket review must accept the same proof without invoking a wallet or
 // supplier mutation. Both client route variants use the saved carrier context.
@@ -224,7 +277,7 @@ async function review(savedItinerary, extraBody = {}) {
     '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async () => ({ saved: true }) },
     '@/lib/shapontravels/ticket': adapter,
     '@/lib/shapontravels/cancel': {
-      parseShapontravelsCancellationReceipt: forbidden, shapontravelsCancellationIdentityReady: forbidden,
+      parseShapontravelsCancellationReceipt: forbidden, shapontravelsCancellationReferencesReady: forbidden,
     },
     '@/lib/wallet/http': {
       walletOk: data => ({ status: 200, data }), walletFail: (status, code) => ({ status, code }),

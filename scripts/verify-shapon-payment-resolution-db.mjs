@@ -18,14 +18,15 @@ const admin='external-ticket-admin';
 const migration='20261103000002_shapon_payment_resolution.sql';
 let ticketNumber=1334567890120;
 async function makeBooking({ count = 1, agency = null, sellingPrice = 500.25,
-  carrier = 'BG', deadline = null, supplier = 'shapontravels' } = {}) {
+  carrier = 'BG', deadline = null, supplier = 'shapontravels', holdLocators = ['ABC123'],
+  validatingCarrier = carrier } = {}) {
   const attempt = randomUUID();
   const key = `external-book:${attempt}`;
   const refs = { uniqueTransId: randomUUID(), itemCodeRef: randomUUID(), priceCodeRef: randomUUID() };
   const offer = { currency: 'BDT', pricing: { sellingPrice, grossPrice: 600,
     supplierTotalPrice: 450, serviceMarginAmount: 50.25, audience: agency ? 'agency' : 'b2c', agencyCode: agency },
   passengerCounts: { ADT: count }, travelDate: '2030-01-01', directTicketing: false,
-  itinerary: { carrierCode: carrier, legs: [{ segments: [{ airlineCode: carrier }] }] },
+  itinerary: { carrierCode: validatingCarrier, legs: [{ segments: [{ airlineCode: carrier }] }] },
   fares: [], passportRequired: false, repricedAt: '2026-09-27T00:00:00Z' };
   const passengers = { travellers: Array.from({ length: count }, (_, index) =>
     ({ passengerType: 'ADT', firstName: `Synthetic${index}`, lastName: 'Traveller' })) };
@@ -39,7 +40,7 @@ async function makeBooking({ count = 1, agency = null, sellingPrice = 500.25,
   [attempt, digest(attempt), agency ? 'external-ticket-b2b' : owner, agency ? 'agency' : 'b2c', agency,
     supplier, randomUUID(), refs.uniqueTransId, refs.itemCodeRef, refs.priceCodeRef,
     JSON.stringify(offer), JSON.stringify(passengers), key, digest(key)]);
-  const outcome = { status: 'held', pnr: 'ABC123', airlinesPnr: ['ABC123'],
+  const outcome = { status: 'held', pnr: 'ABC123', airlinesPnr: holdLocators,
     bookingRefNumber: 'ABC123', supplierPublicRef: `STR${attempt.replaceAll('-', '').toUpperCase()}`,
     bookingStatus: 'Created', ticketingTimeLimit: deadline, bookingCodeRef: randomUUID(),
     supplierRefs: refs, ticketCodeRef: null, ticketNumbers: [], warnings: [] };
@@ -101,14 +102,15 @@ async function uncertain(subject) {
   assert.equal(result.ok,true,JSON.stringify(result));
   return {...item,caseId:result.caseId};
 }
-async function paid(subject,status='on-hold',stale=false) {
+async function paid(subject,status='on-hold',stale=false,includePassengerProof=false) {
   const item=await claim(subject);
   assert.equal((await value('select mark_booking_operation_supplier_response_received($1,$2,$3,200) as result',[
     item.operationId,item.requestKey,digest(item.requestKey)])).ok,true);
   const result=await value('select wallet_capture_reservation_v2($1,$2,$3,$4,$5,$6,$7) as result',[
     item.booking.id,item.actor,item.role,item.requestKey,digest(item.requestKey),item.operationId,
     JSON.stringify({pnr:item.booking.pnr,bookingStatus:'Confirmed',ticketCodeRef:item.proof.ticketCodeRef,
-      ticketNumbers:item.proof.ticketNumbers,airlinesPnr:item.proof.airlinesPnr})]);
+      ticketNumbers:item.proof.ticketNumbers,airlinesPnr:item.proof.airlinesPnr,
+      ...(includePassengerProof ? { passengerTickets: item.proof.passengerTickets } : {})})]);
   assert.equal(result.ok,true,JSON.stringify(result));
   const capture=await one("select * from wallet_ledger_entries where booking_id=$1 and transaction_type='booking_confirm'",[item.booking.id]);
   await db.query('update flight_bookings set status=$2 where id=$1',[item.booking.id,status]);
@@ -251,6 +253,85 @@ try {
     {...proofSubject.proof,expectedPaymentEffect:'charge_wallet',expectedPayableAmount:'50025'},
     {...proofSubject.proof,expectedPaymentEffect:'capture_hold',expectedPayableAmount:50025},
   ])await expectUnchanged(()=>confirm(proofSubject,{proof}),proof.expectedPayableAmount===50025?'PAYMENT_PREVIEW_CHANGED':'PAYMENT_PREVIEW_REQUIRED');
+
+  // Platform numbers use the authoritative locator and immutable passenger slot.
+  const platform = await uncertain(await makeBooking({ count: 2, carrier: '6E', validatingCarrier: 'BG' }));
+  platform.proof.airlinesPnr = ['AIR001'];
+  platform.proof.source = 'supplier_saved_ticket_details';
+  platform.proof.schemaVersion = 1;
+  platform.proof.passengerTickets = [1, 2].map(slot => ({
+    ticketNumbers: [`AIR001/${slot}`], ticketNumberSource: 'platform_pnr',
+  }));
+  platform.proof.ticketNumbers = platform.proof.passengerTickets.flatMap(row => row.ticketNumbers);
+  const platformPreview = await preview(platform);
+  assert.equal(platformPreview.paymentEffect, 'capture_hold');
+  const platformProof = { ...platform.proof, expectedPaymentEffect: platformPreview.paymentEffect,
+    expectedPayableAmount: platformPreview.amount };
+  const reversed = [...platformProof.passengerTickets].reverse();
+  await expectUnchanged(() => confirm(platform, { proof: { ...platformProof, passengerTickets: reversed,
+    ticketNumbers: reversed.flatMap(row => row.ticketNumbers) } }), 'TICKET_EVIDENCE_UNVERIFIED');
+  await expectUnchanged(() => confirm(platform, { proof: { ...platformProof, airlinesPnr: ['ABC123'] } }),
+    'TICKET_EVIDENCE_UNVERIFIED');
+  await expectUnchanged(() => confirm(platform, { proof: { ...platformProof, ticketCodeRef: null } }),
+    'TICKET_EVIDENCE_UNVERIFIED');
+  const mixed = await makeBooking({ count: 2, carrier: '6E' });
+  await db.query(`update flight_bookings set itinerary=jsonb_set(itinerary,'{legs,0,segments,1}',
+    '{"airlineCode":"J9"}'::jsonb) where id=$1`, [mixed.booking.id]);
+  const mixedPreview = await preview(mixed);
+  await expectUnchanged(() => confirm(mixed, { proof: { ...platformProof, ticketCodeRef: mixed.proof.ticketCodeRef,
+    expectedPaymentEffect: mixedPreview.paymentEffect, expectedPayableAmount: mixedPreview.amount } }), 'TICKET_EVIDENCE_UNVERIFIED');
+  const platformResult = await confirm(platform, { proof: platformProof });
+  assert.equal(platformResult.ok, true, JSON.stringify(platformResult));
+  assert.equal(platformResult.paymentEffect, 'capture_hold');
+  assert.deepEqual(await one('select ticket_numbers,airlines_pnr,shapon_passenger_ticket_refs from flight_bookings where id=$1', [platform.booking.id]), {
+    ticket_numbers: platformProof.ticketNumbers, airlines_pnr: platformProof.airlinesPnr,
+    shapon_passenger_ticket_refs: platformProof.passengerTickets,
+  });
+  assert.deepEqual((await one('select ticket_proof from shapon_external_ticket_confirmations where booking_id=$1',
+    [platform.booking.id])).ticket_proof, platformProof);
+  const platformCommitted = await snapshot();
+  assert.equal((await confirm(platform, { nullProof: true })).replay, true);
+  assert.deepEqual(await snapshot(), platformCommitted);
+
+  const numericWithoutLocator = await makeBooking({ holdLocators: [] });
+  numericWithoutLocator.proof.airlinesPnr = [];
+  assert.equal((await confirm(numericWithoutLocator)).ok, true);
+  assert.deepEqual(await one('select ticket_numbers,airlines_pnr from flight_bookings where id=$1', [numericWithoutLocator.booking.id]), {
+    ticket_numbers: numericWithoutLocator.proof.ticketNumbers, airlines_pnr: [],
+  });
+  const numericWithKnownLocator = await makeBooking({ holdLocators: ['AIR777'] });
+  numericWithKnownLocator.proof.airlinesPnr = [];
+  assert.equal((await confirm(numericWithKnownLocator)).ok, true);
+  assert.deepEqual((await one('select airlines_pnr from flight_bookings where id=$1',
+    [numericWithKnownLocator.booking.id])).airlines_pnr, ['AIR777']);
+
+  const ordinaryPlatform = await makeBooking({ carrier: 'J9' });
+  ordinaryPlatform.proof.airlinesPnr = ['AIR001'];
+  ordinaryPlatform.proof.ticketNumbers = ['AIR001/1'];
+  ordinaryPlatform.proof.passengerTickets = [{ ticketNumbers: ['AIR001/1'], ticketNumberSource: 'platform_pnr' }];
+  const ordinaryCaptured = await paid(ordinaryPlatform, 'confirmed', false, true);
+  assert.deepEqual(await one('select ticket_numbers,shapon_passenger_ticket_refs from flight_bookings where id=$1', [ordinaryPlatform.booking.id]), {
+    ticket_numbers: ordinaryPlatform.proof.ticketNumbers,
+    shapon_passenger_ticket_refs: ordinaryPlatform.proof.passengerTickets,
+  });
+  assert.deepEqual((await one(`select supplier_evidence#>'{finalOutcome,passengerTickets}' as rows
+    from booking_operations where id=$1`, [ordinaryCaptured.operationId])).rows, ordinaryPlatform.proof.passengerTickets);
+
+  const wrongSlot = await claim(await makeBooking({ carrier: 'J9' }));
+  assert.equal((await value('select mark_booking_operation_supplier_response_received($1,$2,$3,200) as result',
+    [wrongSlot.operationId, wrongSlot.requestKey, digest(wrongSlot.requestKey)])).ok, true);
+  const wrongSlotResult = await value('select wallet_capture_reservation_v2($1,$2,$3,$4,$5,$6,$7) as result',
+    [wrongSlot.booking.id, wrongSlot.actor, wrongSlot.role, wrongSlot.requestKey, digest(wrongSlot.requestKey), wrongSlot.operationId,
+      JSON.stringify({ pnr: wrongSlot.booking.pnr, bookingStatus: 'Confirmed', ticketCodeRef: wrongSlot.proof.ticketCodeRef,
+        airlinesPnr: ['AIR001'], ticketNumbers: ['AIR001/2'], passengerTickets: [
+          { ticketNumbers: ['AIR001/2'], ticketNumberSource: 'platform_pnr' },
+        ] })]);
+  assert.equal(wrongSlotResult.code, 'RECONCILIATION_REQUIRED');
+  assert.deepEqual(await one('select state,error_code from booking_operations where id=$1', [wrongSlot.operationId]), {
+    state: 'needs_reconciliation', error_code: 'TICKET_EVIDENCE_UNVERIFIED',
+  });
+  assert.equal((await one(`select count(*)::int as n from wallet_ledger_entries
+    where booking_id=$1 and transaction_type='booking_confirm'`, [wrongSlot.booking.id])).n, 0);
 
   // Return follows actual capture, not current booking status or a later price.
   for(const agency of [null,'ST-B2B000001'])for(const state of ['on-hold','pending','in-progress','confirmed','cancelled','unconfirmed','expired']) {

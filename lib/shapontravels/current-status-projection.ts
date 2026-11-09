@@ -40,7 +40,7 @@ export function shapontravelsCurrentStatusBlocksIssue(booking: {
   if (booking.supplier !== 'shapontravels' || booking.shapon_current_status == null) return false;
   const saved = parseShapontravelsCurrentStatusProjection(booking.shapon_current_status);
   return !saved || saved.currentStatus.status !== 'on-hold' || saved.reviewRequired ||
-    saved.currentStatus.reviewRequired === true;
+    saved.currentStatus.reviewRequired === true || saved.currentStatus.canIssue === false;
 }
 
 /** Supplier cancellation has its own permission, independent of the Issue cutoff. */

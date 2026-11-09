@@ -57,13 +57,29 @@ try {
   const start = (claim, key) => result(
     'select mark_booking_operation_supplier_call_started($1,$2,$3) as result',
     [claim.operationId, key, hash(key)]);
-  const receive = (claim, key) => result(
-    'select mark_booking_operation_supplier_response_received($1,$2,$3,200) as result',
-    [claim.operationId, key, hash(key)]);
-  const finalize = (booking, claim, key) => result(
+  const receive = (claim, key, status = 200) => result(
+    'select mark_booking_operation_supplier_response_received($1,$2,$3,$4) as result',
+    [claim.operationId, key, hash(key), status]);
+  const finalizeLegacy = (booking, claim, key) => result(
     'select wallet_finalize_booking_cancel_v2($1,$2,$3,$4,$5,$6,$7,$8) as result',
     [booking.id, 'shapon-cancel-owner', 'customer', key, hash(key), claim.operationId,
       'Booking cancelled with Shapontravels', JSON.stringify({ supplierStatus: 'Cancelled', pnr: booking.pnr })]);
+  const closure = booking => ({
+    isCancel: true, status: 'cancelled', walletMutation: false,
+    ...booking.supplier_refs, bookingCodeRef: booking.booking_code_ref, savedBookingId: booking.booking_code_ref,
+    supplierPublicRef: booking.supplier_public_ref,
+  });
+  const finalize = (booking, claim, key, outcome = closure(booking)) => result(
+    'select finalize_shapon_platform_cancel_v1($1,$2,$3,$4,$5,$6,$7) as result',
+    [booking.id, 'shapon-cancel-owner', 'customer', key, hash(key), claim.operationId, JSON.stringify(outcome)]);
+  const markUncertain = (booking, claim, key) => result(
+    'select record_supplier_write_uncertainty_v2($1,null,$2,$3,$4,$5,$6,$7,null,false,false,$8,$9,$10) as result',
+    [booking.id, claim.operationId, 'shapon-cancel-owner', 'customer', key, hash(key), 'network_after_write',
+      JSON.stringify({ failureClass: 'uncertain', automaticReplayAllowed: false }), hash('facts'), 'Connection lost']);
+  const restoreRefusal = (booking, claim, key, overrides = {}) => result(
+    'select resolve_shapon_cancellation_not_sent_v1($1,$2,$3,$4,$5,$6,$7) as result',
+    [booking.id, 'shapon-cancel-owner', 'customer', key, hash(key), claim.operationId,
+      JSON.stringify({ supplierCallStarted: true, phase: 'pre-closure-refusal', code: 'TICKET_ISSUE_ALREADY_RESERVED', ...overrides })]);
   const restoreNotSent = (booking, claim, key, actor = 'shapon-cancel-owner') => result(
     'select restore_shapon_cancellation_not_sent_v1($1,$2,$3,$4,$5) as result',
     [booking.id, actor, key, hash(key), claim.operationId]);
@@ -88,11 +104,13 @@ try {
   assert.deepEqual(claimedBooking, { status: 'in-progress', operation_kind: 'cancellation', active_operation_id: claim.operationId });
   assert.equal((await cancel(booking, key)).code, 'OPERATION_IN_PROGRESS');
   assert.equal((await issue(booking)).code, 'OPERATION_ALREADY_ACTIVE');
-  assert.equal((await finalize(booking, claim, key)).code, 'SUPPLIER_CALL_NOT_STARTED');
+  assert.equal((await finalize(booking, claim, key)).code, 'SHAPON_CLOSURE_REVIEW_REQUIRED');
   assert.equal((await start(claim, key)).started, true);
   assert.equal((await start(claim, key)).code, 'SUPPLIER_CALL_ALREADY_STARTED', 'The supplier dispatch boundary cannot be claimed twice');
-  assert.equal((await finalize(booking, claim, key)).code, 'SUPPLIER_RESPONSE_NOT_RECORDED');
+  assert.equal((await finalize(booking, claim, key, { ...closure(booking), savedBookingId: randomUUID() })).code,
+    'SHAPON_CLOSURE_UNVERIFIED');
   assert.equal((await receive(claim, key)).ok, true);
+  assert.equal((await finalizeLegacy(booking, claim, key)).code, 'SHAPON_PLATFORM_CLOSURE_REQUIRED');
   assert.equal((await finalize(booking, claim, key)).ok, true);
   assert.equal((await finalize(booking, claim, key)).replay, true);
   assert.equal((await cancel(booking, key)).replay, true);
@@ -153,9 +171,9 @@ try {
     pricing_snapshot: { sellingPrice: 500, grossPrice: 500, supplierTotalPrice: 500 } }, 'SUPPLIER_REFERENCES_MISSING');
   await rejectsBooking({ legacy_operational: true }, 'BOOKING_NOT_FOUND');
 
-  // Shapon cancellation covers all four unticketed lifecycle states. An issue
+  // Shapon cancellation covers eligible unticketed lifecycle states. An issue
   // cutoff or absent airline confirmation does not override fresh canCancel.
-  for (const overrides of [{ status: 'pending' }, { airlines_pnr: [] },
+  for (const overrides of [{ airlines_pnr: [] }, { airlines_pnr: [], pnr: null, booking_ref_number: null },
     { supplier_ticketing_deadline_at: new Date(Date.now() - 60000).toISOString() }]) {
     const candidate = await makeBooking();
     for (const [field, value] of Object.entries(overrides)) {
@@ -163,7 +181,7 @@ try {
         Array.isArray(value) ? JSON.stringify(value) : value]);
     }
     const prior = await one('select status,lifecycle_status from booking_lifecycle_v where id=$1', [candidate.id]);
-    assert.ok(['pending', 'unconfirmed', 'expired'].includes(prior.lifecycle_status));
+    assert.ok(['unconfirmed', 'expired'].includes(prior.lifecycle_status));
     const candidateKey = `cancel:${randomUUID()}`;
     const candidateClaim = await cancel(candidate, candidateKey);
     assert.equal(candidateClaim.ok, true, `${prior.lifecycle_status}: ${JSON.stringify(candidateClaim)}`);
@@ -172,7 +190,8 @@ try {
     { from_lifecycle_status: prior.lifecycle_status, stored_status_before: prior.status });
     await start(candidateClaim, candidateKey);
     await receive(candidateClaim, candidateKey);
-    assert.equal((await finalize(candidate, candidateClaim, candidateKey)).ok, true);
+    const current = await one('select * from flight_bookings where id=$1', [candidate.id]);
+    assert.equal((await finalize(current, candidateClaim, candidateKey)).ok, true);
     assert.equal((await one('select status from flight_bookings where id=$1', [candidate.id])).status, 'cancelled');
   }
   const expiredLocal = await makeBooking();
@@ -187,7 +206,7 @@ try {
     const now = new Date().toISOString();
     const receipt = { ...candidate.supplier_refs, bookingCodeRef: candidate.booking_code_ref,
       bookingRefNumber: candidate.booking_ref_number, pnr: candidate.pnr,
-      supplierPublicRef: candidate.supplier_public_ref, originalBookingStatus: 'Created' };
+      supplierPublicRef: candidate.supplier_public_ref, originalBookingStatus: 'Created', canCancel: true };
     const current = { status, bookingState: status === 'on-hold' ? 'held' : status,
       supplierStatus: null, checkedAt: now, supplierCheckedAt: null, verified: false,
       source: 'saved_booking', reviewRequired: true, lastCheck: null };
@@ -198,9 +217,9 @@ try {
   for (const status of ['confirmed', 'cancelled', 'in-progress']) {
     const candidate = await makeBooking();
     await saveCurrentStatus(candidate, status);
-    assert.equal((await cancel(candidate)).code, 'BOOKING_NOT_CANCELLABLE');
+    assert.equal((await cancel(candidate)).code, 'SUPPLIER_CURRENT_STATUS_BLOCKS_CANCEL');
   }
-  for (const status of ['on-hold', 'pending', 'unconfirmed', 'expired']) {
+  for (const status of ['on-hold', 'unconfirmed', 'expired']) {
     const candidate = await makeBooking();
     await saveCurrentStatus(candidate, status);
     assert.equal((await cancel(candidate)).ok, true,
@@ -227,9 +246,8 @@ try {
   await assert.rejects(db.query('update flight_bookings set supplier_account=\'triplover\' where id=$1', [unauthorized.id]),
     /flight_bookings_shapontravels_binding_check/);
 
-  // Existing definitive-success financial finalizer releases an ordinary hold
-  // exactly once. Seed this synthetic compatibility state after a valid claim;
-  // the cancellation entry point continues to reject held payment bookings.
+  // Seed a synthetic hold after claim. Neither legacy/saved closure nor the
+  // uncertainty path may move this wallet or mark the reservation as uncertain.
   const releaseBooking = await makeBooking();
   const releaseKey = `cancel:${randomUUID()}`;
   const releaseClaim = await cancel(releaseBooking, releaseKey);
@@ -241,20 +259,50 @@ try {
   const heldWallet = await one('select available_balance,hold_balance from wallet_accounts where id=$1', [account.id]);
   await start(releaseClaim, releaseKey);
   await receive(releaseClaim, releaseKey);
-  assert.equal((await finalize(releaseBooking, releaseClaim, releaseKey)).ok, true);
-  const releasedWallet = await one('select available_balance,hold_balance from wallet_accounts where id=$1', [account.id]);
-  assert.equal(Number(releasedWallet.available_balance), Number(heldWallet.available_balance) + 50000);
-  assert.equal(Number(releasedWallet.hold_balance), Number(heldWallet.hold_balance) - 50000);
-  assert.equal((await one('select state from wallet_reservations where id=$1', [reservation.id])).state, 'released');
-  assert.equal((await finalize(releaseBooking, releaseClaim, releaseKey)).replay, true);
-  assert.deepEqual(await one('select available_balance,hold_balance from wallet_accounts where id=$1', [account.id]), releasedWallet);
-  assert.equal((await one("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='hold_release'", [releaseBooking.id])).n, 1);
-  assert.equal((await one('select payment_state from flight_bookings where id=$1', [releaseBooking.id])).payment_state, 'released');
+  assert.equal((await finalizeLegacy(releaseBooking, releaseClaim, releaseKey)).code, 'SHAPON_PLATFORM_CLOSURE_REQUIRED');
+  assert.equal((await finalize(releaseBooking, releaseClaim, releaseKey)).code, 'SHAPON_CLOSURE_REVIEW_REQUIRED');
+  assert.equal((await markUncertain(releaseBooking, releaseClaim, releaseKey)).ok, true);
+  assert.deepEqual(await one('select available_balance,hold_balance from wallet_accounts where id=$1', [account.id]), heldWallet);
+  assert.equal((await one('select state from wallet_reservations where id=$1', [reservation.id])).state, 'active');
+  assert.equal((await one("select count(*)::int as n from wallet_ledger_entries where booking_id=$1 and transaction_type='hold_release'", [releaseBooking.id])).n, 0);
+  assert.equal((await one('select payment_state from flight_bookings where id=$1', [releaseBooking.id])).payment_state, 'held');
+
+  const refused = await makeBooking();
+  const refusedKey = `cancel:${randomUUID()}`;
+  const refusedClaim = await cancel(refused, refusedKey);
+  await start(refusedClaim, refusedKey);
+  await receive(refusedClaim, refusedKey, 409);
+  assert.equal((await restoreRefusal(refused, refusedClaim, refusedKey)).ok, true);
+  assert.equal((await one('select status from flight_bookings where id=$1', [refused.id])).status, 'on-hold');
+
+  const uncertain = await makeBooking();
+  const uncertainKey = `cancel:${randomUUID()}`;
+  const uncertainClaim = await cancel(uncertain, uncertainKey);
+  await start(uncertainClaim, uncertainKey);
+  assert.equal((await markUncertain(uncertain, uncertainClaim, uncertainKey)).ok, true);
+  const retry = (retryId, responseStatus) => result(
+    'select advance_shapon_platform_cancel_retry_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) as result',
+    [uncertain.id, 'shapon-cancel-owner', 'customer', uncertainKey, hash(uncertainKey), uncertainClaim.operationId,
+      retryId, responseStatus, JSON.stringify({ ...closure(uncertain), pnr: uncertain.pnr,
+        bookingRefNumber: uncertain.booking_ref_number }), new Date().toISOString()]);
+  const retryId = randomUUID();
+  assert.equal((await retry(retryId, null)).ok, true);
+  assert.equal((await retry(randomUUID(), null)).code, 'SHAPON_RETRY_IN_PROGRESS');
+  assert.equal((await retry(retryId, 409)).ok, true);
+  assert.equal((await restoreRefusal(uncertain, uncertainClaim, uncertainKey)).code, 'SHAPON_CANCEL_REFUSAL_UNVERIFIED');
+  assert.equal((await finalize(uncertain, uncertainClaim, uncertainKey)).ok, true);
+  assert.equal((await one('select status from flight_bookings where id=$1', [uncertain.id])).status, 'cancelled');
+
+  const notices = (await db.query(
+    'select lifecycle_status,delivery_policy,state from booking_notification_outbox where booking_id=$1',
+    [refused.id])).rows;
+  assert.ok(notices.some(row => row.lifecycle_status === 'in-progress' && row.state === 'suppressed'));
+  assert.equal(notices.filter(row => row.lifecycle_status === 'on-hold' && row.delivery_policy === 'send').length, 1);
 
   // Before the durable dispatch boundary, authentication/configuration failure
-  // restores all four permitted states without future-deadline or airline-PNR
+  // restores eligible states without future-deadline or airline-PNR
   // requirements. The claim's own identity and actor authorize only its undo.
-  for (const overrides of [{}, { status: 'pending' }, { airlines_pnr: [] },
+  for (const overrides of [{}, { airlines_pnr: [] },
     { supplier_ticketing_deadline_at: new Date(Date.now() - 60000).toISOString() }]) {
     const candidate = await makeBooking();
     for (const [field, value] of Object.entries(overrides)) {
@@ -302,7 +350,7 @@ try {
   const triploverPending = await makeBooking({ supplier: 'triplover' });
   await db.query("update flight_bookings set status='pending' where id=$1", [triploverPending.id]);
   assert.equal((await cancel(triploverPending)).code, 'BOOKING_NOT_CANCELLABLE');
-  console.log('Shapontravels cancellation database: four unticketed states, owner authorization, replay, competing issue claim, dispatch/finalization boundaries, safe pre-dispatch restore, saved supplier status and atomic hold release passed; Triplover scope preserved.');
+  console.log('Shapontravels cancellation database: saved closure, no wallet mutation, owner authorization, refusal/retry leases, competing issue claim, and notification suppression passed; Triplover scope preserved.');
 } finally {
   await db.close();
 }

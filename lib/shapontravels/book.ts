@@ -4,6 +4,7 @@ import type { BookingContact, BookingTraveller, PrivateBookingRefs } from '@/lib
 import { BOOKING_CONTACT_DEFAULTS } from '@/lib/flights/booking';
 import type { SupplierBookingOutcome } from '@/lib/triplover/book';
 import type { SupplierWriteLifecycleHooks } from '@/lib/triplover/client';
+import { shapontravelsAirlinePnrs, shapontravelsWriteCurrentStatus, type ShapontravelsCurrentStatus } from './booking-status';
 import { ShapontravelsWriteError, shapontravelsBookRequest } from './client';
 
 function passengerInfo(traveller: BookingTraveller, index: number, contact: BookingContact) {
@@ -47,7 +48,8 @@ export async function bookShapontravelsHold(
   expectedPayable: number,
   idempotencyKey: string,
   hooks: SupplierWriteLifecycleHooks
-): Promise<{ outcome: SupplierBookingOutcome; submittedPassengers: unknown[] }> {
+): Promise<{ outcome: SupplierBookingOutcome; submittedPassengers: unknown[];
+  shaponCurrentStatus?: ShapontravelsCurrentStatus }> {
   const submittedPassengers = travellers.map((traveller, index) =>
     passengerInfo(traveller, index, contact)
   );
@@ -84,12 +86,11 @@ export async function bookShapontravelsHold(
   }
   return {
     submittedPassengers,
+    shaponCurrentStatus: shapontravelsWriteCurrentStatus(response.body, receipt.bookingCodeRef),
     outcome: {
       status: 'held',
       pnr: receipt.pnr,
-      // Shapontravels exposes the verified record locator as `pnr` and has
-      // no separate airlinesPNR array in its hold receipt contract.
-      airlinesPnr: [receipt.pnr],
+      airlinesPnr: shapontravelsAirlinePnrs(receipt.airlinesPNR),
       bookingRefNumber: nonEmpty(receipt.bookingRefNumber) ? receipt.bookingRefNumber : null,
       supplierPublicRef: response.supplierPublicRef,
       bookingStatus: receipt.bookingStatus,

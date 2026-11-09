@@ -4,10 +4,12 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
+import { inflateSync } from 'node:zlib';
 import { ZipArchive } from 'archiver';
 import ExcelJS from 'exceljs';
 import { ESLint } from 'eslint';
 import nodemailer from 'nodemailer';
+import PDFDocument from 'pdfkit';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import ts from 'typescript';
@@ -89,12 +91,15 @@ async function verifyActualSalesExport() {
     createdAt: '2026-11-03T04:00:00.000Z', ticketedAt: '2026-11-03T04:05:00.000Z',
     mainTravellerName: 'Synthetic Traveller', orderReference: 'KTT-SYNTHETIC', totalPassengers: 2,
     pnr: 'ABC123', airlineCode: 'BG', totalSegments: 2, bookedByName: 'Synthetic Agent',
+    ticketNumbers: ['ABC123/1', '0012345678901'],
     currency: 'BDT', grossFare: 600.5, payableAmount: 500.25, profit: 100.25,
   };
   let reads = 0;
+  let reportRows = [row];
   const route = loadProduction('app/api/reports/issued-tickets/route.ts', {
     zod: { z },
     exceljs: ExcelJS,
+    pdfkit: PDFDocument,
     '@/lib/agency': loadProduction('lib/agency.ts'),
     '@/lib/dashboard/session': { getDashboardSession: async () => ({ clerkId: 'synthetic-admin', role: 'admin' }) },
     '@/lib/reports/issued-tickets': {
@@ -103,7 +108,7 @@ async function verifyActualSalesExport() {
         assert.equal(scope.agencyCode, 'ST-B2B123456');
         assert.deepEqual(filters, { from: '2026-11-01', to: '2026-11-03' });
         reads++;
-        return [row];
+        return reportRows;
       },
     },
     '@/lib/wallet/http': {
@@ -122,15 +127,50 @@ async function verifyActualSalesExport() {
   assert.ok(sheet, 'The real sales export must remain a readable XLSX workbook');
   assert.equal(sheet.rowCount, 2);
   assert.deepEqual(sheet.getRow(2).values.slice(1), [
-    new Date(row.createdAt), 'Synthetic Traveller\nKTT-SYNTHETIC · 2 Pax', 'ABC123', 'BG', 2,
+    new Date(row.createdAt), 'Synthetic Traveller\nKTT-SYNTHETIC · 2 Pax', 'ABC123', 'ABC123/1\n0012345678901', 'BG', 2,
     new Date(row.ticketedAt), 'Synthetic Agent', 'BDT', 600.5, 500.25, 100.25,
   ]);
   assert.equal(sheet.getCell('B2').alignment.wrapText, true);
-  assert.equal(sheet.getCell('J2').numFmt, '#,##0.00');
+  assert.equal(sheet.getCell('D2').numFmt, '@');
+  assert.equal(sheet.getCell('K2').numFmt, '#,##0.00');
   assert.equal(sheet.getCell('A1').font.bold, true);
   assert.equal(sheet.views[0].state, 'frozen');
   assert.equal(sheet.views[0].ySplit, 1);
-  assert.equal(sheet.autoFilter, 'A1:K1');
+  assert.equal(sheet.autoFilter, 'A1:L1');
+
+  async function reportPdfPages() {
+    const pdf = await route.GET(new Request('http://localhost/api/reports/issued-tickets?format=pdf&from=2026-11-01&to=2026-11-03'));
+    assert.equal(pdf.status, 200);
+    const bytes = Buffer.from(await pdf.arrayBuffer());
+    assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
+    const pages = [];
+    for (const [, compressed] of bytes.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)) {
+      let stream;
+      try { stream = inflateSync(Buffer.from(compressed, 'latin1')).toString('latin1'); } catch { continue; }
+      const runs = Array.from(stream.matchAll(/\[([\s\S]*?)\]\s*TJ/g), ([, run]) =>
+        Array.from(run.matchAll(/<([0-9a-f]+)>/gi), ([, hex]) => Buffer.from(hex, 'hex').toString()).join(''));
+      if (runs.length) pages.push(runs.join(' '));
+    }
+    return pages;
+  }
+  assert.match((await reportPdfPages()).join(' '), /Ticket numbers: ABC123\/1, 0012345678901/);
+
+  // Different ticket-list heights bring an order close to the page boundary.
+  reportRows = [9, 12, 11, 2, 9, 20, 0, 2, 1, 20, 3].map((count, index) => ({
+    ...row,
+    orderReference: `KTT-PAGE-${index + 1}`,
+    ticketNumbers: Array.from({ length: count }, (_, ticket) =>
+      String(1000000000000 + index * 100 + ticket)),
+  }));
+  const pages = await reportPdfPages();
+  assert.equal(reads, 3);
+  assert.ok(pages.length > 1, 'The fixture crosses a PDF page boundary');
+  for (const item of reportRows) {
+    const page = pages.find(text => text.includes(`${item.orderReference} `));
+    assert.ok(page, `PDF contains order ${item.orderReference}`);
+    assert.ok(item.ticketNumbers.every(number => page.includes(number)),
+      `Ticket numbers must stay on the same page as ${item.orderReference}`);
+  }
 }
 
 async function verifyMailEnvelope() {

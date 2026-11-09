@@ -105,7 +105,8 @@ async function invoke({ readStatus = 200, receipt = cancellationReceipt, readErr
     },
   }, 'supplier');
   const adapter = compile('lib/shapontravels/cancel.ts', {
-    './client': client, './booking-status': bookingStatus,
+    './client': client,
+    './current-status-projection': { parseShapontravelsCurrentStatusProjection: () => null },
   });
   const ticketAdapter = compile('lib/shapontravels/ticket.ts', {
     './client': client, './booking-status': bookingStatus, '@/lib/triplover/ticket-payload': ticketPayload,

@@ -132,7 +132,8 @@ function pdfText(bytes) {
   // Portable fallback for PDFKit's standard Helvetica ASCII content streams.
   // This reads the generated PDF operators, not mocked .text() calls.
   const runs = [];
-  for (const match of bytes.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+  // PDFKit writes LF before endstream. A preceding CR can be compressed data.
+  for (const match of bytes.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)) {
     let stream;
     try { stream = inflateSync(Buffer.from(match[1], 'latin1')).toString('latin1'); } catch { continue; }
     if (!/\bBT\b/.test(stream)) continue;
@@ -168,12 +169,44 @@ async function render(subject, count, artifactName = null) {
   const email = bookingStatusEmail({ booking: subject, travellers: people,
     bookingUrl: 'https://booking.example.invalid/synthetic-only' }, subject.status);
   const pdf = await confirmedBookingTicketPdf({ booking: subject, travellers: people });
-  const pdfPassengers = passengerPdfText(pdfText(pdf));
+  const fullPdfText = pdfText(pdf);
+  const pdfPassengers = passengerPdfText(fullPdfText);
   if (outputDirectory && artifactName) fs.writeFileSync(path.join(path.resolve(outputDirectory), artifactName), pdf);
   assert.deepEqual(subject, before, 'Display rendering cannot rewrite ticket evidence, payment or supplier data');
   renderedCases++;
-  return { display, page, email, pdfPassengers, printCopies };
+  return { display, page, email, fullPdfText, pdfPassengers, printCopies };
 }
+const shaponPnrDocument = await render(booking('6E', 1, { hideReservationPnr: true }), 1);
+assert.doesNotMatch(shaponPnrDocument.page, /Reservation PNR|GDS456/);
+assert.doesNotMatch(shaponPnrDocument.fullPdfText, /Reservation PNR|GDS456/);
+assert.match(shaponPnrDocument.fullPdfText, /ALN987/);
+
+const terminalLabels = text => text.replace(/\s+/g, ' ').match(/\bTerminal \S+/g) ?? [];
+for (const [terminals, expected] of [
+  [{ departureTerminal: '2', arrivalTerminal: null }, ['Terminal 2', 'Terminal n/a']],
+  [{ departureTerminal: 0, arrivalTerminal: 'Terminal 2' }, ['Terminal 0', 'Terminal 2']],
+  [{ arrivalTerminal: '   ' }, ['Terminal n/a', 'Terminal n/a']],
+]) {
+  const subject = booking();
+  Object.assign(subject.itinerary.legs[0].segments[0], terminals);
+  const { page, fullPdfText } = await render(subject, 1);
+  const screenTerminals = Array.from(
+    page.matchAll(/<div class="displayqa_terminus\b[^>]*>([\s\S]*?)<\/div>/g),
+    ([, endpoint]) => terminalLabels(cleanText(endpoint)),
+  );
+  assert.deepEqual(screenTerminals, expected.map(label => [label]), 'Screen shows one terminal label per endpoint');
+
+  const printTable = page.match(/<table class="displayqa_printSegment"[^>]*>([\s\S]*?)<\/table>/)?.[1];
+  assert.ok(printTable, 'The ticket includes its dedicated print itinerary table');
+  const printEndpoints = Array.from(printTable.matchAll(/<td>([\s\S]*?)<\/td>/g), ([, cell]) => cleanText(cell))
+    .filter(cell => /^(Departs|Arrival):/.test(cell));
+  assert.match(printEndpoints[0], /^Departs: DAC\b/);
+  assert.match(printEndpoints[1], /^Arrival: DEL\b/);
+  assert.deepEqual(printEndpoints.map(terminalLabels), expected.map(label => [label]),
+    'Print shows the same terminal labels beside the matching airport codes');
+  assert.deepEqual(terminalLabels(fullPdfText), expected, 'The PDF contains the same terminal labels');
+}
+
 function labelledAirlinePnr(result, values, count) {
   assert.equal(result.display.columnLabel, 'Airline PNR');
   assert.deepEqual(Array.from(result.display.passengers, row => row?.label), Array(count).fill('Airline PNR'));
@@ -200,7 +233,33 @@ for (const [carrier, artifact] of [['6E', 'indigo-pnr.pdf'], ['J9', 'jazeera-pnr
 labelledAirlinePnr(await render(booking('6E', 3), 3, 'shared-pnr.pdf'), 'ALN987', 3);
 for (const carrier of ['6E', 'J9']) {
   labelledAirlinePnr(await render(booking(carrier, 2, { ticketNumbers: ['ALN987', 'ALN987'] }), 2), 'ALN987', 2);
+  const numbers = ['ALN987/1', 'ALN987/2'];
+  const result = await render(booking(carrier, 2, { ticketNumbers: numbers,
+    ticketPassengerNumbers: numbers.map(number => [number]) }), 2);
+  assert.equal(result.display.columnLabel, 'Ticket number');
+  assert.deepEqual(pageCells(result.page).map(row => row.value), numbers);
+  assert.deepEqual(printFields(result.page).map(row => row.value), numbers);
+  assert.deepEqual(emailCells(result.email.html).map(row => row.value), numbers);
+  assert.ok(numbers.every(number => result.pdfPassengers.includes(number)));
+  assert.deepEqual(result.printCopies.map(copy => copy.fileName), ['ALN987-1', 'ALN987-2']);
 }
+const multiLocatorNumbers = [['ALN987/1', 'AIR002/1'], ['ALN987/2', 'AIR002/2']];
+const multiLocatorBooking = booking('J9', 2, {
+  airlinesPnr: ['ALN987', 'AIR002'], ticketNumbers: multiLocatorNumbers.flat(),
+});
+multiLocatorBooking.itinerary.carrierCode = 'BG';
+const multiLocator = await render({ ...multiLocatorBooking, ticketPassengerNumbers: multiLocatorNumbers }, 2);
+const expectedMultiLocatorCells = multiLocatorNumbers.map(row => row.join(', '));
+assert.deepEqual(Array.from(multiLocator.display.unassignedTicketNumbers), []);
+assert.deepEqual(pageCells(multiLocator.page).map(row => row.value), expectedMultiLocatorCells);
+assert.deepEqual(printFields(multiLocator.page).map(row => row.value), expectedMultiLocatorCells);
+assert.deepEqual(emailCells(multiLocator.email.html).map(row => row.value), expectedMultiLocatorCells);
+assert.ok(multiLocatorNumbers.flat().every(number => multiLocator.pdfPassengers.includes(number)));
+assert.deepEqual(Array.from(bookingTicketDisplay(multiLocatorBooking, 2).unassignedTicketNumbers),
+  multiLocatorNumbers.flat(), 'Do not infer historical passenger assignments without verified data');
+const legacyDifferentValidatingCarrier = booking('J9', 2, { ticketNumbers: ['ALN987', 'ALN987'] });
+legacyDifferentValidatingCarrier.itinerary.carrierCode = 'BG';
+labelledAirlinePnr(await render(legacyDifferentValidatingCarrier, 2), 'ALN987', 2);
 const numeric = await render(booking('6E', 2, { ticketNumbers: ['1234567890123', '1234567890124'] }), 2, 'numeric-ticket.pdf');
 assert.equal(numeric.display.columnLabel, 'Ticket number');
 assert.deepEqual(pageCells(numeric.page).map(row => row.value), ['1234567890123', '1234567890124']);
@@ -261,5 +320,5 @@ for (const ticketNumbers of [['1234567890123'], ['', '1234567890123']]) {
   assert.ok(result.email.html.includes('1234567890123') && result.email.text.includes('1234567890123'));
   assert.ok(result.email.html.includes('Ticket numbers could not be matched') && result.email.text.includes('Ticket numbers could not be matched'));
 }
-console.log(`PASS airline-PNR ticket display across actual helper, screen/print HTML, HTML/text email and ${renderedCases} actual PDF texts: confirmed paid 6E/J9, shared passengers, existing/numeric/mixed identifiers, assignment warnings, ineligible states/carriers and missing airline PNR without GDS fallback; no live actions.`);
+console.log(`PASS airline-PNR and terminal display across screen/print HTML and ${renderedCases} actual PDF texts, plus airline-PNR display in HTML/text email; no live actions.`);
 if (outputDirectory) console.log(`Synthetic PDF fixtures: ${path.resolve(outputDirectory)}`);

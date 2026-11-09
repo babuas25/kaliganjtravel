@@ -703,8 +703,6 @@ assert.match(prepareSource, /sourceExpiresAt: search\.expiresAt/);
 assert.match(prepareSource, /priceCodeRef: reprice\.priceCodeRef/);
 assert.match(prepareSource, /itinerary:\s*z\.unknown\(\)/);
 assert.match(prepareSource, /verifyBookingSnapshot\(\s*refs,\s*parsed\.data\.itinerary\s*\)/);
-assert.match(searchSource, /departureTerminal:\s*null/);
-assert.match(searchSource, /arrivalTerminal:\s*null/);
 assert.match(prepareSource, /BOOKING_SNAPSHOT_INVALID/);
 assert.match(prepareSource, /offerSnapshot:\s*\{[\s\S]*?itinerary,/);
 assert.match(repriceSource, /repriceMatchesSelectedItinerary/);
@@ -748,10 +746,9 @@ assert.match(issuedPrimaryRefs.bookingSnapshotDigest, /^[A-Za-z0-9_-]{43}$/);
 assert.equal(matchesBookingSnapshot(issuedPrimaryRefs, issuedPrimaryItinerary), true);
 assert.equal(matchesBookingSnapshot(issuedAlternativeRefs, issuedAlternativeItinerary), true);
 
-// TakeOff's current Search shape does not include terminal values.  A browser
-// snapshot that accurately reflects that absence must canonicalize to the
-// same representation Search used when it produced the digest; an explicitly
-// malformed terminal or an unknown field must still fail closed.
+// When Search does not supply terminals, a browser snapshot that omits them
+// must retain the same digest. Malformed terminals and unknown fields must
+// still fail closed.
 const terminalOmittedItinerary = structuredClone(issuedPrimaryItinerary);
 delete terminalOmittedItinerary.legs[0].segments[0].departureTerminal;
 delete terminalOmittedItinerary.legs[0].segments[0].arrivalTerminal;
@@ -1615,13 +1612,26 @@ const throughOffer = {
   },
   directions: [[{ from: 'DAC', to: 'YOW', stops: 2, segments: [
     rawRoundTripSegment({ from: 'DAC', to: 'FCO', airlineCode: 'BG', flightNumber: '305', bookingClass: 'K',
-      departure: '2026-10-31 01:55:00', arrival: '2026-10-31 07:15:00', segmentCodeRef: 'through-bg305' }),
+      departure: '2026-10-31 01:55:00', arrival: '2026-10-31 07:15:00', segmentCodeRef: 'through-bg305',
+      details: [
+        { origin: 'DAC', originTerminal: ' 1 ', destination: 'CGP', destinationTerminal: '8' },
+        { origin: 'CGP', originTerminal: '4', destination: 'FCO', destinationTerminal: '3' },
+      ] }),
     rawRoundTripSegment({ from: 'FCO', to: 'YYZ', airlineCode: 'BG', flightNumber: '305', bookingClass: 'K',
-      departure: '2026-10-31 08:30:00', arrival: '2026-10-31 13:40:00', segmentCodeRef: 'through-bg305' }),
+      departure: '2026-10-31 08:30:00', arrival: '2026-10-31 13:40:00', segmentCodeRef: 'through-bg305',
+      details: [{ origin: 'FCO', originTerminal: 0, destination: 'YYZ', destinationTerminal: '1' }] }),
     rawRoundTripSegment({ from: 'YYZ', to: 'YOW', airlineCode: 'AC', flightNumber: '470', bookingClass: 'K',
-      departure: '2026-10-31 22:45:00', arrival: '2026-10-31 23:55:00', segmentCodeRef: 'connection-ac470' }),
+      departure: '2026-10-31 22:45:00', arrival: '2026-10-31 23:55:00', segmentCodeRef: 'connection-ac470',
+      details: [{ origin: 'FCO', originTerminal: '3', destination: 'YYZ', destinationTerminal: '1' }] }),
   ] }]],
 };
+function assertThroughTerminals(segments, message) {
+  assert.deepEqual(
+    Array.from(segments, ({ departureTerminal, arrivalTerminal }) => [departureTerminal, arrivalTerminal]),
+    [['1', '3'], ['0', '1'], [null, null]],
+    message
+  );
+}
 for (const variant of ['repeated', 'missing', 'null', 'partial', 'unique']) {
   const offer = structuredClone(throughOffer);
   const segments = offer.directions[0][0].segments;
@@ -1638,6 +1648,7 @@ for (const variant of ['repeated', 'missing', 'null', 'partial', 'unique']) {
   const card = mapped.result.itineraries[0];
   assert.equal(card.ambiguousSelection, false);
   assert.equal(card.legs[0].segments.length, 3);
+  assertThroughTerminals(card.legs[0].segments, 'Shapon Search uses terminals from matching segment endpoints');
   const selected = mappedRefs.get('refs').get(card.id);
   assert.deepEqual(Array.from(selected.directionIndices), [0]);
   const expectedRefs = variant === 'repeated' ? ['through-bg305', 'through-bg305', 'connection-ac470'] :
@@ -1680,6 +1691,7 @@ for (const variant of ['repeated', 'missing', 'null', 'partial', 'unique']) {
   assert.equal(prepared.status, 200, variant);
   assert.equal(attempts.length, 1);
   assert.equal(attempts[0].supplierAccount, 'shapontravels');
+  assertThroughTerminals(attempts[0].offerSnapshot.itinerary.legs[0].segments, 'Shapon Prepare retains the Search terminals');
 
   for (const mismatch of ['flightNumber', 'departure', 'from', 'missing-directions', 'reordered']) {
     const bad = structuredClone(response);
@@ -1744,6 +1756,7 @@ for (const supplier of ['triplover', 'firsttrip', 'takeoff']) {
   const vector = ['through-bg305', 'through-bg305', 'connection-ac470'];
   assert.equal(card.ambiguousSelection, false);
   assert.equal(card.legs[0].segments.length, 3);
+  assertThroughTerminals(card.legs[0].segments, 'Triplover Search uses terminals from matching segment endpoints');
   assert.ok(!JSON.stringify(output.result).includes('through-bg305'), 'Supplier references must stay private');
   const clock = { now: 965_000 };
   const redis = new FakeRedis(clock);
@@ -1789,6 +1802,7 @@ for (const supplier of ['triplover', 'firsttrip', 'takeoff']) {
   assert.equal(prepared.status, 200);
   assert.equal(attempts.length, 1);
   assert.equal(attempts[0].supplierAccount, 'triplover');
+  assertThroughTerminals(attempts[0].offerSnapshot.itinerary.legs[0].segments, 'Triplover Prepare retains the Search terminals');
   const tampered = structuredClone(snapshot);
   tampered.legs[0].segments[2].flightNumber = '462';
   assert.equal((await prepare.POST({ json: async () => ({ ...preparePayload(card.id, tampered), searchId }) })).status, 409);

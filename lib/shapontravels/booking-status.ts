@@ -27,6 +27,8 @@ export type ShapontravelsCurrentStatus = {
   source: typeof CURRENT_SOURCES[number];
   checkedAt: string | null;
   reviewRequired: boolean | null;
+  canIssue?: boolean;
+  canCancel?: boolean;
   lastCheck: {
     checkedAt: string;
     verified: boolean;
@@ -50,6 +52,44 @@ export type ShapontravelsBookingStatus = {
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown> : null;
+}
+
+/** The reservation PNR is independent of the supplier's explicit airline locators. */
+export function shapontravelsAirlinePnrs(value: unknown): string[] {
+  return Array.isArray(value) &&
+    value.every(locator => typeof locator === 'string' && /^[A-Z0-9]{3,12}$/.test(locator))
+    ? Array.from(new Set<string>(value)) : [];
+}
+
+export type ShapontravelsTicketNumberSource = 'airline_pnr' | 'platform_pnr' | null;
+
+export type ShapontravelsPassengerTicket = {
+  ticketNumbers: string[];
+  ticketNumberSource: ShapontravelsTicketNumberSource;
+};
+
+export function isShapontravelsTicketNumberSource(value: unknown): value is ShapontravelsTicketNumberSource {
+  return value === null || value === 'airline_pnr' || value === 'platform_pnr';
+}
+
+export function hasShapontravelsPlatformTickets(value: unknown): boolean {
+  return Array.isArray(value) && value.some(row => object(row)?.ticketNumberSource === 'platform_pnr');
+}
+
+/** Immediate issue receipts use saved passenger order. Saved reads can expose explicit slots. */
+export function shapontravelsTicketRowsInPassengerOrder(value: unknown, count: number): Record<string, unknown>[] | null {
+  if (!Array.isArray(value) || value.length !== count || !count) return null;
+  const rows = value.map(object);
+  if (!rows.every((row): row is Record<string, unknown> => row !== null)) return null;
+  if (!hasShapontravelsPlatformTickets(rows)) return rows;
+  const ordered: Record<string, unknown>[] = [];
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    const slot = Object.hasOwn(row, 'passengerIndex') ? row.passengerIndex : index;
+    if (typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0 || slot >= count || ordered[slot]) return null;
+    ordered[slot] = row;
+  }
+  return ordered;
 }
 
 type ReceiptEnvelope = {
@@ -85,13 +125,24 @@ function ticketIdentifierSet(value: unknown): string[] | null {
 
 /** Both authenticated reads must describe the same saved passenger/flight/ticket snapshot. */
 export function matchingShapontravelsSavedTicketSnapshots(bookingBody: unknown, ticketBody: unknown): boolean {
-  const booking = normalizeShapontravelsReceiptEnvelope(bookingBody);
-  const ticket = normalizeShapontravelsReceiptEnvelope(ticketBody);
+  const booking = normalizeShapontravelsTicketEvidenceEnvelope(bookingBody);
+  const ticket = normalizeShapontravelsTicketEvidenceEnvelope(ticketBody);
   if (!booking || !ticket) return false;
   if (!booking.savedBooking && !ticket.savedBooking) return true;
   if (!booking.savedBooking || !ticket.savedBooking) return false;
   return ['bookingId', 'reference', 'passengerInfoes', 'segments', 'ticketInfoes', 'fareBreakdown', 'ticketCodeRef']
     .every(key => sameSavedData(booking.savedBooking![key], ticket.savedBooking![key]));
+}
+
+/** Platform references use the canonical passenger associations on saved reads. */
+export function normalizeShapontravelsTicketEvidenceEnvelope(body: unknown): ReceiptEnvelope | null {
+  const received = normalizeShapontravelsReceiptEnvelope(body);
+  const saved = object(received?.envelope.savedBooking);
+  if (saved && (hasShapontravelsPlatformTickets(received?.receipt.ticketInfoes) ||
+      hasShapontravelsPlatformTickets(saved.ticketInfoes))) {
+    return normalizeShapontravelsSavedBookingEnvelope(body);
+  }
+  return received;
 }
 
 /**
@@ -132,12 +183,12 @@ export function normalizeShapontravelsSavedBookingEnvelope(body: unknown): Recei
       saved.bookingCodeRef !== saved.bookingId ||
       !['uniqueTransID', 'itemCodeRef', 'priceCodeRef'].every(key =>
         typeof saved[key] === 'string' && UUID.test(saved[key] as string)) ||
-      typeof saved.pnr !== 'string' || !/^[A-Z0-9]{3,12}$/.test(saved.pnr) ||
+      !(saved.pnr === null || typeof saved.pnr === 'string' && /^[A-Z0-9]{3,12}$/.test(saved.pnr)) ||
       !(saved.bookingStatus === null || shortText(saved.bookingStatus)) ||
       !CURRENT_STATUSES.includes(saved.status as ShapontravelsCurrentStatus['status']) ||
       typeof saved.reviewRequired !== 'boolean' || typeof saved.requiresReconciliation !== 'boolean' ||
       saved.status !== current.status || saved.status !== publicReceipt.status ||
-      saved.reviewRequired !== current.reviewRequired || saved.reviewRequired !== publicReceipt.pendingReview ||
+      typeof current.reviewRequired !== 'boolean' || saved.reviewRequired !== publicReceipt.pendingReview ||
       saved.paymentState !== publicReceipt.paymentState || saved.pnr !== publicReceipt.pnr ||
       !sameSavedData(saved.currentStatus, current) || !sameSavedData(saved.publicReceipt, publicReceipt) ||
       (Object.hasOwn(envelope, 'requiresReconciliation') &&
@@ -229,7 +280,7 @@ export function normalizeShapontravelsSavedTicketRows(
         actual.dateOfBirth !== expected.dateOfBirth) return null;
     const target = grouped[index]!;
     const source = ticket.ticketNumberSource ?? null;
-    if ((source !== null && source !== 'airline_pnr') ||
+    if (!isShapontravelsTicketNumberSource(source) ||
         (target.ticketNumbers.length > 0 && source !== target.ticketNumberSource)) return null;
     target.ticketNumberSource = source;
     for (const number of ticket.ticketNumbers as string[]) {
@@ -422,15 +473,71 @@ function currentMetadata(envelope: Record<string, unknown>, allowSavedPublic = f
   };
 }
 
+function receiptCurrentMetadata(envelope: Record<string, unknown>): CurrentMetadata {
+  const metadata = currentMetadata(envelope);
+  const receipt = object(envelope.publicReceipt);
+  const actions = object(receipt?.actions);
+  if (metadata.currentStatus && receipt?.status === metadata.currentStatus.status) {
+    if (typeof actions?.canIssue === 'boolean') metadata.currentStatus.canIssue = actions.canIssue;
+    if (typeof actions?.canCancel === 'boolean') metadata.currentStatus.canCancel = actions.canCancel;
+  }
+  return metadata;
+}
+
+/** Used only after the caller has verified the booking or ticket receipt identity. */
+export function shapontravelsWriteCurrentStatus(body: unknown, bookingId?: string): ShapontravelsCurrentStatus | undefined {
+  const envelope = object(body);
+  if (!envelope || (bookingId && Object.hasOwn(envelope, 'bookingId') && envelope.bookingId !== bookingId)) return;
+  const { currentStatus } = receiptCurrentMetadata(envelope);
+  if (currentStatus && object(envelope.publicReceipt)?.status === currentStatus.status &&
+      (!Object.hasOwn(envelope, 'status') || envelope.status === currentStatus.status)) return currentStatus;
+}
+
+/** A matching pending Issue is display evidence only. It cannot prove issuance. */
+export function shapontravelsPendingIssueStatus(
+  body: unknown, bookingId: string,
+): ShapontravelsCurrentStatus | undefined {
+  const envelope = object(body);
+  if (!envelope || !UUID.test(bookingId) || envelope.bookingId !== bookingId ||
+      typeof envelope.issueId !== 'string' || !UUID.test(envelope.issueId) ||
+      envelope.statusUrl !== `/api/bookings/${bookingId}/ticket` ||
+      envelope.requiresReconciliation !== true || envelope.automaticRetryAllowed !== false ||
+      (envelope.state !== 'pending' && envelope.state !== 'outcome_unknown')) return;
+
+  if (Object.hasOwn(envelope, 'currentStatus') || Object.hasOwn(envelope, 'publicReceipt') ||
+      Object.hasOwn(envelope, 'status')) {
+    const current = shapontravelsWriteCurrentStatus(envelope);
+    const actions = object(object(envelope.publicReceipt)?.actions);
+    if (current?.status !== 'in-progress' || actions?.canIssue !== false || current.canCancel === true) return;
+    return { ...current, reviewRequired: true, canCancel: false };
+  }
+  return {
+    status: 'in-progress', reviewRequired: true, canIssue: false, canCancel: false,
+    source: 'public_receipt', verified: false, bookingState: null, supplierStatus: null,
+    supplierCheckedAt: null, checkedAt: null, lastCheck: null,
+  };
+}
+
 /** Validate saved current evidence without assigning receipt identity or freshness. */
 export function parseShapontravelsCurrentStatus(value: unknown): ShapontravelsCurrentStatus | null {
-  return currentMetadata({ currentStatus: value }, true).currentStatus;
+  const saved = object(value);
+  if (!saved) return null;
+  const { canCancel, canIssue, ...currentStatus } = saved;
+  if ((Object.hasOwn(saved, 'canCancel') && typeof canCancel !== 'boolean') ||
+      (Object.hasOwn(saved, 'canIssue') && typeof canIssue !== 'boolean')) return null;
+  const status = currentMetadata({ currentStatus }, true).currentStatus;
+  return status && {
+    ...status,
+    ...(typeof canCancel === 'boolean' ? { canCancel } : {}),
+    ...(typeof canIssue === 'boolean' ? { canIssue } : {}),
+  };
 }
 
 /** Verify saved receipt identity before exposing independent current evidence. */
 export function verifyShapontravelsBookingStatus(
   read: ShapontravelsBookingRead,
-  expected: ShapontravelsExpectedBooking
+  expected: ShapontravelsExpectedBooking,
+  expectedResourceBookingId?: string,
 ): ShapontravelsBookingStatus {
   const base: Omit<ShapontravelsBookingStatus, 'result'> = {
     currentStatus: null,
@@ -467,10 +574,13 @@ export function verifyShapontravelsBookingStatus(
     };
   }
 
-  const normalized = normalizeShapontravelsReceiptEnvelope(read.body);
+  const body = object(read.body);
+  const normalized = body && Object.hasOwn(body, 'savedBooking')
+    ? normalizeShapontravelsSavedBookingEnvelope(body)
+    : normalizeShapontravelsReceiptEnvelope(body);
   const envelope = normalized?.envelope, receipt = normalized?.receipt;
-  if (!envelope || !receipt || !read.supplierPublicRef ||
-      !shortText(receipt.bookingCodeRef) || !shortText(receipt.pnr) ||
+  if (read.httpStatus !== 200 || !envelope || !receipt || !read.supplierPublicRef ||
+      !shortText(receipt.bookingCodeRef) || (!normalized?.savedBooking && !shortText(receipt.pnr)) ||
       (!shortText(receipt.bookingStatus) && !normalized?.savedBooking)) {
     return { ...base, result: 'unverified' };
   }
@@ -490,10 +600,13 @@ export function verifyShapontravelsBookingStatus(
         !legacyPublicReference && !absentPublicReference) ||
       (expected.pnr && receipt.pnr !== expected.pnr) ||
       (expected.supplierPublicRef && read.supplierPublicRef !== expected.supplierPublicRef) ||
+      (expectedResourceBookingId && (normalized?.savedBooking
+        ? normalized.savedBooking.bookingId !== expectedResourceBookingId
+        : Object.hasOwn(envelope, 'bookingId') && envelope.bookingId !== expectedResourceBookingId)) ||
       (normalized?.savedBooking && normalized.savedBooking.reference !== read.supplierPublicRef)) {
     return { ...base, result: 'mismatch' };
   }
-  const metadata = currentMetadata(envelope);
+  const metadata = receiptCurrentMetadata(envelope);
   const originalBookingStatus = shortText(receipt.bookingStatus);
   return {
     ...base,

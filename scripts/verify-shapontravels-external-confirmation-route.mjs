@@ -158,6 +158,9 @@ async function run(options = {}) {
   });
   const cancellationAdapter = compile('lib/shapontravels/cancel.ts', {
     './booking-status': statusModule, './client': client,
+    './current-status-projection': {
+      parseShapontravelsCurrentStatusProjection: () => null,
+    },
   });
   const ticketingTime = compile('lib/shapontravels/ticketing-time.ts', {
     './booking-status': statusModule,
@@ -289,7 +292,8 @@ async function run(options = {}) {
       assert.equal(record.bookingId, bookingId);
       assert.equal(record.expected.supplierPublicRef, supplierPublicRef);
       assert.equal(record.status.result, 'verified');
-      return { currentStatusStorage: 'saved', projectionUpdated: true,
+      return { currentStatusStorage: 'saved', projectionUpdated: options.locatorObservationWins !== false,
+        airlinePnrsUpdated: Boolean(record.airlineLocatorRefresh) && options.locatorObservationWins !== false,
         displayStatus: 'unconfirmed', displayReviewRequired: true };
     } },
     '@/lib/shapontravels/ticket': ticket,
@@ -592,6 +596,12 @@ const ticketWithoutCurrentStatus = plain(baseTicketRead);
 delete ticketWithoutCurrentStatus.body.currentStatus;
 assert.equal((await run({ ticketRead: ticketWithoutCurrentStatus })).result.status, 200,
   'A saved numeric ticket receipt may omit optional current metadata');
+const numericWithoutAirlinePnr = plain(baseTicketRead);
+delete numericWithoutAirlinePnr.body.item1.airlinesPNR;
+const numericRecovery = await run({ ticketRead: numericWithoutAirlinePnr });
+assert.equal(numericRecovery.result.status, 200);
+assert.deepEqual(numericRecovery.rpcCalls[0].p_ticket_proof.airlinesPnr, [],
+  'Valid numeric recovery must keep the airline locator empty when only a reservation PNR is present');
 const ticketWithFullCurrentStatus = plain(baseTicketRead);
 ticketWithFullCurrentStatus.body.currentStatus = {
   status: 'confirmed', reviewRequired: false, bookingState: 'issued', supplierStatus: 'Confirmed',
@@ -1049,4 +1059,37 @@ for (const field of ['bookingRead', 'ticketRead']) {
   }
 }
 
-console.log('Shapon confirmation/Refresh: scoped saved GETs only, supplier_sync canonical cancelled recovery without ticket lookup, strict conflicts, mandatory payment and durable explicit confirmation retries passed');
+const airlineLocatorRead = plain(baseBookingRead);
+airlineLocatorRead.body.item1.airlinesPNR = ['AIR001', 'AIR002'];
+const legacyLocatorBooking = {
+  status: 'confirmed', lifecycle_status: 'confirmed', ticket_code_ref: ticketCodeRef,
+  airlines_pnr: [refs.pnr], shapon_unverified_airline_pnr: refs.pnr,
+  updated_at: '2026-10-10T05:11:16.123456+00:00',
+};
+for (const locatorObservationWins of [true, false]) {
+  const refreshed = await run({ refresh: true, booking: legacyLocatorBooking,
+    bookingRead: airlineLocatorRead, locatorObservationWins });
+  assert.equal(refreshed.result.status, 200);
+  assert.equal(refreshed.result.data.airlinePnrsUpdated, locatorObservationWins);
+  assert.deepEqual(refreshed.statusRecords[0].airlineLocatorRefresh, {
+    locators: ['AIR001', 'AIR002'], bookingUpdatedAt: legacyLocatorBooking.updated_at,
+  });
+}
+const knownLocator = await run({ refresh: true, booking: {
+  ...legacyLocatorBooking, shapon_unverified_airline_pnr: null,
+}, bookingRead: airlineLocatorRead });
+assert.equal(knownLocator.statusRecords[0].airlineLocatorRefresh, undefined,
+  'An explicitly verified Airline PNR equal to the reservation is preserved');
+const conflictingLocatorRead = plain(canonicalIssuedRead);
+conflictingLocatorRead.body.savedBooking.airlinesPNR = ['WRONG1'];
+conflictingLocatorRead.body.item1.airlinesPNR = ['AIR001'];
+conflictingLocatorRead.body.publicReceipt.airlinePnrs = ['AIR001'];
+conflictingLocatorRead.body.savedBooking.publicReceipt.airlinePnrs = ['AIR001'];
+const conflictingLocator = await run({ refresh: true, booking: legacyLocatorBooking,
+  bookingRead: conflictingLocatorRead });
+assert.equal(conflictingLocator.result.status, 200);
+assert.equal(conflictingLocator.result.data.currentStatusStorage, 'saved');
+assert.equal(conflictingLocator.statusRecords[0].airlineLocatorRefresh, undefined,
+  'Contradictory Airline PNR fields cannot overwrite a saved locator');
+
+console.log('Shapon confirmation/Refresh: scoped saved GETs only, supplier_sync canonical cancelled recovery without ticket lookup, ordered Airline PNR correction, strict conflicts, mandatory payment and durable explicit confirmation retries passed');

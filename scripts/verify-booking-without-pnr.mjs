@@ -161,6 +161,10 @@ const routeDependencies = {
     shapontravelsTicketIdentityReady: shaponIdentity,
   },
   '@/lib/shapontravels/client': { isShapontravelsConfigured: () => true, ShapontravelsWriteError },
+  '@/lib/shapontravels/booking-status': load('lib/shapontravels/booking-status.ts'),
+  '@/lib/shapontravels/current-status-store': {
+    recordShapontravelsWriteStatus: async () => assert.fail('No verified Shapon status was supplied'),
+  },
   '@/lib/wallet/http': http,
   '@/lib/wallet/permissions': load('lib/wallet/permissions.ts', {
     '@/lib/impexp/booking-source': {},
@@ -326,8 +330,15 @@ const supplierRefs = { uniqueTransId: randomUUID(), priceCodeRef: randomUUID(), 
 booking = {
   ...base, supplier: 'shapontravels', supplier_account: 'shapontravels',
   pnr: '0AEKGH', booking_ref_number: randomUUID(), booking_code_ref: randomUUID(),
-  supplier_refs: supplierRefs,
+  supplier_refs: supplierRefs, airlines_pnr: [],
   supplier_ticketing_deadline_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+  shapon_current_status: {
+    currentStatus: { status: 'on-hold', reviewRequired: false, source: 'public_receipt',
+      verified: false, bookingState: null, supplierStatus: null, supplierCheckedAt: null,
+      checkedAt: null, lastCheck: null, canIssue: true },
+    originalBookingStatus: 'Booked', fetchedAt: new Date().toISOString(),
+    effectiveStatus: 'on-hold', reviewRequired: false,
+  },
 };
 assert.equal(await canSubmit(), true);
 shaponReply = { pnr: booking.pnr, ticketCodeRef: randomUUID(), ticketNumbers: ['7790000000001'], bookingStatus: 'Confirmed' };

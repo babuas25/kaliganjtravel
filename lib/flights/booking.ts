@@ -129,6 +129,8 @@ export type PublicBooking = BookingOffer & {
   /** KTT + YYMMDD in Asia/Dhaka + a six-digit daily serial starting at 111111. */
   publicRef: string;
   status: BookingStatus;
+  /** Shapon's platform display state, independent of local payment and action guards. */
+  displayStatus?: BookingStatus;
   /** Customer-safe In Progress explanation; never an internal operation code. */
   statusMessage?: string | null;
   paymentState:
@@ -148,6 +150,8 @@ export type PublicBooking = BookingOffer & {
     logoUrl: string | null;
   };
   pnr: string | null;
+  /** Whether customer documents omit the reservation locator. */
+  hideReservationPnr?: boolean;
   /**
    * The airline's own record locator(s) — what a traveller quotes on the
    * carrier's site rather than on ours. Usually the same string as `pnr`, but a
@@ -164,6 +168,8 @@ export type PublicBooking = BookingOffer & {
   /** The same deadline as an unambiguous instant, for counting down. */
   ticketingDeadlineAt: string | null;
   ticketNumbers: string[];
+  /** Ticket identifiers in the order of the verified Shapon passenger receipt. */
+  ticketPassengerNumbers?: string[][];
   warnings: string[];
   /** When the booking record was created. */
   bookedAt: string;

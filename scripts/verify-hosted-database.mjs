@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import nextEnv from '@next/env';
 import { expectedProjectRef, root } from './helpers/fresh-database.mjs';
-import { migrationNames, verifyMigrationRegistration } from './helpers/shapon-recovery-database.mjs';
+import { expectedCurrentSchema, migrationNames, verifyMigrationRegistration } from './helpers/shapon-recovery-database.mjs';
 
 // Read-only hosted verification. No migration, fixtures, SMS or email calls.
 nextEnv.loadEnvConfig(root);
@@ -26,8 +26,8 @@ if (process.argv.includes('--current')) {
   { cwd: root, env: cliEnv, encoding: 'utf8', timeout: 45000, maxBuffer: 2 * 1024 * 1024 });
   if (query.status !== 0) throw new Error(`Current hosted read-only catalog verification failed (exit ${query.status ?? 'timeout'}).`);
   const verification = JSON.parse(query.stdout).rows[0].verification;
-  assert.equal(verification.table_count, 89);
-  assert.equal(verification.public_function_count, 330);
+  assert.equal(verification.table_count, expectedCurrentSchema.tables);
+  assert.equal(verification.public_function_count, expectedCurrentSchema.functions);
   assert.deepEqual(verification.tables_without_rls, []);
   assert.deepEqual(verification.migration_versions, migrationNames.map(name => name.split('_')[0]));
   for (const key of ['saved_sync_recorder','saved_sync_projection','original_status_nullable',

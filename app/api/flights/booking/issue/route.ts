@@ -39,6 +39,8 @@ import {
   shapontravelsTicketIdentityReady,
 } from '@/lib/shapontravels/ticket';
 import { isShapontravelsConfigured, ShapontravelsWriteError } from '@/lib/shapontravels/client';
+import { recordShapontravelsWriteStatus } from '@/lib/shapontravels/current-status-store';
+import { shapontravelsPendingIssueStatus, type ShapontravelsCurrentStatus } from '@/lib/shapontravels/booking-status';
 import { walletFail, walletOk, walletOperationResponse } from '@/lib/wallet/http';
 import { canIssueBooking } from '@/lib/wallet/permissions';
 
@@ -349,6 +351,7 @@ export async function POST(request: NextRequest) {
     reserved.operationId,
     operationRequest
   );
+  let shaponIssueObservedAt: string | undefined;
 
   try {
     const { outcome: enrichedOutcome, ticketDetails } = supplierAccount === 'shapontravels'
@@ -360,7 +363,13 @@ export async function POST(request: NextRequest) {
               itinerary: booking.itinerary,
             },
             operationRequest.requestKey,
-            supplierLifecycle
+            {
+              ...supplierLifecycle,
+              async onResponse(response) {
+                await supplierLifecycle.onResponse(response);
+                shaponIssueObservedAt = response.receivedAt;
+              },
+            }
           ),
           ticketDetails: null,
         }
@@ -380,21 +389,26 @@ export async function POST(request: NextRequest) {
           refs.uniqueTransId,
           triploverAccount!
         );
+    const { shaponCurrentStatus, ...supplierOutcome } = enrichedOutcome as
+      typeof enrichedOutcome & { shaponCurrentStatus?: ShapontravelsCurrentStatus };
     const captured = manuallyQueued
       ? await finalizeManualIssue(
           booking.id,
           session,
           operationRequest,
           reserved.operationId,
-          enrichedOutcome
+          supplierOutcome
         )
       : await finalizeBookingIssue(
           booking.id,
           session,
           operationRequest,
           reserved.operationId,
-          enrichedOutcome
+          supplierOutcome
         );
+    if (shaponCurrentStatus && shaponIssueObservedAt) {
+      await recordShapontravelsWriteStatus(booking, shaponCurrentStatus, shaponIssueObservedAt, { issueResponse: true });
+    }
     if (!captured.ok) {
       await recordSecurityAuditEvent({
         actorUserId: session.clerkId,
@@ -492,6 +506,13 @@ export async function POST(request: NextRequest) {
           { bookingId: booking.id },
           `${supplierFailure.reasonCode}: ${message}`
         );
+      }
+      if (supplierAccount === 'shapontravels' && shaponIssueObservedAt && booking.booking_code_ref &&
+          error instanceof ShapontravelsWriteError && error.operation === 'NewTicket' && error.status === 202) {
+        const pendingStatus = shapontravelsPendingIssueStatus(error.pendingIssueReceipt, booking.booking_code_ref);
+        if (pendingStatus) {
+          await recordShapontravelsWriteStatus(booking, pendingStatus, shaponIssueObservedAt, { issueResponse: true });
+        }
       }
       await recordSecurityAuditEvent({
         actorUserId: session.clerkId,

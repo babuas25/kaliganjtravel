@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
-import { hash, migrationDirectory, migrationNames, publicStatusMigration,
+import { expectedCurrentSchema as expected, hash, migrationDirectory, migrationNames, publicStatusMigration,
   verifyMigrationRegistration, workdir } from './helpers/shapon-recovery-database.mjs';
 
 // Full Kaliganj chain, disposable PostgreSQL and synthetic records only. This
@@ -14,12 +14,13 @@ verifyMigrationRegistration();
 const db = new PGlite({ extensions: { pgcrypto } });
 const one = async (sql, params = []) => (await db.query(sql, params)).rows[0];
 const rpc = async (sql, params = []) => (await one(sql, params)).result;
-const expected = { tables: 89, functions: 330 };
 async function snapshot() {
   const result = {};
   for (const { tablename } of (await db.query(`select tablename from pg_tables
     where schemaname='public' order by tablename`)).rows) {
-    result[tablename] = (await one(`select md5(coalesce(jsonb_agg(to_jsonb(t)
+    const row = tablename === 'flight_bookings'
+      ? "to_jsonb(t) - array['shapon_unverified_airline_pnr','shapon_passenger_ticket_refs']" : 'to_jsonb(t)';
+    result[tablename] = (await one(`select md5(coalesce(jsonb_agg(${row}
       order by t::text),'[]'::jsonb)::text) as hash from public."${tablename}" t`)).hash;
   }
   return result;
@@ -50,7 +51,7 @@ async function viewColumns() {
     group by c.oid order by c.relname`)).rows;
 }
 async function makeProtectedHold(kind = 'ticketing') {
-  const actor = kind === 'ticketing' ? 'fullchain-synthetic-owner' : 'fullchain-synthetic-cancel-owner';
+  const actor = `fullchain-synthetic-${kind}-owner`;
   await db.query("insert into app_users(clerk_id,role) values($1,'customer')", [actor]);
   const account = await one("select(wallet_ensure_account('user',$1,'BDT')).*", [actor]);
   await db.query('update wallet_accounts set available_balance=1000000 where id=$1', [account.id]);
@@ -77,6 +78,9 @@ async function makeProtectedHold(kind = 'ticketing') {
   const booking = await one('select(create_shapontravels_booking_from_attempt_v1($1,$2,$3,$4)).*',
     [attempt, key, hash(key), JSON.stringify(outcome)]);
   assert.match(booking.public_ref, /^KTT[0-9]{12,16}$/, 'Target booking reference remains KTT');
+  const identity = { ...refs, bookingCodeRef: outcome.bookingCodeRef, bookingRefNumber: outcome.bookingRefNumber,
+    pnr: outcome.pnr, supplierPublicRef: outcome.supplierPublicRef };
+  if (kind === 'locator') return { booking, identity };
   const issueKey = `fullchain-${kind}:${randomUUID()}`;
   const claimFunction = kind === 'ticketing' ? 'wallet_begin_booking_issue_v2' : 'begin_booking_cancellation_v2';
   const claim = await rpc(`select ${claimFunction}($1,$2,$3,$4,$5) as result`,
@@ -90,8 +94,7 @@ async function makeProtectedHold(kind = 'ticketing') {
       kind === 'ticketing' ? 202 : 409, JSON.stringify(facts), hash(JSON.stringify(facts)), 'Synthetic incomplete supplier response']);
   assert.equal(uncertain.ok, true, JSON.stringify(uncertain));
   return { booking, account, operationId: claim.operationId, caseId: uncertain.caseId,
-    identity: { ...refs, bookingCodeRef: outcome.bookingCodeRef, bookingRefNumber: outcome.bookingRefNumber,
-      pnr: outcome.pnr, supplierPublicRef: outcome.supplierPublicRef } };
+    identity };
 }
 
 try {
@@ -102,9 +105,17 @@ try {
     await db.exec(fs.readFileSync(path.join(migrationDirectory, file), 'utf8'));
   }
   const target = await makeProtectedHold();
+  const legacyLocator = await makeProtectedHold('locator');
+  const locatorId = legacyLocator.booking.id;
+  const legacyTimestamp = (await one(`update flight_bookings set airlines_pnr='[" abc123 "]'
+    where id=$1 returning updated_at`, [locatorId])).updated_at;
   const triploverBefore = await triploverSchema();
   assert.ok(triploverBefore.functions.length >= 7, 'Include the complete installed Triplover feature and earlier supplier helpers');
-  const columnsBefore = await viewColumns();
+  const expectedViews = await viewColumns();
+  const appendedViewColumns = new Map([
+    ['20261109000000_shapon_platform_ticket_numbers.sql', ['shapon_passenger_ticket_refs', '3802', '-1']],
+    ['20261109030000_shapon_airline_pnr_display_provenance.sql', ['shapon_unverified_airline_pnr', '25', '-1']],
+  ]);
   const allocatorBefore = await one("select pg_get_functiondef('allocate_booking_ref_for(date)'::regprocedure) as definition");
   for (const file of migrationNames.slice(index)) {
     const before = await snapshot();
@@ -114,7 +125,12 @@ try {
       assert.equal(after[table], digest, `${file} preserves every existing ${table} row, including protected money/operations/events`);
     }
     assert.deepEqual(await triploverSchema(), triploverBefore, `${file} preserves Triplover functions, tables, guards and grants exactly`);
-    assert.deepEqual(await viewColumns(), columnsBefore, `${file} preserves all view columns/options/ACLs`);
+    const appended = appendedViewColumns.get(file);
+    if (appended) {
+      const lifecycle = expectedViews.find(view => view.relname === 'booking_lifecycle_v');
+      lifecycle.columns.push([lifecycle.columns.length + 1, ...appended].join(':'));
+    }
+    assert.deepEqual(await viewColumns(), expectedViews, `${file} preserves existing view columns/options/ACLs`);
   }
   const catalog = await one(`select(select count(*)::int from pg_tables where schemaname='public') as tables,
     (select count(*)::int from pg_proc p join pg_namespace n on n.oid=p.pronamespace
@@ -128,6 +144,34 @@ try {
   const reservation = await one('select state,amount from wallet_reservations where booking_id=$1', [target.booking.id]);
   assert.deepEqual(reservation, { state: 'reconciliation', amount: 50025 });
   assert.equal((await one('select count(*)::int as n from booking_payment_returns')).n, 0);
+  const locatorState = () => one(`select b.pnr,b.airlines_pnr,b.shapon_unverified_airline_pnr,b.updated_at,
+    dashboard.airline_pnr from booking_lifecycle_v b join booking_dashboard_creator_v dashboard using(id)
+    where b.id=$1`, [locatorId]);
+  assert.deepEqual(await locatorState(), { pnr: 'ABC123', airlines_pnr: [' abc123 '],
+    shapon_unverified_airline_pnr: ' abc123 ', updated_at: legacyTimestamp, airline_pnr: '' });
+  const legacySmsEvent = await one(`insert into booking_status_events
+    (booking_id, from_lifecycle_status, to_lifecycle_status, stored_status_before, stored_status_after, idempotency_key)
+    values($1,'on-hold','confirmed','on-hold','confirmed','legacy-shapon-airline-locator-sms')
+    returning id`, [locatorId]);
+  assert.equal((await one(`select content_snapshot->>'pnr' as pnr from booking_issued_sms_deliveries
+    where lifecycle_event_id=$1`, [legacySmsEvent.id])).pnr, 'Not available');
+  const locatorTimestamp = (await one(`select to_char(updated_at at time zone 'UTC',
+    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as value from flight_bookings where id=$1`, [locatorId])).value;
+  const observe = (offset, status, locator) => rpc(
+    'select record_shapon_booking_current_status_v1($1,$2,$3,$4,$5) as result',
+    [locatorId, new Date(Date.now() + offset).toISOString(), legacyLocator.identity.supplierPublicRef,
+      JSON.stringify({ ...legacyLocator.identity, originalBookingStatus: 'Created',
+        ...(locator ? { airlineLocatorRefresh: locator } : {}) }),
+      JSON.stringify({ status, reviewRequired: false, source: 'public_receipt', verified: false,
+        bookingState: null, supplierStatus: null, supplierCheckedAt: null, checkedAt: null, lastCheck: null })]);
+  assert.equal((await observe(10_000, 'cancelled')).projectionUpdated, true);
+  assert.equal((await observe(5_000, 'on-hold',
+    { bookingUpdatedAt: locatorTimestamp, locators: ['STALE1'] })).airlinePnrsUpdated, false);
+  assert.equal((await locatorState()).airline_pnr, '');
+  assert.equal((await observe(15_000, 'on-hold',
+    { bookingUpdatedAt: locatorTimestamp, locators: ['ABC123'] })).airlinePnrsUpdated, true);
+  assert.equal((await locatorState()).shapon_unverified_airline_pnr, null);
+  assert.equal((await locatorState()).airline_pnr, 'ABC123', 'A matching explicit airline locator may equal the reservation');
   const serviceRpcs = [
     'resolve_shapon_cancelled_refresh_v1(uuid,text,text,uuid,jsonb,jsonb,timestamptz)',
     'preview_shapon_ticket_payment_v1(uuid,text,text)',

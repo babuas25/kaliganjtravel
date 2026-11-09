@@ -6,9 +6,16 @@ import { completeTicketNumbers } from '@/lib/triplover/ticket-payload';
 import type { TicketIssueOutcome } from '@/lib/triplover/ticket';
 import { ShapontravelsWriteError, shapontravelsIssueRequest } from './client';
 import {
-  normalizeShapontravelsReceiptEnvelope,
+  hasShapontravelsPlatformTickets,
+  isShapontravelsTicketNumberSource,
   normalizeShapontravelsSavedTicketRows,
+  normalizeShapontravelsTicketEvidenceEnvelope,
   parseShapontravelsCurrentStatus,
+  shapontravelsAirlinePnrs,
+  shapontravelsTicketRowsInPassengerOrder,
+  shapontravelsWriteCurrentStatus,
+  type ShapontravelsCurrentStatus,
+  type ShapontravelsPassengerTicket,
 } from './booking-status';
 
 export type ShapontravelsTicketInput = PrivateBookingRefs & {
@@ -20,55 +27,65 @@ export type ShapontravelsTicketInput = PrivateBookingRefs & {
   itinerary?: BookedItinerary | null;
 };
 
-export type ShapontravelsTicketOutcome = TicketIssueOutcome & { airlinesPnr: string[] };
+export type ShapontravelsTicketOutcome = TicketIssueOutcome & {
+  airlinesPnr: string[];
+  shaponCurrentStatus?: ShapontravelsCurrentStatus;
+};
 
-function receiptTicketNumbers(
+function receiptPassengerTickets(
   envelope: Record<string, unknown>,
   receipt: Record<string, unknown>,
   input: ShapontravelsTicketInput
-): string[] | null {
-  const rows = receipt.ticketInfoes;
+): ShapontravelsPassengerTicket[] | null {
+  const rows = shapontravelsTicketRowsInPassengerOrder(receipt.ticketInfoes, input.expectedPassengerCount);
+  if (!rows) return null;
   const numeric = completeTicketNumbers(rows, input.expectedPassengerCount);
   if (numeric?.every(number => /^[0-9]{10,16}$/.test(number)) &&
-      Array.isArray(rows) && rows.every(row => row?.ticketNumberSource == null)) return numeric;
+      rows.every(row => row.ticketNumberSource == null)) {
+    return rows.map(row => ({ ticketNumbers: (row.ticketNumbers as string[]).map(number => number.trim()),
+      ticketNumberSource: null }));
+  }
 
   // The API establishes issuance independently. A held PNR is never ticket proof.
   const current = envelope.publicReceipt && typeof envelope.publicReceipt === 'object' &&
     !Array.isArray(envelope.publicReceipt)
     ? envelope.publicReceipt as Record<string, unknown> : null;
-  const itinerary = input.itinerary;
+  const legs = input.itinerary?.legs;
+  const carrier = legs?.[0]?.segments?.[0]?.airlineCode;
   if (!current || current.status !== 'confirmed' || current.pendingReview !== false ||
-      current.pnr !== input.pnr || itinerary?.carrierCode !== '6E' ||
-      !Array.isArray(itinerary.legs) || itinerary.legs.length === 0 ||
-      !itinerary.legs.every(leg => leg && Array.isArray(leg.segments) && leg.segments.length > 0 &&
-        leg.segments.every(segment => segment && segment.airlineCode === '6E')) ||
-      !Array.isArray(rows) || !Number.isInteger(input.expectedPassengerCount) ||
-      input.expectedPassengerCount <= 0 || rows.length !== input.expectedPassengerCount) return null;
+      current.pnr !== input.pnr || (carrier !== '6E' && carrier !== 'J9') ||
+      !Array.isArray(legs) ||
+      !legs.every(leg => leg && Array.isArray(leg.segments) && leg.segments.length > 0 &&
+        leg.segments.every(segment => segment && segment.airlineCode === carrier))) return null;
   const locators = receipt.airlinesPNR;
   if (!Array.isArray(locators) || locators.length === 0 ||
       !locators.every(value => typeof value === 'string' && /^[A-Z0-9]{6}$/.test(value)) ||
       new Set(locators).size !== locators.length) return null;
 
-  const numbers: string[] = [];
+  const tickets: ShapontravelsPassengerTicket[] = [];
   const numericSeen = new Set<string>();
-  let usesPnr = false;
-  for (const row of rows) {
-    if (!row || typeof row !== 'object' || !Array.isArray(row.ticketNumbers) ||
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    const source = row.ticketNumberSource ?? null;
+    if (!isShapontravelsTicketNumberSource(source) || !Array.isArray(row.ticketNumbers) ||
         row.ticketNumbers.length === 0 || new Set(row.ticketNumbers).size !== row.ticketNumbers.length) return null;
-    if (row.ticketNumberSource === 'airline_pnr') {
+    if (source === 'platform_pnr') {
+      if (!row.ticketNumbers.every((value: unknown) => {
+        const match = typeof value === 'string' ? /^([A-Z0-9]{6})\/([1-9]|1\d|20)$/.exec(value) : null;
+        return match && match[2] === String(index + 1) && locators.includes(match[1]);
+      })) return null;
+    } else if (source === 'airline_pnr') {
       if (!row.ticketNumbers.every((value: unknown) =>
         typeof value === 'string' && /^[A-Z0-9]{6}$/.test(value) && locators.includes(value))) return null;
-      usesPnr = true;
     } else {
-      if (row.ticketNumberSource != null || !row.ticketNumbers.every((value: unknown) => {
+      if (!row.ticketNumbers.every((value: unknown) => {
         if (typeof value !== 'string' || !/^[0-9]{10,16}$/.test(value) || numericSeen.has(value)) return false;
         numericSeen.add(value); return true;
       })) return null;
     }
-    // An IndiGo locator may identify several passengers; retain passenger order.
-    numbers.push(...row.ticketNumbers);
+    tickets.push({ ticketNumbers: [...row.ticketNumbers], ticketNumberSource: source });
   }
-  return usesPnr ? numbers : null;
+  return tickets.some(row => row.ticketNumberSource !== null) ? tickets : null;
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -106,7 +123,7 @@ export async function issueShapontravelsTicket(
   input: ShapontravelsTicketInput,
   idempotencyKey: string,
   hooks: SupplierWriteLifecycleHooks
-): Promise<ShapontravelsTicketOutcome> {
+): Promise<ShapontravelsTicketOutcome & { passengerTickets?: ShapontravelsPassengerTicket[] }> {
   const body = await shapontravelsIssueRequest({
     PNR: input.pnr,
     // The public API uses the PNR mirror. Rust resolves private supplier refs.
@@ -116,13 +133,16 @@ export async function issueShapontravelsTicket(
     ItemCodeRef: input.itemCodeRef,
     BookingCodeRef: input.bookingCodeRef,
   }, idempotencyKey, hooks);
-  const outcome = parseShapontravelsTicketReceipt(body, input);
-  if (!outcome) {
+  const evidence = parseWrappedTicketEvidence(body, input);
+  if (!evidence) {
     throw new ShapontravelsWriteError(
       'protocol', 'UNVERIFIED_TICKET_RESPONSE', 200, null, null, null, 'NewTicket'
     );
   }
-  return outcome;
+  return { ...evidence.ticket,
+    ...(evidence.passengerTickets.some(row => row.ticketNumberSource !== null)
+      ? { passengerTickets: evidence.passengerTickets } : {}),
+    shaponCurrentStatus: shapontravelsWriteCurrentStatus(body, input.bookingCodeRef) };
 }
 
 /** Exact saved-ticket identity and passenger evidence, also used by read-only review. */
@@ -130,12 +150,16 @@ export function parseShapontravelsTicketReceipt(
   body: unknown,
   input: ShapontravelsTicketInput
 ): ShapontravelsTicketOutcome | null {
+  return parseWrappedTicketEvidence(body, input)?.ticket ?? null;
+}
+
+function parseWrappedTicketEvidence(body: unknown, input: ShapontravelsTicketInput) {
   const envelope = body && typeof body === 'object' ? body as Record<string, unknown> : null;
   const receipt = envelope?.item1 && typeof envelope.item1 === 'object'
     ? envelope.item1 as Record<string, unknown> : null;
   const result = envelope?.item2 && typeof envelope.item2 === 'object'
     ? envelope.item2 as Record<string, unknown> : null;
-  const ticketNumbers = envelope && receipt ? receiptTicketNumbers(envelope, receipt, input) : null;
+  const passengerTickets = envelope && receipt ? receiptPassengerTickets(envelope, receipt, input) : null;
   if (!receipt || result?.isSuccess !== true ||
       receipt.pnr !== input.pnr ||
       receipt.uniqueTransID !== input.uniqueTransId ||
@@ -144,25 +168,24 @@ export function parseShapontravelsTicketReceipt(
       receipt.bookingCodeRef !== input.bookingCodeRef ||
       typeof receipt.ticketCodeRef !== 'string' ||
       !uuid.test(receipt.ticketCodeRef) ||
-      !ticketNumbers) {
+      !passengerTickets) {
     return null;
   }
-  return {
+  const ticket: ShapontravelsTicketOutcome = {
     pnr: input.pnr,
     bookingStatus: 'Confirmed',
     ticketCodeRef: receipt.ticketCodeRef,
-    ticketNumbers,
-    airlinesPnr: Array.isArray(receipt.airlinesPNR) && receipt.airlinesPNR.length > 0 &&
-      receipt.airlinesPNR.every(value => typeof value === 'string' && /^[A-Z0-9]{6}$/.test(value))
-      ? Array.from(new Set<string>(receipt.airlinesPNR)) : [input.pnr],
+    ticketNumbers: passengerTickets.flatMap(row => row.ticketNumbers),
+    airlinesPnr: shapontravelsAirlinePnrs(receipt.airlinesPNR),
     warnings: [],
     message: null,
   };
+  return { ticket, passengerTickets, source: 'supplier_ticket_details' as const };
 }
 
 export type ShapontravelsTicketEvidence = {
   ticket: Omit<ShapontravelsTicketOutcome, 'ticketCodeRef'> & { ticketCodeRef: string | null };
-  passengerTickets: Array<{ ticketNumbers: string[]; ticketNumberSource: 'airline_pnr' | null }>;
+  passengerTickets: ShapontravelsPassengerTicket[];
   source: 'supplier_ticket_details' | 'supplier_saved_ticket_details';
   schemaVersion?: 1;
 };
@@ -176,16 +199,11 @@ export function parseShapontravelsTicketEvidence(
   body: unknown,
   input: ShapontravelsTicketInput
 ): ShapontravelsTicketEvidence | null {
-  const normalized = normalizeShapontravelsReceiptEnvelope(body);
+  const normalized = normalizeShapontravelsTicketEvidenceEnvelope(body);
   if (!normalized) return null;
   const { envelope, receipt, savedBooking } = normalized;
   if (!savedBooking) {
-    const ticket = parseShapontravelsTicketReceipt(body, input);
-    if (!ticket || !Array.isArray(receipt.ticketInfoes)) return null;
-    return { ticket, source: 'supplier_ticket_details', passengerTickets: receipt.ticketInfoes.map(row => ({
-      ticketNumbers: [...row.ticketNumbers],
-      ticketNumberSource: row.ticketNumberSource === 'airline_pnr' ? 'airline_pnr' : null,
-    })) };
+    return parseWrappedTicketEvidence(body, input);
   }
   const current = parseShapontravelsCurrentStatus(envelope.currentStatus);
   const publicReceipt = envelope.publicReceipt as Record<string, unknown>;
@@ -202,20 +220,34 @@ export function parseShapontravelsTicketEvidence(
         typeof receipt.ticketCodeRef === 'string' && uuid.test(receipt.ticketCodeRef))) return null;
   const rows = normalizeShapontravelsSavedTicketRows(savedBooking);
   if (!rows) return null;
-  const ticketNumbers = receiptTicketNumbers(envelope, { ...receipt, ticketInfoes: rows }, input);
-  if (!ticketNumbers || (receipt.ticketCodeRef === null &&
-      !ticketNumbers.every(number => /^[0-9]{10,16}$/.test(number)))) return null;
+  const passengerTickets = receiptPassengerTickets(envelope, { ...receipt, ticketInfoes: rows }, input);
+  if (!passengerTickets || (receipt.ticketCodeRef === null &&
+      passengerTickets.some(row => row.ticketNumberSource !== null))) return null;
+  const wrappedRows = (envelope.item1 as Record<string, unknown> | undefined)?.ticketInfoes;
+  if (Array.isArray(wrappedRows) && (hasShapontravelsPlatformTickets(wrappedRows) ||
+      passengerTickets.some(row => row.ticketNumberSource === 'platform_pnr'))) {
+    // Saved GET mirrors canonical segment rows into the legacy wrapper. A
+    // matching set of strings alone would miss a contradictory passenger slot.
+    const platformNumbers = new Set(passengerTickets.flatMap(row =>
+      row.ticketNumberSource === 'platform_pnr' ? row.ticketNumbers : []));
+    if (!wrappedRows.every((row, index) => {
+      if (row.ticketNumberSource !== 'platform_pnr') {
+        return row.ticketNumbers.every((number: string) => !platformNumbers.has(number));
+      }
+      const slot = Object.hasOwn(row, 'passengerIndex') ? row.passengerIndex : index;
+      const match = Number.isInteger(slot) ? passengerTickets[slot] : null;
+      return match?.ticketNumberSource === 'platform_pnr' &&
+        row.ticketNumbers.every((number: string) => match.ticketNumbers.includes(number));
+    })) return null;
+  }
   return {
     ticket: {
       pnr: input.pnr, bookingStatus: 'Confirmed', ticketCodeRef: receipt.ticketCodeRef as string | null,
-      ticketNumbers,
-      airlinesPnr: Array.isArray(receipt.airlinesPNR) && receipt.airlinesPNR.length > 0 &&
-        receipt.airlinesPNR.every(value => typeof value === 'string' && /^[A-Z0-9]{6}$/.test(value))
-        ? Array.from(new Set<string>(receipt.airlinesPNR)) : [input.pnr],
+      ticketNumbers: passengerTickets.flatMap(row => row.ticketNumbers),
+      airlinesPnr: shapontravelsAirlinePnrs(receipt.airlinesPNR),
       warnings: [], message: null,
     },
-    passengerTickets: rows.map(row => ({ ticketNumbers: [...row.ticketNumbers as string[]],
-      ticketNumberSource: row.ticketNumberSource === 'airline_pnr' ? 'airline_pnr' : null })),
+    passengerTickets,
     source: 'supplier_saved_ticket_details', schemaVersion: 1,
   };
 }

@@ -7,6 +7,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 export type BookingTicketingTime = {
   ticketingDeadlineAt: string | null;
   lastTicketingTime: string | null;
+  updatedAt?: string;
 };
 
 /** A manual PNR read may change deadline fields only, never supplier status. */
@@ -41,7 +42,7 @@ async function saveDeadline(
     // A concurrent issue, cancellation, owner/reference edit or newer refresh
     // invalidates this read. Never overwrite a newer snapshot with it.
     .eq('updated_at', booking.updated_at)
-    .select('ticketing_deadline_at,supplier_ticketing_time_limit')
+    .select('ticketing_deadline_at,supplier_ticketing_time_limit,updated_at')
     .maybeSingle();
   if (error) {
     console.error('[booking] ticketing time save failed:', error.code);
@@ -51,6 +52,7 @@ async function saveDeadline(
   return {
     ticketingDeadlineAt: data.ticketing_deadline_at,
     lastTicketingTime: data.supplier_ticketing_time_limit,
+    ...(typeof data.updated_at === 'string' ? { updatedAt: data.updated_at } : {}),
   };
 }
 

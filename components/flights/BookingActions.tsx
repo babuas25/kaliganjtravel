@@ -306,6 +306,7 @@ export default function BookingActions({
   statusMessage,
   directTicketing,
   allowCancellation,
+  shaponPlatformCancellation = false,
   bookingReference,
   passengerCopies,
   postTicketRoutes = [],
@@ -337,6 +338,7 @@ export default function BookingActions({
   statusMessage?: string | null;
   directTicketing: boolean;
   allowCancellation: boolean;
+  shaponPlatformCancellation?: boolean;
   bookingReference: string;
   passengerCopies: Array<{
     index: number;
@@ -381,18 +383,34 @@ export default function BookingActions({
   const importedConfirmEligible = allowImportedConfirmation && status === 'on-hold';
   const issueEligible = importedConfirmEligible ||
     (!ticketed && !requestOnly && allowTicketing && (status === 'on-hold' || status === 'pending'));
-  const cancellable =
-    !ticketed && allowCancellation && ['on-hold', 'pending', 'unconfirmed', 'expired'].includes(status) &&
-    !directTicketing;
+  const [closedShaponReference, setClosedShaponReference] = useState<string | null>(null);
+  const shaponClosed = closedShaponReference === bookingReference;
+  const cancellable = !ticketed && !shaponClosed && allowCancellation && !directTicketing &&
+    (shaponPlatformCancellation
+      ? paymentState === 'unpaid' && ['on-hold', 'unconfirmed', 'expired'].includes(status)
+      : ['on-hold', 'pending', 'unconfirmed', 'expired'].includes(status));
   const router = useRouter();
   const [preview, setPreview] = useState<IssuePreview | null>(null);
   const [loading, setLoading] = useState(issueEligible);
   const [issuing, setIssuing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancellationResultUncertain, setCancellationResultUncertain] = useState(false);
+  const cancellationInFlight = useRef(false);
+  const shaponCancelRequest = useRef<string | null>(null);
+  const [shaponCancelChecking, setShaponCancelChecking] = useState(false);
+  const [shaponCancelRetry, setShaponCancelRetry] = useState(false);
+  const cancellationStorageKey = `shapon-cancel:${bookingReference}`;
   useEffect(() => {
-    setCancellationResultUncertain(false);
-  }, [bookingReference]);
+    let original: string | null = null;
+    if (shaponPlatformCancellation) {
+      try { original = window.sessionStorage.getItem(cancellationStorageKey); } catch { /* In-memory tracking remains available. */ }
+    }
+    shaponCancelRequest.current = original;
+    setCancellationResultUncertain(original !== null);
+    setCancelling(false);
+    setShaponCancelRetry(false);
+    setShaponCancelChecking(false);
+  }, [cancellationStorageKey, shaponPlatformCancellation]);
   const [requestingTimeLimit, setRequestingTimeLimit] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [completingImported, setCompletingImported] = useState(false);
@@ -645,6 +663,7 @@ export default function BookingActions({
   const issueInteractionLocked =
     issuing ||
     cancelling ||
+    (shaponPlatformCancellation && (cancellationResultUncertain || shaponClosed)) ||
     refreshingTicketingTime ||
     refreshingIssueState ||
     externalTicketConfirmationReady ||
@@ -796,24 +815,84 @@ export default function BookingActions({
     }
   }
 
-  async function cancel() {
-    if (!cancellable) {
+  function saveShaponCancelRequest(requestId: string | null) {
+    shaponCancelRequest.current = requestId;
+    try {
+      if (requestId) window.sessionStorage.setItem(cancellationStorageKey, requestId);
+      else window.sessionStorage.removeItem(cancellationStorageKey);
+    } catch { /* The current tab can still check this request. */ }
+  }
+
+  async function checkShaponCancellation() {
+    const requestId = shaponCancelRequest.current;
+    if (!requestId || shaponCancelChecking || cancellationInFlight.current) return;
+    setShaponCancelChecking(true);
+    setShaponCancelRetry(false);
+    try {
+      const response = await fetch('/api/flights/booking/cancel', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingReference, requestId }),
+      });
+      const body = await responseJson<{ success?: boolean; data?: { status?: string } }>(response);
+      if (!response.ok || !body.success || activeBookingReference.current !== bookingReference) return;
+      const result = body.data?.status;
+      if (result === 'cancelled') {
+        setClosedShaponReference(bookingReference);
+        saveShaponCancelRequest(null);
+        setCancellationResultUncertain(false);
+        setMessage('Booking closed on Shapon. Your wallet balance was unchanged.');
+        router.refresh();
+      } else if (result === 'failed') {
+        saveShaponCancelRequest(null);
+        setCancellationResultUncertain(false);
+        setMessage('Cancellation was not completed. The saved booking has been checked.');
+        router.refresh();
+      } else if (result === 'retry-available') {
+        setShaponCancelRetry(true);
+        setMessage('The saved booking is still eligible. You can retry the original cancellation.');
+      } else {
+        setMessage(CHECKING_CANCELLATION_RESULT_MESSAGE);
+      }
+    } catch {
+      if (activeBookingReference.current === bookingReference) setMessage(CHECKING_CANCELLATION_RESULT_MESSAGE);
+    } finally {
+      if (activeBookingReference.current === bookingReference) setShaponCancelChecking(false);
+    }
+  }
+
+  async function cancel(retryOriginal = false) {
+    if (cancellationInFlight.current || (retryOriginal && (!shaponCancelRetry || !shaponCancelRequest.current))) return;
+    if (!retryOriginal && shaponPlatformCancellation && shaponCancelRequest.current) {
+      await checkShaponCancellation();
+      return;
+    }
+    if (!retryOriginal && !cancellable) {
       setMessage('Only an unissued On Hold, Pending, Unconfirmed, or Expired booking can be cancelled.');
       return;
     }
-    if (cancelInteractionLocked) {
+    if (!retryOriginal && cancelInteractionLocked) {
       setMessage(cancellationLockMessage);
       return;
     }
+    cancellationInFlight.current = true;
     setCancelling(true);
+    setShaponCancelRetry(false);
     setMessage(null);
+    const requestId = shaponPlatformCancellation && shaponCancelRequest.current
+      ? shaponCancelRequest.current : crypto.randomUUID();
+    if (shaponPlatformCancellation) {
+      saveShaponCancelRequest(requestId);
+      setCancellationResultUncertain(true);
+    }
     try {
       const response = await fetch('/api/flights/booking/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bookingReference,
-          requestId: crypto.randomUUID(),
+          requestId,
+          ...(retryOriginal ? { retryOriginal: true } : {}),
         }),
       });
       const body = await responseJson<{
@@ -826,14 +905,34 @@ export default function BookingActions({
           body.error?.errorCode
         );
       }
-      setMessage('Booking cancelled. No wallet balance was required.');
+      if (activeBookingReference.current !== bookingReference) return;
+      if (shaponPlatformCancellation) {
+        setClosedShaponReference(bookingReference);
+        saveShaponCancelRequest(null);
+        setCancellationResultUncertain(false);
+      }
+      setMessage(shaponPlatformCancellation
+        ? 'Booking closed on Shapon. Your wallet balance was unchanged.'
+        : 'Booking cancelled. No wallet balance was required.');
       showFeedback({ title: 'Booking Cancelled', description: 'Your booking has been cancelled successfully.', tone: 'neutral', reference: bookingReference });
     } catch (error) {
+      if (activeBookingReference.current !== bookingReference) return;
       const typedError = error as IssueRequestError;
-      if (!typedError.code || CANCEL_RECONCILIATION_CODES.has(typedError.code)) {
+      if (shaponPlatformCancellation && (retryOriginal || !typedError.code ||
+          CANCEL_RECONCILIATION_CODES.has(typedError.code) || typedError.code === 'SHAPON_CANCEL_REFUSED' ||
+          typedError.code === 'CANCELLATION_REPLAY_UNAVAILABLE')) {
+        setCancellationResultUncertain(true);
+        setMessage(typedError.code === 'SHAPON_CANCEL_REFUSED'
+          ? 'Shapon declined cancellation. Check the saved booking before taking another action.'
+          : CHECKING_CANCELLATION_RESULT_MESSAGE);
+      } else if (!typedError.code || CANCEL_RECONCILIATION_CODES.has(typedError.code)) {
         setCancellationResultUncertain(true);
         setMessage(CHECKING_CANCELLATION_RESULT_MESSAGE);
       } else {
+        if (shaponPlatformCancellation) {
+          saveShaponCancelRequest(null);
+          setCancellationResultUncertain(false);
+        }
         setMessage(error instanceof Error ? error.message : 'Booking cancellation failed.');
       }
     } finally {
@@ -841,7 +940,7 @@ export default function BookingActions({
       // saved booking props and the operation snapshot before another action.
       router.refresh();
       try {
-        if (useIssueStatus) {
+        if (useIssueStatus && !shaponPlatformCancellation) {
           const refreshed = await refreshIssueStatus();
           if (refreshed.reconciliationRequired || refreshed.operationState) {
             setCancellationResultUncertain(true);
@@ -851,7 +950,8 @@ export default function BookingActions({
       } catch {
         // Keep an ambiguous cancellation locked while read-only status is unavailable.
       } finally {
-        setCancelling(false);
+        cancellationInFlight.current = false;
+        if (activeBookingReference.current === bookingReference) setCancelling(false);
       }
     }
   }
@@ -1480,7 +1580,9 @@ export default function BookingActions({
             cancelInteractionLocked
               ? cancellationLockMessage
               : cancellable
-                ? 'Cancel this unissued booking with the supplier'
+                ? shaponPlatformCancellation
+                  ? 'Close this unissued booking on Shapon'
+                  : 'Cancel this unissued booking with the supplier'
                 : 'Only an unissued On Hold, Pending, Unconfirmed, or Expired booking can be cancelled'
           }
           className={buttonClass}
@@ -1503,8 +1605,9 @@ export default function BookingActions({
               Cancel this booking?
             </AlertDialogTitle>
             <AlertDialogDescription className="leading-6 text-neutral-600">
-              This will ask the supplier to cancel the unissued booking. The action
-              cannot be undone after the supplier confirms it.
+              {shaponPlatformCancellation
+                ? 'This closes the booking on Shapon. The airline may still hold the reservation.'
+                : 'This will ask the supplier to cancel the unissued booking. The action cannot be undone after the supplier confirms it.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
         </div>
@@ -1519,7 +1622,9 @@ export default function BookingActions({
           </div>
           <p className="flex gap-2 text-xs leading-5 text-neutral-600">
             <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-brand-orange" aria-hidden />
-            No wallet balance is required to cancel an unissued booking.
+            {shaponPlatformCancellation
+              ? 'Closing the booking does not change your wallet balance.'
+              : 'No wallet balance is required to cancel an unissued booking.'}
           </p>
           <AlertDialogFooter className="gap-2 sm:space-x-0">
             <AlertDialogCancel className="border-neutral-300 text-navy-950">
@@ -2137,6 +2242,20 @@ export default function BookingActions({
 
             {cancellationAction}
 
+          </div>
+        )}
+        {shaponPlatformCancellation && cancellationResultUncertain && !shaponClosed && (
+          <div className="mx-4 mb-4 space-y-2">
+            <button type="button" disabled={cancelling || shaponCancelChecking}
+              onClick={() => void checkShaponCancellation()} className={buttonClass}>
+              {shaponCancelChecking ? 'Checking cancellation…' : 'Check Cancellation Result'}
+            </button>
+            {shaponCancelRetry && (
+              <button type="button" disabled={cancelling || shaponCancelChecking}
+                onClick={() => void cancel(true)} className={buttonClass}>
+                Retry Original Cancellation
+              </button>
+            )}
           </div>
         )}
         {message && (

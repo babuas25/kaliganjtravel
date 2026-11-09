@@ -1,8 +1,9 @@
 import 'server-only';
 
 import { PASSENGER_NOTICE_TITLE, PASSENGER_NOTICES } from '@/lib/flights/passenger-notice';
+import { BOOKING_STATUS_LABELS } from '@/lib/flights/booking-status';
 import { ticketPrintReferences } from '@/lib/flights/ticket-print';
-import { bookingTicketDisplay } from '@/lib/flights/ticket-display';
+import { bookingTicketDisplay, ticketTerminalLabel } from '@/lib/flights/ticket-display';
 
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
@@ -266,17 +267,19 @@ export async function confirmedBookingTicketPdf(input: {
     document.roundedRect(right - 101, headerY + 59, 89, 21, 0).fill('#dcfce7');
     document.image(iconPath('ticket'), right - 92, headerY + 65, { fit: [9, 9] });
     document.font('Helvetica-Bold').fontSize(7.5).fillColor(COLORS.navy)
-      .text('CONFIRMED', right - 78, headerY + 66, { width: 62, align: 'center' });
+      .text(BOOKING_STATUS_LABELS[booking.displayStatus ?? booking.status].toUpperCase(),
+        right - 78, headerY + 66, { width: 62, align: 'center' });
     y += 123;
 
     const summaries = [
       ['Airline PNR', references.airlinePnr],
-      ['Reservation PNR', references.reservationPnr],
+      ...(references.reservationPnr ? [['Reservation PNR', references.reservationPnr]] : []),
       ['Trip', tripLabel(booking)],
       ['Issued At', formatActivity(booking.issuedAt)],
       ['Payment', PAYMENT_LABELS[booking.paymentState]],
     ];
-    const summaryWidths = [0.15, 0.18, 0.26, 0.22, 0.19].map((ratio) => width * ratio);
+    const summaryWidths = (references.reservationPnr ? [0.15, 0.18, 0.26, 0.22, 0.19] : [0.2, 0.3, 0.27, 0.23])
+      .map((ratio) => width * ratio);
     document.font('Helvetica-Bold').fontSize(9.5);
     const summaryHeight = Math.max(44, ...summaries.map(([, value], index) =>
       23 + document.heightOfString(value, { width: summaryWidths[index] - 18, lineGap: 1 }) + 8
@@ -415,11 +418,9 @@ export async function confirmedBookingTicketPdf(input: {
           document.font('Helvetica-Bold').fontSize(8.5).fillColor(COLORS.navy)
             .text(segment.from, left + 10, cardY + 63, { width: 84 })
             .text(segment.to, right - 94, cardY + 63, { width: 84, align: 'right' });
-          const departureTerminal = segment.departureTerminal ? `Terminal ${segment.departureTerminal}` : '';
-          const arrivalTerminal = segment.arrivalTerminal ? `Terminal ${segment.arrivalTerminal}` : '';
           document.font('Helvetica').fontSize(6.7).fillColor(COLORS.neutral)
-            .text(departureTerminal, left + 10, cardY + 75, { width: 100 })
-            .text(arrivalTerminal, right - 110, cardY + 75, { width: 100, align: 'right' })
+            .text(ticketTerminalLabel(segment.departureTerminal), left + 10, cardY + 75, { width: 100 })
+            .text(ticketTerminalLabel(segment.arrivalTerminal), right - 110, cardY + 75, { width: 100, align: 'right' })
             .text(formatDate(segment.departure), left + 10, cardY + 85, { width: 100 })
             .text(formatDate(segment.arrival), right - 110, cardY + 85, { width: 100, align: 'right' });
           document.font('Helvetica').fontSize(6.2).fillColor(COLORS.neutralLight)

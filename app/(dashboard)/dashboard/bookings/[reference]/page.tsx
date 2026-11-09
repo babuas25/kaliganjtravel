@@ -345,6 +345,7 @@ export default async function BookingDetailsPage({
         ticketManagementReferences={ticketManagementReferences}
         showStepper={false}
         allowCancellation={canCancelSupplierBooking}
+        shaponPlatformCancellation={row.supplier === 'shapontravels' && row.import_source === null}
         allowSupplierRefresh={
           !showTriploverSupplierStatus &&
           row.supplier === 'triplover' &&

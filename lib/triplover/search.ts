@@ -93,6 +93,16 @@ export function buildSearchRequest(input: FlightSearchInput): TriploverSearchReq
 
 type RawBaggage = { units?: string; amount?: number; passengerTypeCode?: string };
 
+type RawSegmentDetail = {
+  origin?: unknown;
+  destination?: unknown;
+  originTerminal?: unknown;
+  destinationTerminal?: unknown;
+  flightTime?: string;
+  travelTime?: string;
+  equipment?: string;
+};
+
 type RawSegment = {
   from?: string;
   fromAirport?: string;
@@ -116,7 +126,7 @@ type RawSegment = {
   cabinClass?: string;
   plane?: string[];
   duration?: string[];
-  details?: { flightTime?: string; travelTime?: string; equipment?: string }[];
+  details?: RawSegmentDetail[];
 };
 
 type RawDirection = {
@@ -224,6 +234,15 @@ function expandRouteAlternatives(directions: RawDirection[][]): RawDirection[][]
 
 /* ── Mapping ─────────────────────────────────────────────────────────── */
 
+function matchedTerminal(airport: unknown, detailAirport: unknown, value: unknown): string | null {
+  if (typeof airport !== 'string' || typeof detailAirport !== 'string' ||
+      detailAirport.trim().toUpperCase() !== airport.trim().toUpperCase()) {
+    return null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return typeof value === 'string' ? value.trim() || null : null;
+}
+
 function mapSegment(raw: RawSegment): ItinerarySegment | null {
   const from = raw.from;
   const to = raw.to;
@@ -242,17 +261,18 @@ function mapSegment(raw: RawSegment): ItinerarySegment | null {
   const codeshare = typeof raw.isCodeShared === 'boolean'
     ? raw.isCodeShared
     : typeof raw.isCodeshare === 'boolean' ? raw.isCodeshare : undefined;
+  // A segment may include a technical stop. Use only the outer endpoints.
+  const details = Array.isArray(raw.details) ? raw.details : [];
+  const firstDetail = details[0];
+  const lastDetail = details[details.length - 1];
 
   return {
     from,
     fromAirport: raw.fromAirport ?? from,
     to,
     toAirport: raw.toAirport ?? to,
-    // TakeOff currently does not provide terminals in this Search shape.
-    // Emit their canonical absence explicitly so the public Search snapshot,
-    // Redis digest and later Prepare payload share the same representation.
-    departureTerminal: null,
-    arrivalTerminal: null,
+    departureTerminal: matchedTerminal(from, firstDetail?.origin, firstDetail?.originTerminal),
+    arrivalTerminal: matchedTerminal(to, lastDetail?.destination, lastDetail?.destinationTerminal),
     departure,
     arrival,
     airline: raw.airline ?? raw.airlineCode ?? '',
@@ -264,10 +284,10 @@ function mapSegment(raw: RawSegment): ItinerarySegment | null {
     bookingClass: raw.bookingClass ?? raw.serviceClass ?? '',
     duration:
       raw.duration?.[0] ??
-      raw.details?.[0]?.flightTime ??
-      raw.details?.[0]?.travelTime ??
+      firstDetail?.flightTime ??
+      firstDetail?.travelTime ??
       null,
-    aircraft: raw.plane?.[0] ?? raw.details?.[0]?.equipment ?? null,
+    aircraft: raw.plane?.[0] ?? firstDetail?.equipment ?? null,
     baggage:
       checked?.amount != null ? `${checked.amount} ${checked.units ?? 'Kg'}`.trim() : null,
     handBaggage: raw.handBaggage ?? null,

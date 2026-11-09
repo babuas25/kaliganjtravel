@@ -93,12 +93,24 @@ const issued = await issue();
 assert.equal(issued.bookingStatus, 'Confirmed');
 assert.equal(issued.ticketCodeRef, ticketCodeRef);
 assert.deepEqual(Array.from(issued.ticketNumbers), ['1234567890123']);
+assert.deepEqual(Array.from(issued.airlinesPnr), [], 'Numeric issue proof does not synthesize an airline locator');
 assert.equal(request.key, 'operation:v1:fixed');
 assert.deepEqual(JSON.parse(JSON.stringify(request.payload)), {
   PNR: refs.pnr, BookingRefNumber: refs.pnr,
   UniqueTransID: refs.uniqueTransId, PriceCodeRef: refs.priceCodeRef,
   ItemCodeRef: refs.itemCodeRef, BookingCodeRef: refs.bookingCodeRef,
 });
+for (const [airlinesPNR, expected] of [
+  [['AIR001', 'AIR002', 'AIR001'], ['AIR001', 'AIR002']], [[refs.pnr], [refs.pnr]],
+  [[], []], [['BG'], []], [['AIR001', null], []],
+]) {
+  const withLocators = { ...receipt, item1: { ...receipt.item1, airlinesPNR } };
+  const result = ticket.parseShapontravelsTicketReceipt(withLocators, refs);
+  assert.equal(result.pnr, refs.pnr);
+  assert.deepEqual(Array.from(result.airlinesPnr), expected);
+  const saved = ticket.parseShapontravelsTicketEvidence(withLocators, refs);
+  assert.deepEqual(Array.from(saved.ticket.airlinesPnr), expected);
+}
 for (const item1 of [
   { ...receipt.item1, pnr: 'OTHER1' },
   { ...receipt.item1, bookingCodeRef: refs.bookingRefNumber },
@@ -143,9 +155,37 @@ const mixedReceipt = { ...sharedReceipt, item1: { ...sharedReceipt.item1,
   ticketInfoes: [pnrReceipt.item1.ticketInfoes[0], ticketInfoes[0]] } };
 assert.deepEqual(Array.from(ticket.parseShapontravelsTicketReceipt(mixedReceipt,
   { ...indigoInput, expectedPassengerCount: 2 }).ticketNumbers), ['XY1234', '1234567890123']);
+for (const carrierCode of ['6E', 'J9']) {
+  const input = { ...refs, expectedPassengerCount: 2,
+    itinerary: { carrierCode: 'BG', legs: [{ segments: [{ airlineCode: carrierCode }] }] } };
+  const expected = ['XY1234/1', 'XY1234/2'];
+  const platformRows = expected.map((number, passengerIndex) => ({ passengerIndex,
+    ticketNumbers: [number], ticketNumberSource: 'platform_pnr' }));
+  const makeReceipt = ticketInfoes => ({ ...pnrReceipt, item1: { ...pnrReceipt.item1, ticketInfoes } });
+  supplierResponse = makeReceipt(platformRows.map(({ ticketNumbers, ticketNumberSource }) =>
+    ({ ticketNumbers, ticketNumberSource })));
+  const issued = await ticket.issueShapontravelsTicket(input, 'operation:v1:fixed', {});
+  assert.deepEqual(Array.from(issued.ticketNumbers), expected);
+  assert.deepEqual(Array.from(issued.passengerTickets, row => row.ticketNumberSource), ['platform_pnr', 'platform_pnr']);
+  assert.deepEqual(Array.from(issued.airlinesPnr), ['XY1234']);
+  assert.equal(request.payload.PNR, refs.pnr);
+  const saved = ticket.parseShapontravelsTicketEvidence(makeReceipt(platformRows.toReversed()), input);
+  assert.deepEqual(Array.from(saved.ticket.ticketNumbers), expected);
+  for (const invalid of [
+    platformRows.map((row, i) => ({ ...row, ticketNumbers: [`XY1234/${2 - i}`] })),
+    [{ ...platformRows[0], passengerIndex: 1 }, platformRows[1]],
+    [{ ...platformRows[0], passengerIndex: null }, platformRows[1]],
+    [{ ...platformRows[0], ticketNumbers: ['OTHER1/1'] }, platformRows[1]],
+    [{ ...platformRows[0], ticketNumbers: ['XY1234/01'] }, platformRows[1]],
+    [{ ...platformRows[0], ticketNumberSource: null }, platformRows[1]],
+  ]) assert.equal(ticket.parseShapontravelsTicketReceipt(makeReceipt(invalid), input), null);
+  assert.equal(ticket.parseShapontravelsTicketReceipt(makeReceipt(platformRows), { ...input,
+    itinerary: { carrierCode, legs: [{ segments: [{ airlineCode: carrierCode }, { airlineCode: 'BG' }] }] } }), null);
+  assert.ok(ticket.parseShapontravelsTicketReceipt(sharedReceipt, input), 'Historical unsuffixed PNR stays valid');
+}
 for (const invalidInput of [
   refs, { ...indigoInput, itinerary: null },
-  { ...indigoInput, itinerary: { ...indigoInput.itinerary, carrierCode: 'BG' } },
+  { ...indigoInput, itinerary: { carrierCode: '6E', legs: [{ segments: [{ airlineCode: 'BG' }] }] } },
   { ...indigoInput, itinerary: { carrierCode: '6E', legs: [] } },
   { ...indigoInput, itinerary: { carrierCode: '6E', legs: [null] } },
   { ...indigoInput, itinerary: { carrierCode: '6E', legs: [{ segments: [] }] } },

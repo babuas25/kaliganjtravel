@@ -37,6 +37,7 @@ import type {
 } from '@/lib/dashboard/booking-list-query';
 import { bookingUserVisibilitySchemaAvailable } from '@/lib/db/booking-visibility';
 import { BookingReadUnavailableError } from '@/lib/db/booking-read-error';
+import { parseShapontravelsCurrentStatusProjection } from '@/lib/shapontravels/current-status-projection';
 
 const LIFECYCLE_VIEW = 'booking_lifecycle_v';
 const DASHBOARD_LIST_VIEW = 'booking_dashboard_creator_v';
@@ -112,6 +113,8 @@ export type BookingRow = {
   pnr: string | null;
   /** The airline's own PNR(s). Empty when the airline never confirmed. */
   airlines_pnr: unknown;
+  /** A historical reservation echo pending explicit airline locator evidence. */
+  shapon_unverified_airline_pnr?: string | null;
   booking_ref_number: string | null;
   booking_status: string | null;
   /** The supplier's wall-clock string, kept verbatim for display. */
@@ -133,6 +136,7 @@ export type BookingRow = {
   local_ticketing_deadline_at?: string | null;
   active_local_time_limit_request_id?: string | null;
   ticket_numbers: unknown;
+  shapon_passenger_ticket_refs?: unknown;
   warnings: unknown;
   error_code: string | null;
   supplier_message: string | null;
@@ -735,6 +739,21 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+/** Keep associations only while the booking still has those exact tickets. */
+function verifiedPassengerTicketNumbers(value: unknown, ticketNumbers: string[]): string[][] | undefined {
+  if (!Array.isArray(value) || !value.some(row => row?.ticketNumberSource === 'platform_pnr')) return;
+  const passengers: string[][] = [];
+  for (const row of value) {
+    if (!row || ![null, 'airline_pnr', 'platform_pnr'].includes(row.ticketNumberSource) ||
+        !Array.isArray(row.ticketNumbers) || row.ticketNumbers.length === 0 ||
+        !row.ticketNumbers.every((number: unknown) => typeof number === 'string' && number.length > 0)) return;
+    passengers.push(row.ticketNumbers);
+  }
+  const flattened = passengers.flat();
+  if (flattened.length === ticketNumbers.length &&
+      flattened.every((number, index) => number === ticketNumbers[index])) return passengers;
+}
+
 /**
  * A booking as a client may see it — the seven business statuses only.
  *
@@ -744,12 +763,21 @@ function stringArray(value: unknown): string[] {
  */
 export function publicBooking(row: BookingRow): PublicBooking {
   const airlinesPnr = validAirlinePnrs(row.airlines_pnr);
+  const displayedAirlinePnrs = airlinesPnr.length === 1 &&
+    airlinesPnr[0].toUpperCase() === row.shapon_unverified_airline_pnr?.trim().toUpperCase()
+    ? [] : airlinesPnr;
+  const ticketNumbers = stringArray(row.ticket_numbers);
+  const ticketPassengerNumbers = row.supplier === 'shapontravels'
+    ? verifiedPassengerTicketNumbers(row.shapon_passenger_ticket_refs, ticketNumbers) : undefined;
   const status = resolvePublicBookingStatus({
     lifecycleStatus: row.lifecycle_status,
     status: row.status,
     airlinesPnr,
     ticketingDeadlineAt: row.ticketing_deadline_at,
   });
+  const displayStatus = row.supplier === 'shapontravels'
+    ? parseShapontravelsCurrentStatusProjection(row.shapon_current_status)?.currentStatus.status
+    : undefined;
   const sellingPrice = Number(row.pricing_snapshot.sellingPrice);
   const storedGross = Number(row.pricing_snapshot.grossPrice);
   const importedGrossMinor = Number(row.supplier_gross_amount);
@@ -777,8 +805,9 @@ export function publicBooking(row: BookingRow): PublicBooking {
     bookingId: row.id,
     publicRef: row.public_ref,
     status,
+    ...(displayStatus ? { displayStatus } : {}),
     statusMessage: customerStatusMessage({
-      status,
+      status: displayStatus ?? status,
       importSource: row.import_source,
       paymentState: row.payment_state,
       operationKind: row.operation_kind,
@@ -810,12 +839,14 @@ export function publicBooking(row: BookingRow): PublicBooking {
     // Safe to publish, unlike `supplier_refs`: a record locator is what the
     // traveller is meant to quote to the airline, not a capability over the
     // booking. The opaque transaction tokens stay in `supplier_refs`.
-    airlinesPnr,
+    airlinesPnr: displayedAirlinePnrs,
+    ...(row.supplier === 'shapontravels' ? { hideReservationPnr: true } : {}),
     bookingRefNumber: row.booking_ref_number,
-    bookingStatus: row.booking_status,
+    bookingStatus: row.supplier === 'shapontravels' ? null : row.booking_status,
     ticketingTimeLimit: row.ticketing_time_limit,
     ticketingDeadlineAt: row.ticketing_deadline_at,
-    ticketNumbers: stringArray(row.ticket_numbers),
+    ticketNumbers,
+    ...(ticketPassengerNumbers ? { ticketPassengerNumbers } : {}),
     warnings: stringArray(row.warnings),
     // The customer booked when the irreversible supplier call began, not when
     // our business row was inserted after the supplier eventually answered.

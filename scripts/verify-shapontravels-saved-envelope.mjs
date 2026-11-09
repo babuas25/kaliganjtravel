@@ -122,6 +122,29 @@ function expected(body) {
 function verify(body, pins = expected(body)) {
   return status.verifyShapontravelsBookingStatus({ httpStatus: 200, supplierPublicRef: pins.supplierPublicRef, body }, pins);
 }
+const unconfirmedWithoutPnr = fixture('on-hold');
+delete unconfirmedWithoutPnr.item1;
+delete unconfirmedWithoutPnr.item2;
+unconfirmedWithoutPnr.status = unconfirmedWithoutPnr.savedBooking.status = unconfirmedWithoutPnr.publicReceipt.status = 'unconfirmed';
+unconfirmedWithoutPnr.savedBooking.pnr = unconfirmedWithoutPnr.savedBooking.bookingRefNumber = null;
+unconfirmedWithoutPnr.publicReceipt.pnr = null;
+unconfirmedWithoutPnr.currentStatus = { status: 'unconfirmed', reviewRequired: true,
+  supplierStatus: null, supplierCheckedAt: null, source: null, verified: null };
+unconfirmedWithoutPnr.savedBooking.currentStatus = clone(unconfirmedWithoutPnr.currentStatus);
+unconfirmedWithoutPnr.publicReceipt.pendingReview = unconfirmedWithoutPnr.savedBooking.reviewRequired = false;
+unconfirmedWithoutPnr.publicReceipt.actions.canIssue = false;
+unconfirmedWithoutPnr.publicReceipt.actions.canCancel = true;
+unconfirmedWithoutPnr.savedBooking.publicReceipt = clone(unconfirmedWithoutPnr.publicReceipt);
+const unconfirmedPins = expected(unconfirmedWithoutPnr);
+const unconfirmedRead = { httpStatus: 200, body: unconfirmedWithoutPnr, supplierPublicRef: unconfirmedPins.supplierPublicRef };
+const verifiedUnconfirmed = status.verifyShapontravelsBookingStatus(unconfirmedRead, unconfirmedPins, unconfirmedPins.bookingCodeRef);
+assert.equal(verifiedUnconfirmed.result, 'verified');
+assert.equal(verifiedUnconfirmed.currentStatus.status, 'unconfirmed');
+assert.equal(verifiedUnconfirmed.currentStatus.reviewRequired, true);
+assert.equal(verifiedUnconfirmed.currentStatus.canCancel, true);
+assert.equal(verifiedUnconfirmed.currentStatus.canIssue, false);
+assert.equal(status.verifyShapontravelsBookingStatus(unconfirmedRead, unconfirmedPins,
+  '11111111-1111-4111-8111-111111111111').result, 'mismatch');
 for (const body of [issued, cancelled]) {
   const before = clone(body);
   const result = verify(body);
@@ -153,6 +176,12 @@ assert.ok(evidence);
 assert.equal(evidence.ticket.ticketCodeRef, null);
 assert.equal(evidence.source, 'supplier_saved_ticket_details');
 assert.equal(evidence.schemaVersion, 1);
+assert.equal(evidence.ticket.pnr, 'SAVE01');
+assert.deepEqual(clone(evidence.ticket.airlinesPnr), ['AIR001']);
+const noAirlinePnr = clone(issued);
+delete noAirlinePnr.savedBooking.airlinesPNR;
+assert.deepEqual(clone(ticket.parseShapontravelsTicketEvidence(noAirlinePnr, input).ticket.airlinesPnr), []);
+assert.deepEqual(clone(proof(noAirlinePnr, noAirlinePnr).ticketProof.airlinesPnr), []);
 assert.deepEqual(clone(evidence.ticket.ticketNumbers), ['7790000000001', '7790000000002'],
   'Canonical rows are reordered by their explicit passenger association');
 assert.equal(ticket.parseShapontravelsTicketReceipt(issued, input), null,
@@ -165,6 +194,35 @@ assert.equal(confirmation.ticketProof.schemaVersion, 1);
 assert.equal(Object.hasOwn(confirmation.ticketProof, 'issuedAt'), false,
   'An offsetless saved issue time must not be interpreted in the server timezone');
 assert.equal(confirmation.ticketProof.passengerTickets.length, 2);
+for (const carrierCode of ['6E', 'J9']) {
+  const platform = fixture('issued');
+  const expected = ['AIR001/1', 'AIR001/2'];
+  for (const row of platform.savedBooking.ticketInfoes) {
+    row.ticketNumbers = [expected[row.passengerIndex]];
+    row.ticketNumberSource = 'platform_pnr';
+  }
+  platform.item1.ticketInfoes = clone(platform.savedBooking.ticketInfoes);
+  const platformItinerary = { carrierCode, legs: [{ segments: [{ airlineCode: carrierCode }] }] };
+  const platformInput = { ...input, itinerary: platformItinerary };
+  const noWrapper = clone(platform);
+  delete noWrapper.item1;
+  delete noWrapper.item2;
+  for (const body of [platform, noWrapper]) {
+    const platformEvidence = ticket.parseShapontravelsTicketEvidence(body, platformInput);
+    assert.deepEqual(clone(platformEvidence.ticket.ticketNumbers), expected);
+    assert.deepEqual(clone(platformEvidence.passengerTickets).map(row => row.ticketNumberSource), ['platform_pnr', 'platform_pnr']);
+    const platformConfirmation = external.verifyShaponExternalTicketConfirmation(
+      { ...booking, itinerary: platformItinerary },
+      { httpStatus: 200, supplierPublicRef: pins.supplierPublicRef, body }, { httpStatus: 200, body },
+      pins.supplierPublicRef,
+    );
+    assert.deepEqual(clone(platformConfirmation.ticketProof.ticketNumbers), expected);
+  }
+  const contradicted = clone(platform);
+  const [first, second] = contradicted.item1.ticketInfoes;
+  [first.ticketNumbers, second.ticketNumbers] = [second.ticketNumbers, first.ticketNumbers];
+  assert.equal(ticket.parseShapontravelsTicketEvidence(contradicted, platformInput), null);
+}
 const dated = clone(issued);
 dated.publicReceipt.issuedAt = '2026-11-02T15:28:25.1833333+06:00';
 dated.savedBooking.publicReceipt = clone(dated.publicReceipt);

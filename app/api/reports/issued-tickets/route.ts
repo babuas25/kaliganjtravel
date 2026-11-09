@@ -64,6 +64,7 @@ async function excelResponse(rows: IssuedTicketRow[], agencyCode: string) {
     { header: 'Created On', key: 'createdAt', width: 22 },
     { header: 'Order Reference', key: 'orderDetails', width: 34 },
     { header: 'PNR', key: 'pnr', width: 18 },
+    { header: 'Ticket Numbers', key: 'ticketNumbers', width: 30, style: { numFmt: '@' } },
     { header: 'Airline', key: 'airlineCode', width: 12 },
     { header: 'Total Segments', key: 'totalSegments', width: 16 },
     { header: 'Ticketed On', key: 'ticketedAt', width: 22 },
@@ -78,10 +79,12 @@ async function excelResponse(rows: IssuedTicketRow[], agencyCode: string) {
       ...row,
       createdAt: new Date(row.createdAt),
       orderDetails: `${row.mainTravellerName}\n${row.orderReference} · ${row.totalPassengers} Pax`,
+      ticketNumbers: row.ticketNumbers.join('\n'),
       ticketedAt: new Date(row.ticketedAt),
     });
     sheetRow.getCell('orderDetails').alignment = { vertical: 'middle', wrapText: true };
-    sheetRow.height = 30;
+    sheetRow.getCell('ticketNumbers').alignment = { vertical: 'middle', wrapText: true };
+    sheetRow.height = Math.min(409, Math.max(30, row.ticketNumbers.length * 15));
   }
   sheet.getRow(1).eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -92,7 +95,7 @@ async function excelResponse(rows: IssuedTicketRow[], agencyCode: string) {
   sheet.getColumn('grossFare').numFmt = '#,##0.00';
   sheet.getColumn('payableAmount').numFmt = '#,##0.00';
   sheet.getColumn('profit').numFmt = '#,##0.00';
-  sheet.autoFilter = { from: 'A1', to: 'K1' };
+  sheet.autoFilter = { from: 'A1', to: 'L1' };
   const buffer = await workbook.xlsx.writeBuffer();
   return new Response(new Uint8Array(buffer), {
     headers: {
@@ -120,14 +123,16 @@ async function pdfBuffer(rows: IssuedTicketRow[]): Promise<Buffer> {
 
     const headers = ['Created', 'Order reference', 'PNR', 'Airline', 'Seg', 'Ticketed', 'User name', 'Cur', 'Gross fare', 'Payable amount', 'Profit'];
     const widths = [72, 135, 50, 36, 24, 72, 105, 28, 55, 60, 50];
-    const drawRow = (values: string[], header = false) => {
+    const tableWidth = widths.reduce((sum, width) => sum + width, 0);
+    const ticketOptions = { width: tableWidth - 6 };
+    const drawRow = (values: string[], header = false, extraHeight = 0) => {
       const rowHeight = header ? 20 : 30;
-      if (document.y + rowHeight > document.page.height - 24) {
+      if (document.y + rowHeight + extraHeight > document.page.height - document.page.margins.bottom) {
         document.addPage();
       }
       const y = document.y;
       let x = document.page.margins.left;
-      if (header) document.rect(x, y, widths.reduce((sum, width) => sum + width, 0), rowHeight).fill('#061a4d');
+      if (header) document.rect(x, y, tableWidth, rowHeight).fill('#061a4d');
       document.font(header ? 'Helvetica-Bold' : 'Helvetica').fontSize(header ? 7 : 6.5)
         .fillColor(header ? '#ffffff' : '#222222');
       values.forEach((value, index) => {
@@ -139,6 +144,11 @@ async function pdfBuffer(rows: IssuedTicketRow[]): Promise<Buffer> {
     };
     drawRow(headers, true);
     for (const row of rows) {
+      const ticketText = row.ticketNumbers.length ? `Ticket numbers: ${row.ticketNumbers.join(', ')}` : '';
+      const ticketGap = 3;
+      const ticketHeight = ticketText
+        ? ticketGap + document.font('Helvetica').fontSize(7).heightOfString(ticketText, ticketOptions)
+        : 0;
       drawRow([
         new Date(row.createdAt).toLocaleString('en-GB'),
         `${row.mainTravellerName}\n${row.orderReference} · ${row.totalPassengers} Pax`,
@@ -151,7 +161,12 @@ async function pdfBuffer(rows: IssuedTicketRow[]): Promise<Buffer> {
         row.grossFare === null ? '—' : row.grossFare.toFixed(2),
         row.payableAmount.toFixed(2),
         row.profit === null ? '—' : row.profit.toFixed(2),
-      ]);
+      ], false, ticketHeight);
+      if (ticketText) {
+        document.font('Helvetica').fontSize(7).fillColor('#222222')
+          .text(ticketText, document.page.margins.left, document.y + ticketGap, ticketOptions)
+          .moveDown(0.5);
+      }
     }
     document.end();
   });

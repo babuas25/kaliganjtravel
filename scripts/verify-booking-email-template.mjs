@@ -338,6 +338,15 @@ new vm.Script(ticketPrintTranspiled.outputText, { filename: ticketPrintPath }).r
     throw new Error(`Unexpected runtime import in ticket print helper: ${specifier}`);
   },
 });
+const bookingStatusPath = path.join(root, 'lib', 'flights', 'booking-status.ts');
+const bookingStatusModule = { exports: {} };
+const bookingStatusTranspiled = ts.transpileModule(fs.readFileSync(bookingStatusPath, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+});
+new vm.Script(bookingStatusTranspiled.outputText, { filename: bookingStatusPath }).runInNewContext({
+  module: bookingStatusModule,
+  exports: bookingStatusModule.exports,
+});
 const pdfModule = { exports: {} };
 const pdfContext = vm.createContext({
   module: pdfModule,
@@ -345,6 +354,7 @@ const pdfContext = vm.createContext({
   require(specifier) {
     if (specifier === '@/lib/flights/airline-pnr') return airlinePnrModule;
     if (specifier === '@/lib/flights/ticket-display') return ticketDisplayModule.exports;
+    if (specifier === '@/lib/flights/booking-status') return bookingStatusModule.exports;
     if (specifier === '@/lib/flights/passenger-notice') return passengerNoticeModule.exports;
     if (specifier === '@/lib/flights/ticket-print') return ticketPrintModule.exports;
     if (specifier === 'server-only') return {};

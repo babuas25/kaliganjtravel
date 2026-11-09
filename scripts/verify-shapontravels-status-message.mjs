@@ -45,9 +45,8 @@ for (const [status, label] of [
   cases++;
 }
 const cancelled = text(format(check));
-assert.match(cancelled, /14:43:33 \(Bangladesh time\)/);
 assert.match(cancelled, /Supplier reference: STRTESTCURRENT01/);
-assert.doesNotMatch(cancelled, /Created|22:00:00|Saved supplier status|staff review/);
+assert.doesNotMatch(cancelled, /Created|14:43:33|22:00:00|Saved supplier status|staff review/);
 assert.match(cancelled, /Wallet and payment are unchanged/);
 assert.doesNotMatch(text(format({ ...check, currentStatus: {
   ...current, checkedAt: '2026-10-03T08:43:33Z',
@@ -60,12 +59,8 @@ const admin = text(format({ ...check, currentStatus: {
   checkedAt: '2026-10-03T08:40:00Z', reviewRequired: true,
 } }));
 assert.match(admin, /Shapon saved booking status: Confirmed/);
-assert.match(admin, /Admin decision \(not machine-verified\)/);
-assert.match(admin, /Saved supplier status: Cancelled/);
-assert.match(admin, /14:40:00/);
-assert.match(admin, /14:43:33/);
 assert.match(admin, /staff review before further booking or financial action/);
-assert.doesNotMatch(admin, /Created/);
+assert.doesNotMatch(admin, /Created|Admin decision|Saved supplier status|14:40:00|14:43:33/);
 cases++;
 
 const pending = text(format({ ...check, result: 'pending', currentStatus: {
@@ -73,8 +68,7 @@ const pending = text(format({ ...check, result: 'pending', currentStatus: {
   checkedAt: null, supplierStatus: null, supplierCheckedAt: null, lastCheck: null,
 } }));
 assert.match(pending, /Shapon saved booking status: Pending/);
-assert.match(pending, /Saved booking record \(not machine-verified\)/);
-assert.match(pending, /No source timestamp/);
+assert.doesNotMatch(pending, /Saved booking record|source timestamp/);
 cases++;
 
 const publicReceipt = text(format({ ...check, currentStatus: {
@@ -82,9 +76,7 @@ const publicReceipt = text(format({ ...check, currentStatus: {
   verified: false, source: 'public_receipt', checkedAt: null, reviewRequired: false, lastCheck: null,
 } }));
 assert.match(publicReceipt, /Shapon saved booking status: On Hold/);
-assert.match(publicReceipt, /Public booking receipt \(not machine-verified\)/);
-assert.match(publicReceipt, /No source timestamp was supplied/);
-assert.doesNotMatch(publicReceipt, /Created|Saved supplier status|Evidence time|staff review/);
+assert.doesNotMatch(publicReceipt, /Created|Saved supplier status|Evidence time|source timestamp|staff review/);
 assert.match(publicReceipt, /Wallet and payment are unchanged/);
 cases++;
 
@@ -93,10 +85,7 @@ for (const verified of [true, false]) {
     ...current, source: 'supplier_sync', verified, bookingState: null, checkedAt: null, lastCheck: null,
   } }));
   assert.match(savedSync, /Shapon saved booking status: Cancelled/);
-  assert.match(savedSync, /Saved supplier sync observation/);
-  assert.match(savedSync, verified ? /verified when saved/ : /not machine-verified/);
-  assert.match(savedSync, /14:43:33/);
-  assert.doesNotMatch(savedSync, /22:00:00/, 'A saved source time is not replaced with the GET time');
+  assert.doesNotMatch(savedSync, /Saved supplier sync observation|verified when saved|14:43:33|22:00:00/);
   assert.match(savedSync, /no new supplier sync or ticket request was sent/);
   cases++;
 }
@@ -107,16 +96,13 @@ for (const reasonCode of [null, 'SUPPLIER_TIMEOUT', 'SUPPLIER_READ_FAILED', 'SUP
     ...current, lastCheck: { checkedAt: laterTime, verified: false, reasonCode },
   } }));
   assert.match(failed, /Shapon saved booking status: Cancelled/);
-  assert.match(failed, /14:43:33/);
-  assert.match(failed, /Previously saved supplier check was not verified at .*15:01:02/);
-  assert.match(failed, /saved status and supplier evidence above are retained/);
+  assert.doesNotMatch(failed, /14:43:33|15:01:02|Previously saved supplier check/);
   cases++;
 }
 
 const legacy = text(format({ ...check, currentStatus: null, currentStatusState: 'absent', supplierStatus: 'Created' }));
 assert.match(legacy, /Shapon saved booking status unavailable/);
-assert.match(legacy, /Historical Book receipt status: Created/);
-assert.doesNotMatch(legacy, /Shapon saved booking status: Created/);
+assert.doesNotMatch(legacy, /Created/);
 const invalid = text(format({ ...check, currentStatus: null, currentStatusState: 'invalid', supplierStatus: 'Created' }));
 assert.match(invalid, /invalid saved-status metadata/);
 assert.doesNotMatch(invalid, /Historical Book receipt status: Created|Shapon saved booking status: Created/);
@@ -141,11 +127,10 @@ cases += 2;
 
 const localConflict = text(format({ ...check, currentStatus: {
   ...current, status: 'confirmed', source: 'ticket_operation',
-}, displayStatus: 'on-hold', displayReviewRequired: true }));
+}, displayStatus: 'confirmed', displayReviewRequired: true }));
 assert.match(localConflict, /Shapon saved booking status: Confirmed/);
-assert.match(localConflict, /Saved local booking status: On Hold/);
 assert.match(localConflict, /staff review before further booking or financial action/);
-assert.doesNotMatch(localConflict, /local booking status: Confirmed/i);
+assert.doesNotMatch(localConflict, /Saved local booking status|Saved supplier status/i);
 cases++;
 
 const attempt = text(format(check, 'attempt'));
@@ -259,7 +244,7 @@ actions.respond({ success: false, error: { errorMessage: 'Offline check failed.'
 await clickCheck(actions.render(actions.component, props), 'Refresh Status');
 const retained = visibleText(actions.render(actions.component, props));
 assert.match(retained, /Shapon saved booking status: Cancelled/);
-assert.match(retained, /14:43:33/);
+assert.doesNotMatch(retained, /14:43:33/);
 assert.match(retained, /Offline check failed/);
 assert.equal(actions.refreshes, 1, 'a failed check cannot refresh or remove the prior presentation');
 assert.ok(actions.requests.every(request => request.url === '/api/flights/booking/shapon-status'));

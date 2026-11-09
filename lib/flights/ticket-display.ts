@@ -1,6 +1,15 @@
 import { airlinePnrs } from '@/lib/flights/airline-pnr';
 import type { PublicBooking } from '@/lib/flights/booking';
 
+export function ticketTerminalLabel(terminal: unknown): string {
+  const value = typeof terminal === 'number' && Number.isFinite(terminal)
+    ? String(terminal)
+    : typeof terminal === 'string'
+      ? terminal.trim().replace(/^terminal(?:\s*:\s*|\s+|$)/i, '').trim()
+      : '';
+  return !value || /^(?:n\/a|-+)$/i.test(value) ? 'Terminal n/a' : `Terminal ${value}`;
+}
+
 type TicketDisplayLabel = 'Ticket number' | 'Airline PNR';
 type TicketDisplayIdentifier = { label: TicketDisplayLabel; value: string; text: string };
 
@@ -20,13 +29,12 @@ export type BookingTicketDisplay = {
  * never promoted into a ticket number or supplier/payment verification proof.
  */
 export function bookingTicketDisplay(
-  booking: Pick<PublicBooking, 'status' | 'paymentState' | 'ticketNumbers' | 'airlinesPnr' | 'itinerary'>,
+  booking: Pick<PublicBooking, 'status' | 'paymentState' | 'ticketNumbers' | 'ticketPassengerNumbers' | 'airlinesPnr' | 'itinerary'>,
   passengerCount: number,
 ): BookingTicketDisplay {
   const count = Number.isSafeInteger(passengerCount) && passengerCount > 0 ? passengerCount : 0;
-  const itinerary = booking.itinerary;
-  const carrier = itinerary?.carrierCode;
-  const legs = itinerary?.legs;
+  const legs = booking.itinerary?.legs;
+  const carrier = legs?.[0]?.segments?.[0]?.airlineCode;
   const pnrCarrier = (carrier === '6E' || carrier === 'J9') &&
     Array.isArray(legs) && legs.length > 0 &&
     legs.every(leg => Array.isArray(leg?.segments) && leg.segments.length > 0 &&
@@ -38,12 +46,17 @@ export function bookingTicketDisplay(
   const tickets = Array.isArray(booking.ticketNumbers)
     ? booking.ticketNumbers.map(value => typeof value === 'string' ? value.trim() : '') : [];
   const isPnr = (value: string) => pnrCarrier && !/^[0-9]{10,16}$/.test(value) && locators.includes(value);
+  const assigned = count > 0 && booking.ticketPassengerNumbers?.length === count
+    ? booking.ticketPassengerNumbers : undefined;
   const aligns = count > 0 && tickets.length === count && tickets.every(value => value.length > 0);
-  const unassignedTicketNumbers = aligns ? [] : tickets.filter(value => value && !isPnr(value));
+  const unassignedTicketNumbers = assigned || aligns ? [] : tickets.filter(value => value && !isPnr(value));
   let usedSharedPnr = false;
   const passengers = Array.from({ length: count }, (_, index): TicketDisplayIdentifier | null => {
-    const saved = aligns ? tickets[index] : '';
-    if (saved) return { label: isPnr(saved) ? 'Airline PNR' : 'Ticket number', value: saved, text: saved };
+    const saved = assigned?.[index] ?? (aligns ? [tickets[index]] : []);
+    if (saved.length) {
+      const value = saved.join(', ');
+      return { label: saved.every(isPnr) ? 'Airline PNR' : 'Ticket number', value, text: value };
+    }
     if (!fallback) return null;
     usedSharedPnr = true;
     return { label: 'Airline PNR', value: fallback, text: fallback };

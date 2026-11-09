@@ -33,6 +33,8 @@ import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { readAirTicketingDetails } from '@/lib/triplover/air-ticketing-details';
 import { isTriploverSupplier } from '@/lib/triplover/config';
 import { bookShapontravelsHold } from '@/lib/shapontravels/book';
+import type { ShapontravelsCurrentStatus } from '@/lib/shapontravels/booking-status';
+import { recordShapontravelsWriteStatus } from '@/lib/shapontravels/current-status-store';
 import {
   beginDirectTicket,
   captureBookingReservation,
@@ -169,6 +171,7 @@ function hasRequiredSupplierReferences(value: {
 }
 
 export async function POST(request: NextRequest) {
+  const requestStartedAt = new Date().toISOString();
   // Identity before anything else: an anonymous caller learns nothing about
   // this endpoint's operational state or about any draft.
   let session: Awaited<ReturnType<typeof getDashboardSession>> = null;
@@ -424,7 +427,9 @@ export async function POST(request: NextRequest) {
       itemCodeRef: claimed.item_code_ref,
       priceCodeRef: claimed.price_code_ref,
     };
-    const booked = supplierAccount === 'shapontravels'
+    const booked: Awaited<ReturnType<typeof bookFlight>> & {
+      shaponCurrentStatus?: ShapontravelsCurrentStatus;
+    } = supplierAccount === 'shapontravels'
       ? await bookShapontravelsHold(
           supplierRefs,
           parsed.data.travellers,
@@ -462,6 +467,12 @@ export async function POST(request: NextRequest) {
         'The airline answered, but the booking record could not be finalized. Contact support.'
       );
     }
+    const shaponStatus = booked.shaponCurrentStatus;
+    if (shaponStatus) {
+      await recordShapontravelsWriteStatus(booking, shaponStatus, requestStartedAt, {
+        supplierPublicRef: booked.outcome.supplierPublicRef,
+      });
+    }
     if (current.staff_on_behalf) {
       await recordSecurityAuditEvent({
         actorUserId: session.clerkId,
@@ -480,6 +491,7 @@ export async function POST(request: NextRequest) {
       });
     }
     const publicResult = await publicBookingWithHeaderContact(booking);
+    if (shaponStatus) publicResult.displayStatus = shaponStatus.status;
     if (booked.outcome.status === 'held') {
       // A held supplier response can project as On Hold or Unconfirmed.
       await sendBookingStatusEmailOnce(booking);

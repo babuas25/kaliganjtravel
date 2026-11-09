@@ -227,7 +227,7 @@ const compactStatus = statusModule.verifyShapontravelsBookingStatus({ ...read,
     publicReceipt: { status: 'on-hold', pendingReview: false, actions: { canIssue: true } },
   },
 }, expected);
-assert.deepEqual(plain(compactStatus.currentStatus), publicCurrent);
+assert.deepEqual(plain(compactStatus.currentStatus), { ...publicCurrent, canIssue: true });
 rpcReply = { data: { recorded: true, projectionUpdated: true, currentStatus: publicSaved }, error: null };
 assert.deepEqual(plain(await record({ status: compactStatus })), {
   projectionUpdated: true, currentStatusStorage: 'saved',
@@ -235,8 +235,12 @@ assert.deepEqual(plain(await record({ status: compactStatus })), {
 });
 assert.deepEqual(calls.at(-1).params.p_current_status, publicCurrent,
   'public status storage carries explicit provenance without supplier verification or timestamps');
-assert.deepEqual(calls.at(-1).params.p_receipt_identity, { ...expected, originalBookingStatus: 'Created' },
-  'compact status storage keeps every original identity pin');
+assert.deepEqual(calls.at(-1).params.p_receipt_identity,
+  { ...expected, originalBookingStatus: 'Created', canIssue: true },
+  'compact status storage keeps every original identity pin and explicit Issue action');
+assert.equal(canIssue(ownerSession, { ...booking, shapon_current_status: {
+  ...publicSaved, currentStatus: { ...publicCurrent, canIssue: false },
+} }), false, 'An explicit supplier refusal still blocks Issue without a review flag');
 rpcReply = { data: { recorded: true, projectionUpdated: true }, error: null };
 
 const adminStatus = statusModule.verifyShapontravelsBookingStatus({ ...read,
@@ -262,8 +266,8 @@ rpcReply = { data: {
 }, error: null };
 assert.deepEqual(plain(await record({ status: remoteConfirmedStatus })), {
   projectionUpdated: true, currentStatusStorage: 'saved',
-  displayStatus: 'unconfirmed', displayReviewRequired: true,
-}, 'remote confirmation does not invent local ticket/payment completion; display uses the RPC projection');
+  displayStatus: 'confirmed', displayReviewRequired: true,
+}, 'Show Shapon confirmation without inventing local ticket or payment completion');
 assert.equal(remoteConfirmedStatus.currentStatus.status, 'confirmed');
 assert.equal(remoteConfirmedStatus.currentStatus.verified, false);
 assert.equal(remoteConfirmedStatus.currentStatus.reviewRequired, false,
@@ -277,8 +281,8 @@ rpcReply = { data: {
 }, error: null };
 assert.deepEqual(plain(await record()), {
   projectionUpdated: false, currentStatusStorage: 'saved',
-  displayStatus: 'confirmed', displayReviewRequired: true,
-}, 'an unchanged RPC projection still exposes local terminal precedence and its review conflict');
+  displayStatus: 'cancelled', displayReviewRequired: true,
+}, 'The displayed result follows the latest Shapon platform observation');
 for (const currentStatus of [null, { ...localHoldConflict, effectiveStatus: 'issuing' }, {
   ...localHoldConflict, currentStatus: { ...remoteConfirmed, verified: 'false' },
 }]) {
@@ -314,5 +318,16 @@ rpcFailure = new Error('fixture RPC transport failure');
 assertStorage(await record(), 'unavailable');
 assert.equal(calls.every(call => call.params.p_request_started_at === requestStartedAt), true,
   'all storage attempts retain the original request start; none substitute the completion time');
+
+rpcFailure = null;
+rpcReply = { data: { recorded: true, projectionUpdated: true }, error: null };
+const postgresCreatedAt = '2026-10-03T10:00:00.123456+00:00';
+await store.recordShapontravelsWriteStatus({ id: input.bookingId, created_at: postgresCreatedAt,
+  supplier_refs: expected, booking_code_ref: expected.bookingCodeRef, booking_ref_number: expected.bookingRefNumber,
+  pnr: expected.pnr, booking_status: 'Created' }, current, '2026-10-03T10:00:00.123Z', {
+  supplierPublicRef: expected.supplierPublicRef,
+});
+assert.equal(calls.at(-1).params.p_request_started_at, postgresCreatedAt,
+  'Clamping a pre-creation Book observation preserves all PostgreSQL timestamp digits');
 
 console.log('Shapontravels saved current status, Issue gates and optional storage passed');

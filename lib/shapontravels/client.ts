@@ -285,6 +285,8 @@ export async function shapontravelsRead(
   }
 }
 
+const pendingIssueReceipts = new WeakMap<ShapontravelsWriteError, unknown>();
+
 export class ShapontravelsWriteError extends Error {
   constructor(
     readonly kind: 'unconfigured' | 'auth' | 'network' | 'supplier' | 'protocol' | 'pending',
@@ -294,14 +296,18 @@ export class ShapontravelsWriteError extends Error {
     readonly pendingBookingId: string | null = null,
     readonly pendingReference: string | null = null,
     readonly operation: 'Book' | 'NewTicket' | 'Cancel' = 'Book',
-    readonly bookingWarningCode: 'SUPPLIER_DUPLICATE_REPORTED' | null = null
+    readonly bookingWarningCode: 'SUPPLIER_DUPLICATE_REPORTED' | null = null,
+    pendingIssueReceipt?: unknown,
   ) {
     super(`Shapontravels ${operation} ${code}` +
       (pendingBookingId ? ` bookingId=${pendingBookingId}` : '') +
       (pendingReference ? ` reference=${pendingReference}` : '') +
       (bookingWarningCode ? ` warning=${bookingWarningCode}` : ''));
     this.name = 'ShapontravelsWriteError';
+    if (pendingIssueReceipt !== undefined) pendingIssueReceipts.set(this, pendingIssueReceipt);
   }
+
+  get pendingIssueReceipt(): unknown { return pendingIssueReceipts.get(this); }
 }
 
 /** One physical held-ticket issue request. A response gap never triggers replay. */
@@ -359,7 +365,9 @@ export async function shapontravelsIssueRequest(
       response.headers.get('x-request-id'),
       null,
       null,
-      'NewTicket'
+      'NewTicket',
+      null,
+      response.status === 202 ? body : undefined,
     );
   }
   return body;

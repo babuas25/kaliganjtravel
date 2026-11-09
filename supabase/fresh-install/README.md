@@ -4,6 +4,16 @@ Prepared 2026-09-11 for project `ljzoizsogbirlvlsrwzi`.
 
 **Status: installed and verified on hosted Supabase, 2026-09-11.**
 
+**Shapon booking and ticket updates — local forward migrations:**
+
+The four `20261109` migrations add platform passenger ticket numbers, platform
+cancellation, saved status handling, and airline PNR provenance. Drain Shapon
+booking writes during the cutover and apply the migrations in version order
+before serving the matching application, which reads the new locator provenance
+column. The complete local chain is 32 migrations with
+89 public tables and 339 public functions. Rehearse it locally with
+`npm run verify:shapon-recovery-database`.
+
 **Shapon saved-status recovery and payment policy — database installed, 2026-11-03; application not deployed:**
 
 Four new forward migrations preserve this project's installed baseline, KTT
@@ -33,7 +43,7 @@ reason. It leaves booking status, supplier and review operations/cases unchanged
 Both financial commands recheck exact previews and accounting under locks;
 immutable decisions and linked ledger/event records prevent duplicate effects.
 
-The full local chain has **28 migrations, 89 public tables and 330 functions**.
+That release's chain had **28 migrations, 89 public tables and 330 functions**.
 Offline verification uses disposable PostgreSQL and synthetic money only:
 
 ```bash

@@ -1,3 +1,4 @@
+import { SHAPON_CUTOVER_FAILURE, shaponCutoverPaused } from '@/lib/shapontravels/cutover';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (shaponCutoverPaused(booking.supplier)) return walletFail(...SHAPON_CUTOVER_FAILURE);
   if (booking.import_source === 'MANUAL' ||
       !['triplover', 'shapontravels'].includes(booking.supplier) ||
       (booking.supplier === 'shapontravels' && booking.import_source !== null)) {

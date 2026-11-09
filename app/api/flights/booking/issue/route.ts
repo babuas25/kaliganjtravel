@@ -1,3 +1,4 @@
+import { SHAPON_CUTOVER_FAILURE, shaponCutoverPaused } from '@/lib/shapontravels/cutover';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isBookingCurrency, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (shaponCutoverPaused(booking.supplier)) return walletFail(...SHAPON_CUTOVER_FAILURE);
   if (!isBookingCurrency(booking.currency)) {
     return walletFail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
   }
@@ -209,6 +211,7 @@ export async function POST(request: NextRequest) {
     bookingScopeFor(session)
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+  if (shaponCutoverPaused(booking.supplier)) return walletFail(...SHAPON_CUTOVER_FAILURE);
   if (!isBookingCurrency(booking.currency)) {
     return walletFail(409, 'UNSUPPORTED_CURRENCY', UNSUPPORTED_CURRENCY_MESSAGE);
   }

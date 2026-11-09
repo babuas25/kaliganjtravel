@@ -1,3 +1,4 @@
+import { SHAPON_CUTOVER_FAILURE, shaponCutoverPaused } from '@/lib/shapontravels/cutover';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isBookingCurrency, UNSUPPORTED_CURRENCY_MESSAGE } from '@/lib/currency';
@@ -282,6 +283,7 @@ export async function POST(request: NextRequest) {
     );
   }
   const supplierAccount = current.supplier_account;
+  if (shaponCutoverPaused(supplierAccount)) return fail(...SHAPON_CUTOVER_FAILURE);
   const offer = current.offer_snapshot;
   if (supplierAccount === 'shapontravels' && offer.directTicketing) {
     return fail(409, 'HOLD_FARE_REQUIRED', 'This supplier supports held bookings only.');

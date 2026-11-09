@@ -1,3 +1,4 @@
+import { SHAPON_CUTOVER_FAILURE, shaponCutoverPaused } from '@/lib/shapontravels/cutover';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getDashboardSession } from '@/lib/dashboard/session';
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
       booking.supplier_account !== 'shapontravels' || booking.import_source) {
     return walletFail(409, 'SUPPLIER_UNAVAILABLE', 'This is not a Shapontravels API booking.');
   }
+  if (shaponCutoverPaused(booking.supplier)) return walletFail(...SHAPON_CUTOVER_FAILURE);
   const refs = booking.supplier_refs;
   if (!booking.booking_code_ref || !refs?.uniqueTransId ||
       !refs.itemCodeRef || !refs.priceCodeRef) {

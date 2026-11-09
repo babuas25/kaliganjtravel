@@ -1,3 +1,4 @@
+import { SHAPON_CUTOVER_FAILURE, shaponCutoverPaused } from '@/lib/shapontravels/cutover';
 import { z } from 'zod';
 
 import { storedTicketReferences } from '@/lib/booking-lifecycle/ticketing-flow';
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
   );
   if (!booking) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
   if (booking.supplier === 'shapontravels' && booking.supplier_account === 'shapontravels' && !booking.import_source) {
+    if (shaponCutoverPaused(booking.supplier)) return walletFail(...SHAPON_CUTOVER_FAILURE);
     const refs = storedTicketReferences(booking);
     if (!refs) return walletFail(409, 'SUPPLIER_REFERENCE_MISSING', 'The booking is missing supplier references.');
     const limit = await checkActionLimit('refreshTicketingTime', booking.id);

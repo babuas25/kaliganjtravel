@@ -11,8 +11,9 @@ import { isTriploverSupplier } from '@/lib/triplover/config';
 import { readPnr } from '@/lib/triplover/pnr';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { shapontravelsReadBooking, shapontravelsRefreshTicketingDeadline } from '@/lib/shapontravels/client';
+import { shaponLiveDeadlineRefreshEnabled } from '@/lib/shapontravels/deadline-config';
 import { isCanonicalDeadlineTime } from '@/lib/shapontravels/deadline-time';
-import { shapontravelsTicketingTime } from '@/lib/shapontravels/ticketing-time';
+import { isEligibleShaponHold, shapontravelsTicketingTime } from '@/lib/shapontravels/ticketing-time';
 import { walletFail, walletOk } from '@/lib/wallet/http';
 
 export const runtime = 'nodejs';
@@ -41,14 +42,14 @@ function rateLimited(retryAfter: string | null) {
 async function refreshShapontravelsTicketingTime(booking: BookingRow, scope: ReturnType<typeof bookingScopeFor>) {
   const refs = storedTicketReferences(booking);
   if (!refs) return walletFail(409, 'SUPPLIER_REFERENCE_MISSING', 'The booking is missing supplier references.');
-  const live = process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED === 'true';
-  if (live && (booking.status !== 'on-hold' || booking.operation_kind || booking.active_operation_id ||
-      booking.booking_origin || booking.legacy_operational || booking.direct_ticketing || booking.issued_at ||
-      booking.ticket_code_ref || (Array.isArray(booking.ticket_numbers) && booking.ticket_numbers.length))) {
+  const live = shaponLiveDeadlineRefreshEnabled();
+  if (live && !isEligibleShaponHold(booking)) {
     return walletFail(409, 'TICKETING_TIME_REFRESH_UNAVAILABLE', 'This booking is not eligible for a supplier time-limit refresh.');
   }
-  const limit = await checkActionLimit('refreshTicketingTime', booking.id);
-  if (!limit.ok) return rateLimited(String(limit.retryAfterSeconds));
+  if (!live) {
+    const limit = await checkActionLimit('refreshTicketingTime', booking.id);
+    if (!limit.ok) return rateLimited(String(limit.retryAfterSeconds));
+  }
   const db = supabaseAdmin();
   if (!db) return walletFail(503, 'BOOKING_STORAGE_FAILED', 'Booking storage is unavailable.');
   const { data: identity, error } = await db.from('flight_bookings')
@@ -64,8 +65,23 @@ async function refreshShapontravelsTicketingTime(booking: BookingRow, scope: Ret
     let revision: number | null = null;
     let message: string | null = null;
     if (live) {
+      const limit = await checkActionLimit('shaponLiveDeadlineRefresh', booking.id);
+      if (!limit.ok) return rateLimited(String(limit.retryAfterSeconds));
       const read = await shapontravelsRefreshTicketingDeadline(refs.bookingCodeRef);
       if (read.httpStatus === 429) return rateLimited(read.retryAfter);
+      if (read.authorityDenied) {
+        // Recheck scope and use the current local snapshot. A webhook may have
+        // changed or cleared the deadline while Shapon handled the request.
+        const current = await readBookingByPublicRef(booking.public_ref, scope, true);
+        if (current?.id !== booking.id) return walletFail(404, 'BOOKING_NOT_FOUND', 'Booking not found.');
+        if (current.booking_code_ref !== refs.bookingCodeRef || !isEligibleShaponHold(current)) {
+          return walletFail(409, 'BOOKING_CHANGED', 'The booking changed during the refresh. Refresh the page and try again.');
+        }
+        return walletOk({ updated: false, liveRefreshUnavailable: true, ticketingDeadlineAt: current.ticketing_deadline_at,
+          lastTicketingTime: current.supplier_ticketing_time_limit ?? current.ticketing_time_limit,
+          message: current.ticketing_deadline_at ? 'Live refresh is unavailable. Showing the saved time limit.'
+            : 'Live refresh is unavailable. No ticketing time is saved for this booking.' });
+      }
       if ([403, 404, 409, 503].includes(read.httpStatus)) {
         return walletFail(read.httpStatus, 'TICKETING_TIME_REFRESH_UNAVAILABLE', 'The supplier time-limit refresh is unavailable for this booking.');
       }

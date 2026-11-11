@@ -57,6 +57,8 @@ import { readBookingLocalTimeLimitContext } from '@/lib/db/booking-local-time-li
 import { getSupplierOperationalControls } from '@/lib/db/supplier-controls';
 import { isShapontravelsConfigured } from '@/lib/shapontravels/client';
 import { shapontravelsCancellationIdentityReady } from '@/lib/shapontravels/cancel';
+import { shaponLiveDeadlineRefreshEnabled } from '@/lib/shapontravels/deadline-config';
+import { isEligibleShaponHold } from '@/lib/shapontravels/ticketing-time';
 import { storedTicketReferences, usesStoredBookingReferences } from '@/lib/booking-lifecycle/ticketing-flow';
 import { readBookingUserVisibilityContext } from '@/lib/db/booking-visibility';
 import { listStaffBookingLifecycle } from '@/lib/db/booking-lifecycle';
@@ -159,6 +161,7 @@ export default async function BookingDetailsPage({
     : await readBookingByPublicRef(reference, bookingScopeFor(session), true);
   if (!row) notFound();
   if (row.public_ref !== reference) redirect(`/dashboard/bookings/${encodeURIComponent(row.public_ref)}`);
+  const liveDeadlineRefresh = row.supplier === 'shapontravels' && shaponLiveDeadlineRefreshEnabled();
   const supplierTicketingEnabled = row.supplier === 'shapontravels'
     ? (await getSupplierOperationalControls()).ticketingEnabled &&
       isShapontravelsConfigured()
@@ -367,10 +370,12 @@ export default async function BookingDetailsPage({
         autoRefreshDeadline={false}
         allowTicketingTimeRefresh={
           ((row.supplier === 'triplover' && row.import_source !== 'MANUAL') ||
-            (row.supplier === 'shapontravels' && row.supplier_account === 'shapontravels' && !row.import_source)) &&
+            (row.supplier === 'shapontravels' && row.supplier_account === 'shapontravels' && !row.import_source &&
+              (!liveDeadlineRefresh || isEligibleShaponHold(row)))) &&
           Boolean(row.supplier_account && storedTicketReferences(row)) &&
           canRefreshBookingTicketingTime(session.role)
         }
+        liveDeadlineRefresh={liveDeadlineRefresh}
         allowTicketing={
           (row.supplier === 'triplover' && canIssueBooking(session, row)) ||
           canIssueSupplierBooking

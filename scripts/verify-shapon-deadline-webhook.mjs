@@ -22,6 +22,7 @@ function loadTypeScript(file, dependencies = {}, env = {}) {
 }
 
 const verifier = loadTypeScript('lib/shapontravels/deadline-webhook.ts', {
+  './deadline-config': loadTypeScript('lib/shapontravels/deadline-config.ts'),
   './deadline-time': loadTypeScript('lib/shapontravels/deadline-time.ts'),
 });
 const current = Buffer.alloc(32, 31);
@@ -29,6 +30,10 @@ const previous = Buffer.alloc(32, 44);
 const secret = key => 'whsec_' + key.toString('base64');
 const enabled = {
   SHAPONTRAVELS_DEADLINE_WEBHOOK_ENABLED: 'true',
+  SHAPONTRAVELS_DEADLINE_WEBHOOK_SECRET: secret(current),
+};
+const production = {
+  VERCEL_ENV: 'production',
   SHAPONTRAVELS_DEADLINE_WEBHOOK_SECRET: secret(current),
 };
 const event = {
@@ -64,11 +69,16 @@ function request(options = {}) {
   });
 }
 
-test('requires dedicated enabled configuration and validates both rotation keys', () => {
+test('uses the Production default and requires valid signing keys', () => {
   assert.equal(verifier.deadlineWebhookKeys({}), null);
-  assert.equal(verifier.deadlineWebhookKeys({ ...enabled, SHAPONTRAVELS_DEADLINE_WEBHOOK_ENABLED: 'false' }), null);
+  assert.deepEqual(verifier.deadlineWebhookKeys(production), [current]);
+  assert.equal(verifier.deadlineWebhookKeys({ ...production, VERCEL_ENV: 'preview' }), null);
+  assert.deepEqual(verifier.deadlineWebhookKeys({ ...enabled, VERCEL_ENV: 'preview' }), [current]);
+  for (const flag of ['false', 'invalid']) {
+    assert.equal(verifier.deadlineWebhookKeys({ ...production, SHAPONTRAVELS_DEADLINE_WEBHOOK_ENABLED: flag }), null);
+  }
   for (const value of [undefined, 'another-key', 'whsec_fake', secret(Buffer.alloc(31))]) {
-    assert.equal(verifier.deadlineWebhookKeys({ ...enabled, SHAPONTRAVELS_DEADLINE_WEBHOOK_SECRET: value }), null);
+    assert.equal(verifier.deadlineWebhookKeys({ ...production, SHAPONTRAVELS_DEADLINE_WEBHOOK_SECRET: value }), null);
   }
   assert.equal(verifier.deadlineWebhookKeys({ ...enabled, SHAPONTRAVELS_DEADLINE_WEBHOOK_PREVIOUS_SECRET: 'invalid' }), null);
   assert.deepEqual(verifier.deadlineWebhookKeys({
@@ -145,7 +155,7 @@ test('calls the single scoped RPC only after verification and acknowledges commi
   const { POST } = loadTypeScript('app/api/webhooks/shapon-ticketing-deadline/route.ts', {
     '@/lib/shapontravels/deadline-webhook': verifier,
     '@/lib/supabase/server': { supabaseAdmin: () => database },
-  }, enabled);
+  }, production);
   let answer;
   database = { rpc: async (...args) => { calls.push(args); return answer; } };
   assert.equal((await POST(request({ signingKeys: [previous] }))).status, 401);

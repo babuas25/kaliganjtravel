@@ -23,7 +23,7 @@ CLIENT_ID=<issued API Management client ID>
 CLIENT_SECRET=<issued API Management client secret>
 ```
 
-The supplier-specific `SHAPONTRAVELS_CLIENT_ID` and `SHAPONTRAVELS_CLIENT_SECRET` names can replace the last two variables. If both pairs exist, the supplier-specific values take precedence. Keep the secret server-only: do not use a `NEXT_PUBLIC_` prefix. After setting or changing Vercel variables, create a new Preview deployment. A push to `development` triggers that deployment only when the Vercel project is connected to the `babuas25/kaliganjtravel` Git repository and Git deployments are enabled for the branch.
+The supplier-specific `SHAPONTRAVELS_CLIENT_ID` and `SHAPONTRAVELS_CLIENT_SECRET` names can replace the last two variables. Kaligonj uses a complete prefixed pair when available, then falls back to a complete legacy pair. Keep the secret server-only and use the names above. After setting or changing Vercel variables, create a new Preview deployment. A push to `development` triggers that deployment only when the Vercel project is connected to the `babuas25/kaliganjtravel` Git repository and Git deployments are enabled for the branch.
 
 `supabase/fresh-install/supabase/migrations/20260926000000_shapontravels_read_supplier.sql` was applied to the linked Kaliganj database on 2026-09-26. It enables the new Search supplier in operational controls, daily usage limits, and usage events. Booking table supplier constraints remain limited to the existing protocol. Its application did not change the active supplier or booking/ticketing settings.
 

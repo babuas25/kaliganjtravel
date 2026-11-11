@@ -137,6 +137,44 @@ async function tokenIsSharedAndCached() {
   assert.equal(airlinesCall.init.headers.authorization, 'Bearer stm_fixture');
 }
 
+async function machineCredentialsUseCompletePairs() {
+  const clientId = '66666666-6666-4666-8666-666666666666';
+  const clientSecret = 'prefixed-fixture-secret';
+  const prefixedPair = { client_id: clientId, client_secret: clientSecret };
+  for (const [prefixedId, prefixedSecret, expected, legacy] of [
+    [clientId, clientSecret, prefixedPair, true],
+    [clientId, clientSecret, prefixedPair, false],
+    [clientId, '   ', null, true],
+    ['', clientSecret, null, true],
+  ]) {
+    const exchanges = [];
+    const client = createClient(async (url, init) => {
+      if (url.pathname === '/auth/token') {
+        exchanges.push(JSON.parse(init.body));
+        return json({ access_token: 'stm_pair_fixture', token_type: 'Bearer', expires_in: 1800 });
+      }
+      return json({ items: [] });
+    });
+    client.env.SHAPONTRAVELS_CLIENT_ID = prefixedId;
+    client.env.SHAPONTRAVELS_CLIENT_SECRET = prefixedSecret;
+    if (!legacy) {
+      delete client.env.CLIENT_ID;
+      delete client.env.CLIENT_SECRET;
+    }
+
+    await client.shapontravelsRead('Airlines');
+    assert.deepEqual(exchanges, [expected ?? {
+      client_id: client.env.CLIENT_ID, client_secret: client.env.CLIENT_SECRET,
+    }]);
+  }
+
+  const mixed = createClient(() => assert.fail('Incomplete pairs must fail before sending a request'));
+  mixed.env.SHAPONTRAVELS_CLIENT_ID = clientId;
+  delete mixed.env.CLIENT_ID;
+  assert.equal(mixed.isShapontravelsConfigured(), false);
+  await assert.rejects(mixed.shapontravelsRead('Airlines'), { code: 'NOT_CONFIGURED' });
+}
+
 async function unauthorizedReadRenewsOnce() {
   let logins = 0;
   let reads = 0;
@@ -310,6 +348,7 @@ async function explicitDeadlineRefreshUsesOneEmptyPost() {
   const bookingId = 'fa20f550-80b3-4adb-bd0b-4772eadf2c43';
   let loginCount = 0, refreshCount = 0;
   let status = 429;
+  let responseBody = JSON.stringify({ bookingId });
   const client = createClient(async (url, init) => {
     if (url.pathname === '/auth/token') {
       loginCount += 1;
@@ -322,7 +361,7 @@ async function explicitDeadlineRefreshUsesOneEmptyPost() {
     assert.equal(init.headers.authorization, 'Bearer stm_deadline_fixture');
     refreshCount += 1;
     if (status === 504) throw new Error('private fixture network error');
-    return new Response(JSON.stringify({ bookingId }), { status, headers: { 'Retry-After': '60' } });
+    return new Response(responseBody, { status, headers: { 'Retry-After': '60' } });
   });
   await assert.rejects(client.shapontravelsRefreshTicketingDeadline('invalid'),
     error => error.code === 'INVALID_BOOKING_LOOKUP');
@@ -343,6 +382,26 @@ async function explicitDeadlineRefreshUsesOneEmptyPost() {
   status = 200;
   assert.equal((await client.shapontravelsRefreshTicketingDeadline(bookingId)).body.bookingId, bookingId);
   assert.equal(refreshCount, 4);
+
+  for (const [httpStatus, payload, authorityDenied] of [
+    [403, JSON.stringify({ error: 'DEADLINE_REFRESH_DISABLED' }), true],
+    [403, JSON.stringify({ error: 'SUPPLIER_SERVICING_DISABLED' }), true],
+    [403, JSON.stringify({ error: 'FORBIDDEN' }), true],
+    [403, JSON.stringify({ error: 'UNRECOGNIZED_FORBIDDEN' }), false],
+    [403, '{invalid JSON', false],
+    [403, JSON.stringify({ error: 'DEADLINE_REFRESH_DISABLED', extra: 'x'.repeat(8192) }), false],
+    [409, JSON.stringify({ error: 'FORBIDDEN' }), false],
+  ]) {
+    status = httpStatus;
+    responseBody = payload;
+    const before = refreshCount;
+    const result = await client.shapontravelsRefreshTicketingDeadline(bookingId);
+    assert.equal(result.httpStatus, httpStatus);
+    assert.equal(result.authorityDenied, authorityDenied);
+    assert.equal(result.body, null);
+    assert.equal(refreshCount, before + 1);
+  }
+  assert.equal(loginCount, 2);
 }
 
 async function bookMapperRequiresTheAcceptedHold() {
@@ -428,6 +487,7 @@ async function bookMapperRequiresTheAcceptedHold() {
 }
 
 await tokenIsSharedAndCached();
+await machineCredentialsUseCompletePairs();
 await supplierTimingHasRealBoundaries();
 await unauthorizedReadRenewsOnce();
 await errorsStayRedacted();

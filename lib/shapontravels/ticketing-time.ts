@@ -1,3 +1,4 @@
+import type { BookingRow } from '@/lib/db/flight-bookings';
 import type { ShapontravelsBookingRead } from './client';
 import { evidenceTime, verifyShapontravelsBookingStatus, type ShapontravelsExpectedBooking } from './booking-status';
 
@@ -5,6 +6,13 @@ export type ShapontravelsTicketingTime = {
   rawLastTicketTime: string | null;
   ticketingDeadlineAt: string | null;
 };
+
+export function isEligibleShaponHold(booking: BookingRow): boolean {
+  return booking.supplier === 'shapontravels' && booking.supplier_account === 'shapontravels' && !booking.import_source &&
+    booking.status === 'on-hold' && !booking.operation_kind && !booking.active_operation_id &&
+    !booking.booking_origin && !booking.legacy_operational && !booking.direct_ticketing && !booking.issued_at &&
+    !booking.ticket_code_ref && !(Array.isArray(booking.ticket_numbers) && booking.ticket_numbers.length);
+}
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)

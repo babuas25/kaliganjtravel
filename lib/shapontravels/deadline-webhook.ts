@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import { shaponDeadlineEnabled } from './deadline-config';
 import { isCanonicalDeadlineTime } from './deadline-time';
 
 const MAX_BODY_BYTES = 4096;
@@ -32,7 +33,7 @@ function signingKey(secret: string | undefined): Buffer | null {
 }
 
 export function deadlineWebhookKeys(env: NodeJS.ProcessEnv): Buffer[] | null {
-  if (env.SHAPONTRAVELS_DEADLINE_WEBHOOK_ENABLED !== 'true') return null;
+  if (!shaponDeadlineEnabled(env.SHAPONTRAVELS_DEADLINE_WEBHOOK_ENABLED, env.VERCEL_ENV)) return null;
   const current = signingKey(env.SHAPONTRAVELS_DEADLINE_WEBHOOK_SECRET);
   if (!current) return null;
   const previousSecret = env.SHAPONTRAVELS_DEADLINE_WEBHOOK_PREVIOUS_SECRET;

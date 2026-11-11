@@ -7,7 +7,7 @@ const source = fs.readFileSync('components/flights/BookingDeadlineNotice.tsx', '
 const code = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
-let hooks, cursor, effects, dirty, props, tree, requests, busy, refreshes, timers;
+let hooks, cursor, effects, dirty, props, tree, requests, busy, refreshes, timers, now;
 const changed = (a, b) => !a || a.length !== b.length || a.some((v, i) => !Object.is(v, b[i]));
 const react = {
   useState(initial) {
@@ -30,7 +30,7 @@ const react = {
 };
 const jsx = (type, props) => ({ type, props });
 const module = { exports: {} };
-new Function('exports', 'require', 'window', 'fetch', code)(module.exports, (name) => {
+new Function('exports', 'require', 'window', 'fetch', 'Date', code)(module.exports, (name) => {
   if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
   if (name === 'react') return react;
   if (name === 'next/navigation') return { useRouter: () => ({ refresh: () => refreshes++ }) };
@@ -38,12 +38,12 @@ new Function('exports', 'require', 'window', 'fetch', code)(module.exports, (nam
   if (name === '@/components/ui/switch') return { Switch: 'Switch' };
   throw new Error(`Unexpected import ${name}`);
 }, {
-  setTimeout(fn) { const id = Symbol(); timers.set(id, fn); return id; },
+  setTimeout(fn, delay) { const id = Symbol(); timers.set(id, { fn, at: now + delay }); return id; },
   clearTimeout(id) { timers.delete(id); },
 }, (url, options) => new Promise((resolve, reject) => {
   requests.push({ url, options, resolve, reject });
   options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
-}));
+}), class extends Date { static now() { return now; } });
 function render(nextProps = {}) {
   props = { ...props, ...nextProps };
   let passes = 0;
@@ -59,6 +59,7 @@ const savedTime = '2030-10-02T08:15:00Z';
 const freshTime = '2030-10-02T09:30:00Z';
 function reset(overrides = {}) {
   hooks = []; requests = []; busy = []; refreshes = 0; timers = new Map();
+  now = Date.parse('2030-10-02T08:00:00Z');
   props = { deadline: savedTime, bookingReference: 'KTTABC123ABC123', allowRefresh: true,
     onRefreshingChange: value => busy.push(value), ...overrides };
   return render();
@@ -74,8 +75,21 @@ function content(node = tree) {
   return typeof node === 'string' || typeof node === 'number' ? String(node) : '';
 }
 function toggle(checked) { find(tree, 'Switch').props.onCheckedChange(checked); render(); }
-async function settle(body, status = 200) {
-  requests.at(-1).resolve({ ok: status < 400, json: async () => body });
+function advanceTime(milliseconds) {
+  const target = now + milliseconds;
+  while (true) {
+    const next = [...timers].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0];
+    if (!next) break;
+    const [id, timer] = next;
+    now = timer.at;
+    timers.delete(id);
+    timer.fn();
+    render();
+  }
+  now = target;
+}
+async function settle(body, status = 200, headers = {}) {
+  requests.at(-1).resolve({ ok: status < 400, status, headers: new Headers(headers), json: async () => body });
   await new Promise(resolve => setImmediate(resolve));
   render();
 }
@@ -145,6 +159,23 @@ assert.doesNotMatch(content(), /supplier did not return/,
   'A saved API read must not claim that the supplier was queried');
 assert.equal(refreshes, 0);
 
+reset({ deadline: freshTime, liveDeadlineRefresh: true });
+toggle(true);
+await settle({ success: true, data: { updated: false, liveRefreshUnavailable: true, ticketingDeadlineAt: savedTime,
+  message: 'Live refresh is unavailable. Showing the saved time limit.' } });
+assert.match(content(), /2 Oct 2030, 14:15.*Live refresh is unavailable.*saved time limit/);
+assert.equal(requests.length, 1);
+assert.equal(refreshes, 0);
+
+reset({ liveDeadlineRefresh: true });
+toggle(true);
+await settle({ success: true, data: { updated: false, liveRefreshUnavailable: true, ticketingDeadlineAt: null,
+  message: 'Live refresh is unavailable. No ticketing time is saved for this booking.' } });
+assert.match(content(), /Ticketing time unavailable.*Live refresh is unavailable/);
+assert.doesNotMatch(content(), /Issue before/);
+assert.equal(requests.length, 1);
+assert.equal(refreshes, 0);
+
 reset();
 toggle(true); toggle(false); toggle(true);
 assert.equal(requests.length, 1, 'Fast repeated clicks must share the pending read');
@@ -153,14 +184,61 @@ await settle(success(true, freshTime));
 assert.equal(find(tree, 'Switch').props.checked, false, 'Completion must not reopen a hidden time');
 assert.doesNotMatch(content(), /Issue before/);
 
+const throttled = { success: false, error: { errorMessage: 'Please wait before refreshing again.' } };
 reset();
 toggle(true);
-await settle({ success: false, error: { errorMessage: 'Please wait before refreshing again.' } }, 429);
+await settle(throttled, 429, { 'Retry-After': '9' });
 assert.match(content(), /Please wait.*Turn off and on to retry/);
 assert.match(content(), /2 Oct 2030, 14:15/);
 assert.equal(requests.length, 1);
 assert.equal(refreshes, 0);
 assert.equal(busy.at(-1), false);
+assert.equal(find(tree, 'Switch').props.disabled, false, 'Saved and Triplover reads retain their behavior');
+
+reset({ liveDeadlineRefresh: true });
+toggle(true);
+assert.equal(find(tree, 'Switch').props.disabled, true);
+assert.match(content(), /Next check in\s+3\s+seconds/);
+advanceTime(3_000);
+assert.doesNotMatch(content(), /Next check in/);
+assert.equal(find(tree, 'Switch').props.disabled, true, 'The switch stays disabled while the request is in flight');
+toggle(false); toggle(true);
+assert.equal(requests.length, 1);
+await settle(success(false, savedTime));
+assert.equal(find(tree, 'Switch').props.disabled, false);
+
+reset({ liveDeadlineRefresh: true });
+toggle(true);
+await settle(success(false, savedTime));
+assert.equal(find(tree, 'Switch').props.disabled, true, 'A fast response still honors the minimum gap');
+advanceTime(1_000);
+assert.match(content(), /Next check in\s+2\s+seconds/);
+advanceTime(2_000);
+assert.equal(find(tree, 'Switch').props.disabled, false);
+assert.equal(requests.length, 1, 'The countdown must never replay a request');
+toggle(false); toggle(true);
+assert.equal(requests.length, 2, 'The user can start another check after the gap');
+await settle(success(false, savedTime));
+
+reset({ liveDeadlineRefresh: true });
+toggle(true);
+await settle(throttled, 429, { 'Retry-After': '7' });
+assert.match(content(), /Next check in\s+7\s+seconds/);
+assert.doesNotMatch(content(), /Turn off and on to retry/);
+advanceTime(3_000);
+assert.match(content(), /Next check in\s+4\s+seconds/);
+assert.equal(find(tree, 'Switch').props.disabled, true);
+advanceTime(4_000);
+assert.equal(find(tree, 'Switch').props.disabled, false);
+assert.equal(requests.length, 1, 'A retry response must never trigger an automatic request');
+
+reset({ liveDeadlineRefresh: true });
+toggle(true);
+await settle(throttled, 409, { 'Retry-After': new Date(now + 5_000).toUTCString() });
+assert.match(content(), /Next check in\s+5\s+seconds/);
+advanceTime(5_000);
+assert.equal(find(tree, 'Switch').props.disabled, false);
+assert.equal(requests.length, 1);
 
 reset({ disabled: true });
 assert.equal(find(tree, 'Switch').props.disabled, true);
@@ -175,7 +253,7 @@ assert.doesNotMatch(content(), /Invalid Date/);
 
 reset();
 toggle(true);
-[...timers.values()][0]();
+advanceTime(60_000);
 await new Promise(resolve => setImmediate(resolve));
 render();
 assert.match(content(), /refresh timed out.*Turn off and on to retry/);
@@ -193,4 +271,4 @@ assert.equal(timers.size, 0);
 assert.doesNotMatch(source, /setInterval/, 'The switch must never poll');
 assert.doesNotMatch(fs.readFileSync('components/flights/BookingActions.tsx', 'utf8'), /\/refresh-ticketing-time/,
   'Only the time-limit switch should own this supplier read');
-console.log('Deadline switch: user-only reads, hide/reveal, saved-time preservation, busy guards, timeout and cleanup passed.');
+console.log('Deadline switch: user-only reads, saved-time preservation, busy guards, Shapon cooldown, timeout and cleanup passed.');

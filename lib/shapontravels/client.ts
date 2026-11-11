@@ -60,8 +60,12 @@ export class ShapontravelsReadError extends Error {
 
 function credentials(): Credentials {
   const baseText = process.env.SHAPONTRAVELS_SEARCH_BASE_URL;
-  const clientId = process.env.SHAPONTRAVELS_CLIENT_ID?.trim() || process.env.CLIENT_ID?.trim();
-  const clientSecret = process.env.SHAPONTRAVELS_CLIENT_SECRET || process.env.CLIENT_SECRET;
+  let clientId = process.env.SHAPONTRAVELS_CLIENT_ID?.trim();
+  let clientSecret = process.env.SHAPONTRAVELS_CLIENT_SECRET;
+  if (!clientId || !clientSecret?.trim()) {
+    clientId = process.env.CLIENT_ID?.trim();
+    clientSecret = process.env.CLIENT_SECRET;
+  }
   if (!baseText || !clientId || !clientSecret?.trim()) {
     throw new ShapontravelsReadError('NOT_CONFIGURED');
   }
@@ -590,6 +594,7 @@ export async function shapontravelsReadBooking(
 export async function shapontravelsRefreshTicketingDeadline(bookingId: string): Promise<{
   httpStatus: number;
   retryAfter: string | null;
+  authorityDenied: boolean;
   body: unknown;
 }> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bookingId)) {
@@ -611,10 +616,15 @@ export async function shapontravelsRefreshTicketingDeadline(bookingId: string): 
   }
   if (response.status === 401 && cachedToken?.value === token.value) cachedToken = null;
   if (response.status !== 200) {
+    let authorityDenied = false;
+    if (response.status === 403) {
+      const code = await boundedJson(response, 8 * 1024).then(responseCode, () => null);
+      authorityDenied = code === 'FORBIDDEN' || code === 'DEADLINE_REFRESH_DISABLED' || code === 'SUPPLIER_SERVICING_DISABLED';
+    }
     await response.body?.cancel().catch(() => undefined);
-    return { httpStatus: response.status, retryAfter: response.headers.get('Retry-After'), body: null };
+    return { httpStatus: response.status, retryAfter: response.headers.get('Retry-After'), authorityDenied, body: null };
   }
-  return { httpStatus: 200, retryAfter: null, body: await boundedJson(response, 8 * 1024) };
+  return { httpStatus: 200, retryAfter: null, authorityDenied: false, body: await boundedJson(response, 8 * 1024) };
 }
 
 /** One physical Book request. An ambiguous result is never sent again. */

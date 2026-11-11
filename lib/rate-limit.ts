@@ -110,6 +110,8 @@ const MINUTE = 60 * 1000;
 export const LIMITS = {
   /** Explicit PNR deadline reads, shared by everyone viewing one booking. */
   refreshTicketingTime: { limit: 5, windowMs: MINUTE },
+  /** One live Shapon refresh per booking every 3 seconds also caps a rolling minute at 20 starts. */
+  shaponLiveDeadlineRefresh: { limit: 1, windowMs: 3_000 },
   /** Sends an email to an arbitrary address: the one outbound side effect. */
   inviteUser: { limit: 20, windowMs: HOUR },
   /** Mints an account outright. Same allowance as an invitation. */

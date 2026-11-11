@@ -432,6 +432,7 @@ function DocumentHeader({
   ticketed,
   ticketManagementReferences,
   allowTicketingTimeRefresh,
+  liveDeadlineRefresh,
   supplierActionBusy,
   onTicketingTimeRefreshChange,
 }: {
@@ -439,6 +440,7 @@ function DocumentHeader({
   ticketed: boolean;
   ticketManagementReferences: TicketManagementRequestReference[];
   allowTicketingTimeRefresh: boolean;
+  liveDeadlineRefresh: boolean;
   supplierActionBusy: boolean;
   onTicketingTimeRefreshChange: (refreshing: boolean) => void;
 }) {
@@ -621,6 +623,7 @@ function DocumentHeader({
               deadline={booking.ticketingDeadlineAt}
               bookingReference={booking.publicRef}
               allowRefresh={allowTicketingTimeRefresh}
+              liveDeadlineRefresh={liveDeadlineRefresh}
               disabled={supplierActionBusy}
               onRefreshingChange={onTicketingTimeRefreshChange}
             />
@@ -978,6 +981,7 @@ export default function BookingDetails({
   allowShaponStatusCheck = false,
   allowExternalTicketConfirmation = false,
   allowTicketingTimeRefresh = false,
+  liveDeadlineRefresh = false,
   autoRefreshDeadline = false,
   allowTicketing = true,
   supplierIssueUnavailable = false,
@@ -1005,6 +1009,7 @@ export default function BookingDetails({
   allowShaponStatusCheck?: boolean;
   allowExternalTicketConfirmation?: boolean;
   allowTicketingTimeRefresh?: boolean;
+  liveDeadlineRefresh?: boolean;
   autoRefreshDeadline?: boolean;
   allowTicketing?: boolean;
   supplierIssueUnavailable?: boolean;
@@ -1074,6 +1079,7 @@ export default function BookingDetails({
             ticketed={ticketed}
             ticketManagementReferences={ticketManagementReferences}
             allowTicketingTimeRefresh={allowTicketingTimeRefresh}
+            liveDeadlineRefresh={liveDeadlineRefresh}
             supplierActionBusy={supplierActionBusy}
             onTicketingTimeRefreshChange={setRefreshingTicketingTime}
           />

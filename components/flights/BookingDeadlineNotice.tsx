@@ -11,16 +11,27 @@ const deadlineFormatter = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Dhaka',
 });
 
+const SHAPON_REFRESH_GAP_MS = 3_000;
+
+function retryAfterTime(header: string | null, now: number): number | null {
+  const value = header?.trim();
+  if (!value) return null;
+  const until = /^\d+$/.test(value) ? now + Number(value) * 1_000 : Date.parse(value);
+  return Number.isSafeInteger(until) && until > now ? until : null;
+}
+
 export function BookingDeadlineNotice({
   deadline,
   bookingReference,
   allowRefresh = false,
+  liveDeadlineRefresh = false,
   disabled = false,
   onRefreshingChange,
 }: {
   deadline: string | null;
   bookingReference: string;
   allowRefresh?: boolean;
+  liveDeadlineRefresh?: boolean;
   disabled?: boolean;
   onRefreshingChange?: (refreshing: boolean) => void;
 }) {
@@ -30,12 +41,25 @@ export function BookingDeadlineNotice({
   const [refreshing, setRefreshing] = useState(false);
   const [displayedDeadline, setDisplayedDeadline] = useState(deadline);
   const [message, setMessage] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState({ until: 0, seconds: 0 });
   const pendingRequest = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const instant = displayedDeadline ? Date.parse(displayedDeadline) : Number.NaN;
   const hasDeadline = Number.isFinite(instant);
+  const switchDisabled = disabled || (liveDeadlineRefresh && (refreshing || cooldown.seconds > 0));
 
   useEffect(() => { setDisplayedDeadline(deadline); }, [deadline]);
+  useEffect(() => {
+    if (!liveDeadlineRefresh || cooldown.seconds === 0) return;
+    // Schedule the next whole-second display change and recompute from the
+    // deadline when the browser wakes a background tab.
+    const nextTick = cooldown.until - Date.now() - (cooldown.seconds - 1) * 1_000;
+    const timer = window.setTimeout(() => {
+      const now = Date.now();
+      setCooldown(current => ({ until: current.until, seconds: Math.max(0, Math.ceil((current.until - now) / 1_000)) }));
+    }, Math.max(0, nextTick));
+    return () => window.clearTimeout(timer);
+  }, [liveDeadlineRefresh, cooldown]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -45,15 +69,24 @@ export function BookingDeadlineNotice({
     };
   }, [onRefreshingChange]);
 
+  function waitUntil(next: number) {
+    const now = Date.now();
+    setCooldown(current => {
+      const until = Math.max(current.until, next);
+      return { until, seconds: Math.max(0, Math.ceil((until - now) / 1_000)) };
+    });
+  }
+
   // This function is called only by a user's OFF -> ON interaction. Mounting,
   // prop changes and router.refresh() must never trigger a supplier request.
   async function refreshTicketingTime() {
-    if (!allowRefresh || disabled || pendingRequest.current) return;
+    if (!allowRefresh || switchDisabled || pendingRequest.current) return;
     const controller = new AbortController();
     pendingRequest.current = controller;
     setRefreshing(true);
     onRefreshingChange?.(true);
     setMessage(null);
+    if (liveDeadlineRefresh) waitUntil(Date.now() + SHAPON_REFRESH_GAP_MS);
     const timeout = window.setTimeout(() => controller.abort(), 60_000);
     try {
       const response = await fetch('/api/flights/booking/refresh-ticketing-time', {
@@ -62,17 +95,30 @@ export function BookingDeadlineNotice({
         body: JSON.stringify({ bookingReference }),
         signal: controller.signal,
       });
+      if (liveDeadlineRefresh && mounted.current) {
+        const now = Date.now();
+        const until = retryAfterTime(response.headers.get('Retry-After'), now);
+        if (until !== null) waitUntil(until);
+        else if (response.status === 429) waitUntil(now + SHAPON_REFRESH_GAP_MS);
+      }
       const body = await response.json() as {
         success?: boolean;
-        data?: { updated?: boolean; ticketingDeadlineAt?: string | null; message?: string | null };
+        data?: { updated?: boolean; liveRefreshUnavailable?: boolean; ticketingDeadlineAt?: string | null; message?: string | null };
         error?: { errorMessage?: string };
       };
       if (!response.ok || !body.success) {
-        throw new Error(body.error?.errorMessage || 'The ticketing time could not be refreshed.');
+        const errorMessage = body.error?.errorMessage || 'The ticketing time could not be refreshed.';
+        if (liveDeadlineRefresh && response.status === 429 && mounted.current) {
+          setMessage(errorMessage);
+          return;
+        }
+        throw new Error(errorMessage);
       }
       if (!mounted.current) return;
       const refreshedDeadline = body.data?.ticketingDeadlineAt;
-      if ((refreshedDeadline === null && body.data?.updated === true) || (refreshedDeadline && Number.isFinite(Date.parse(refreshedDeadline)))) {
+      const hasSavedSnapshot = body.data?.liveRefreshUnavailable === true;
+      if ((refreshedDeadline === null && (body.data?.updated === true || hasSavedSnapshot)) ||
+          (refreshedDeadline && Number.isFinite(Date.parse(refreshedDeadline)))) {
         setDisplayedDeadline(refreshedDeadline);
       }
       setMessage(body.data?.message || (refreshedDeadline || body.data?.updated
@@ -114,8 +160,9 @@ export function BookingDeadlineNotice({
         <Switch
           id={switchId}
           checked={expanded}
-          disabled={disabled}
+          disabled={switchDisabled}
           onCheckedChange={(checked) => {
+            if (liveDeadlineRefresh && (switchDisabled || pendingRequest.current)) return;
             setExpanded(checked);
             if (checked) void refreshTicketingTime();
           }}
@@ -142,6 +189,11 @@ export function BookingDeadlineNotice({
             <p className="font-medium">Ticketing time unavailable.</p>
           )}
           {!refreshing && message && <p className="mt-1 opacity-80">{message}</p>}
+          {liveDeadlineRefresh && cooldown.seconds > 0 && (
+            <p role="timer" className="mt-1 opacity-80">
+              Next check in {cooldown.seconds} {cooldown.seconds === 1 ? 'second' : 'seconds'}.
+            </p>
+          )}
         </div>
       )}
     </div>

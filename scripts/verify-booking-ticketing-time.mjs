@@ -18,6 +18,7 @@ const readRow = async id => (await one('select to_jsonb(b) as row from flight_bo
 let bookingId, session, hidden, permitted, supplierReply, envelopeEchoes, onSupplierRead;
 let supplierCalls = [], patches = [], savedReads = [], savedReply;
 let deadlineRefreshes = [], deadlineReply, deadlineSaves = [];
+let enforceSharedLiveRate = false;
 const cache = new Map();
 class TriploverError extends Error {
   constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; }
@@ -61,7 +62,12 @@ const mocks = {
       ? null : booking;
   } },
   '@/lib/rate-limit': { checkActionLimit: async (name, key) => {
-    assert.equal(name, 'refreshTicketingTime'); assert.equal(key, bookingId);
+    assert.ok(['refreshTicketingTime', 'shaponLiveDeadlineRefresh'].includes(name));
+    assert.equal(key, bookingId);
+    if (enforceSharedLiveRate) {
+      assert.equal(name, 'shaponLiveDeadlineRefresh');
+      return load('lib/rate-limit.ts').checkActionLimit(name, key);
+    }
     return permitted ? { ok: true } : { ok: false, retryAfterSeconds: 10 };
   } },
   '@/lib/triplover/client': {
@@ -85,6 +91,11 @@ const mocks = {
     },
   },
   '@/lib/supabase/server': { supabaseAdmin: () => ({ rpc: async (name, args) => {
+    if (name === 'consume_security_rate_limit') {
+      const { rows } = await db.query('select * from public.consume_security_rate_limit($1,$2,$3)',
+        [args.p_key, args.p_limit, args.p_window_ms]);
+      return { data: rows, error: null };
+    }
     assert.equal(name, 'apply_shapon_booking_deadline');
     assert.equal(args.p_booking_id, bookingId);
     assert.equal(args.p_event_id, null);
@@ -208,6 +219,7 @@ async function reset() {
   session = { clerkId: 'deadline-admin', role: 'admin' }; hidden = false; permitted = true;
   supplierCalls = []; patches = []; onSupplierRead = null;
   deadlineRefreshes = []; deadlineSaves = [];
+  delete process.env.VERCEL_ENV;
   delete process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED;
   const booking = await readRow(bookingId);
   // Deliberately conflicting business facts must never overwrite local data.
@@ -406,6 +418,8 @@ try {
   }
 
   await makeShaponBooking(); await resetDeadlineRefresh();
+  process.env.VERCEL_ENV = 'production';
+  delete process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED;
   const beforeRefresh = await readRow(bookingId), relatedRefresh = await relatedData();
   const refresh = await request(), refreshBody = await refresh.json();
   assert.equal(refresh.status, 200, JSON.stringify(refreshBody));
@@ -416,6 +430,20 @@ try {
   assert.deepEqual(otherData(await readRow(bookingId)), otherData(beforeRefresh));
   assert.deepEqual(await relatedData(), relatedRefresh);
   assert.equal(deadlineRefreshes.length, 1); assert.equal(savedReads.length, 0); assert.equal(supplierCalls.length, 0);
+
+  for (const [environment, flag, live] of [
+    ['production', 'true', true], ['production', 'false', false],
+    ['preview', undefined, false], ['preview', 'true', true],
+    [undefined, undefined, false], [undefined, 'true', true],
+  ]) {
+    await resetDeadlineRefresh();
+    if (environment !== undefined) process.env.VERCEL_ENV = environment;
+    if (flag === undefined) delete process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED;
+    else process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED = flag;
+    assert.equal((await request()).status, 200);
+    assert.equal(savedReads.length, live ? 0 : 1);
+    assert.equal(deadlineRefreshes.length, live ? 1 : 0);
+  }
 
   // A nonverified read can still carry a newer already-saved stream revision.
   await resetDeadlineRefresh({ outcome: 'superseded', revision: 3, deadlineAt: '2030-10-18T20:10:00+06:00' });
@@ -467,8 +495,102 @@ try {
   assert.equal(leapSecond.status, 200, await leapSecond.text());
   assert.equal(deadlineSaves[0].p_deadline_at, deadlineReply.body.deadlineAt);
 
+  const denyRefresh = async () => {
+    await resetDeadlineRefresh();
+    delete process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED;
+    process.env.VERCEL_ENV = 'production';
+    session = { clerkId: 'deadline-owner', role: 'customer' };
+    deadlineReply = { httpStatus: 403, retryAfter: null, authorityDenied: true, body: null };
+  };
+
+  await denyRefresh();
+  const beforeDenial = await readRow(bookingId), relatedBeforeDenial = await relatedData();
+  const denied = await request();
+  assert.equal(denied.status, 200);
+  assert.deepEqual((await denied.json()).data, {
+    updated: false, liveRefreshUnavailable: true, ticketingDeadlineAt: beforeDenial.ticketing_deadline_at,
+    lastTicketingTime: beforeDenial.supplier_ticketing_time_limit,
+    message: 'Live refresh is unavailable. Showing the saved time limit.',
+  });
+  assert.equal(deadlineRefreshes.length, 1);
+  assert.equal(savedReads.length, 0);
+  assert.equal(deadlineSaves.length, 0);
+  assert.deepEqual(await readRow(bookingId), beforeDenial);
+  assert.deepEqual(await relatedData(), relatedBeforeDenial);
+
+  for (const [upstream, expected] of [[401, 502], [403, 403], [404, 404], [409, 409], [502, 502], [503, 503], [504, 504]]) {
+    await denyRefresh();
+    deadlineReply = { ...deadlineReply, httpStatus: upstream, authorityDenied: false };
+    assert.equal((await request()).status, expected);
+    assert.equal(deadlineRefreshes.length, 1);
+    assert.equal(savedReads.length, 0);
+    assert.equal(deadlineSaves.length, 0);
+  }
+
+  await denyRefresh();
+  onSupplierRead = () => { hidden = true; };
+  assert.equal((await request()).status, 404);
+  assert.equal(deadlineRefreshes.length, 1);
+  assert.equal(deadlineSaves.length, 0);
+
+  await denyRefresh();
+  onSupplierRead = async () => {
+    const applied = await one('select public.apply_shapon_booking_deadline(null,$1,$2,null,5,null,$3) as data',
+      [beforeDenial.booking_code_ref, beforeDenial.supplier_public_ref, randomUUID()]);
+    assert.equal(applied.data.result, 'updated');
+  };
+  const cleared = await request();
+  assert.equal(cleared.status, 200);
+  assert.deepEqual((await cleared.json()).data, {
+    updated: false, liveRefreshUnavailable: true, ticketingDeadlineAt: null, lastTicketingTime: null,
+    message: 'Live refresh is unavailable. No ticketing time is saved for this booking.',
+  });
+  assert.equal(deadlineRefreshes.length, 1);
+  assert.equal(savedReads.length, 0);
+  assert.equal(deadlineSaves.length, 0);
+  assert.equal((await readRow(bookingId)).ticketing_deadline_at, null);
+
+  // Exercise the existing production RPC with only its clock replaced in PGlite.
+  const { definition: rateLimitSql } = await one(
+    "select pg_get_functiondef('public.consume_security_rate_limit(text,integer,bigint)'::regprocedure) as definition");
+  assert.match(rateLimitSql, /clock_timestamp\(\)/);
+  await db.exec(rateLimitSql.replace('clock_timestamp()', "current_setting('test.deadline_rate_now')::timestamptz"));
+  const setRateTime = ms => one("select set_config('test.deadline_rate_now',$1,false)",
+    [new Date(Date.parse('2030-10-18T10:00:00Z') + ms).toISOString()]);
+  await denyRefresh();
+  enforceSharedLiveRate = true;
+  await setRateTime(0);
+  assert.equal((await request()).status, 200);
+  const tooSoon = await request();
+  assert.equal(tooSoon.status, 429);
+  assert.equal(tooSoon.headers.get('Retry-After'), '3');
+  assert.equal(deadlineRefreshes.length, 1);
+
+  session = { clerkId: 'deadline-admin', role: 'admin' };
+  await setRateTime(2_999);
+  const sharedCooldown = await request();
+  assert.equal(sharedCooldown.status, 429, 'Other authorized viewers share the booking budget');
+  assert.equal(sharedCooldown.headers.get('Retry-After'), '1');
+  assert.equal(deadlineRefreshes.length, 1);
+
+  for (let start = 1; start < 20; start += 1) {
+    await setRateTime(start * 3_000);
+    assert.equal((await request()).status, 200, 'Exactly three seconds between starts is allowed');
+  }
+  assert.equal(deadlineRefreshes.length, 20);
+  await setRateTime(59_999);
+  const rollingCeiling = await request();
+  assert.equal(rollingCeiling.status, 429);
+  assert.equal(rollingCeiling.headers.get('Retry-After'), '1');
+  assert.equal(deadlineRefreshes.length, 20, 'A rolling minute permits at most 20 supplier dispatches');
+  await setRateTime(60_000);
+  assert.equal((await request()).status, 200);
+  assert.equal(deadlineRefreshes.length, 21, 'The first start has aged out at exactly 60 seconds');
+  assert.equal(deadlineSaves.length, 0);
+  enforceSharedLiveRate = false;
+
   console.log('Saved API deadlines passed for every upstream supplier: scoped route, status refresh, canonical/null evidence, local authority, stale-write and financial isolation.');
-  console.log('Opted-in Shapon deadline refresh passed: owned one-shot POST, exact identity, canonical timestamps, revision ordering and cooldown.');
+  console.log('Shapon deadline refresh passed: flags, scoped saved deadline on denial, revision ordering, shared three-second and rolling-minute boundaries, Retry-After.');
   console.log('Manual PNR deadline refresh passed: full-row preservation, wallet/event isolation, local overrides, identity/date guards, stale-write rejection, scope, limits and all three suppliers.');
 } finally {
   await db.close();

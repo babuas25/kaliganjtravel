@@ -17,6 +17,7 @@ const one = async (sql, args = []) => (await db.query(sql, args)).rows[0];
 const readRow = async id => (await one('select to_jsonb(b) as row from flight_bookings b where id=$1', [id])).row;
 let bookingId, session, hidden, permitted, supplierReply, envelopeEchoes, onSupplierRead;
 let supplierCalls = [], patches = [], savedReads = [], savedReply;
+let deadlineRefreshes = [], deadlineReply, deadlineSaves = [];
 const cache = new Map();
 class TriploverError extends Error {
   constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; }
@@ -32,6 +33,11 @@ const mocks = {
     if (onSupplierRead) await onSupplierRead();
     if (savedReply instanceof Error) throw savedReply;
     return savedReply;
+  }, shapontravelsRefreshTicketingDeadline: async supplierBookingId => {
+    assert.equal(supplierBookingId, (await readRow(bookingId)).booking_code_ref);
+    deadlineRefreshes.push(supplierBookingId);
+    if (onSupplierRead) await onSupplierRead();
+    return deadlineReply;
   }, shapontravelsReadTicket: forbidden, shapontravelsReadCancellation: forbidden },
   '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async () =>
     ({ projectionUpdated: false, currentStatusStorage: 'not_recorded' }) },
@@ -78,7 +84,17 @@ const mocks = {
         receipt: { requestStartedAt: new Date().toISOString(), responseReceivedAt: new Date().toISOString(), httpStatus: 200, rawPayloadHash: hash('pnr-fixture') } };
     },
   },
-  '@/lib/supabase/server': { supabaseAdmin: () => ({ from: table => {
+  '@/lib/supabase/server': { supabaseAdmin: () => ({ rpc: async (name, args) => {
+    assert.equal(name, 'apply_shapon_booking_deadline');
+    assert.equal(args.p_booking_id, bookingId);
+    assert.equal(args.p_event_id, null);
+    deadlineSaves.push(args);
+    const { data } = await one('select public.apply_shapon_booking_deadline($1,$2,$3,$4,$5,$6,$7) as data', [
+      args.p_booking_id, args.p_supplier_booking_id, args.p_supplier_public_ref,
+      args.p_expected_updated_at, args.p_revision, args.p_deadline_at, args.p_event_id,
+    ]);
+    return { data, error: null };
+  }, from: table => {
     assert.equal(table, 'flight_bookings');
     let patch, columns, filters = [];
     const builder = {
@@ -159,6 +175,17 @@ async function resetShapon(iso = '2030-10-18T19:59:00+06:00') {
   } };
 }
 
+async function resetDeadlineRefresh(overrides = {}) {
+  await resetShapon();
+  process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED = 'true';
+  const b = await readRow(bookingId);
+  deadlineReply = { httpStatus: 200, retryAfter: null, body: {
+    bookingId: b.booking_code_ref, reference: b.supplier_public_ref, revision: 2,
+    deadlineAt: '2030-10-18T19:59:00.123456789+06:00', available: true, outcome: 'verified',
+    ...overrides,
+  } };
+}
+
 async function makeBooking(supplier = 'triplover') {
   const id = randomUUID(), key = `book:${id}`;
   const offer = { currency: 'BDT', pricing: { sellingPrice: 500 }, passengerCounts: { ADT: 1 },
@@ -180,6 +207,8 @@ async function makeBooking(supplier = 'triplover') {
 async function reset() {
   session = { clerkId: 'deadline-admin', role: 'admin' }; hidden = false; permitted = true;
   supplierCalls = []; patches = []; onSupplierRead = null;
+  deadlineRefreshes = []; deadlineSaves = [];
+  delete process.env.SHAPONTRAVELS_DEADLINE_REFRESH_ENABLED;
   const booking = await readRow(bookingId);
   // Deliberately conflicting business facts must never overwrite local data.
   supplierReply = { pnr: booking.pnr, uniqueTransID: booking.supplier_refs.uniqueTransId,
@@ -342,11 +371,11 @@ try {
     assert.doesNotMatch(await response.text(), /Private transport detail|foreign/);
   }
   await resetShapon(null);
+  const beforeUnknown = await readRow(bookingId);
   const clear = await (await request()).json();
-  assert.equal(clear.data.updated, true); assert.equal(clear.data.ticketingDeadlineAt, null);
-  assert.match(clear.data.message, /No ticketing time is saved by the supplier/);
-  assert.equal((await readRow(bookingId)).supplier_ticketing_deadline_at, null,
-    'An authoritative unknown clears stale supplier time, rather than reviving Book');
+  assert.equal(clear.data.updated, false);
+  assert.equal(clear.data.ticketingDeadlineAt, beforeUnknown.ticketing_deadline_at);
+  assert.deepEqual(await readRow(bookingId), beforeUnknown, 'Unversioned null is missing evidence, not a clear');
 
   const shaponOverride = await one(`insert into superadmin_booking_deadline_overrides(booking_id,request_key,effective_deadline_at,actor_user_id,actor_role)
     values($1,$2,'2030-11-01T12:00:00Z','deadline-superadmin','superadmin') returning id`, [bookingId, randomUUID()]);
@@ -375,7 +404,71 @@ try {
     await resetShapon(); session = { clerkId: 'deadline-owner', role, agencyCode: null };
     assert.equal((await request()).status, 200); assert.equal(savedReads.length, 1);
   }
+
+  await makeShaponBooking(); await resetDeadlineRefresh();
+  const beforeRefresh = await readRow(bookingId), relatedRefresh = await relatedData();
+  const refresh = await request(), refreshBody = await refresh.json();
+  assert.equal(refresh.status, 200, JSON.stringify(refreshBody));
+  assert.equal(refreshBody.data.updated, true);
+  assert.equal(deadlineSaves[0].p_revision, 2);
+  assert.equal(deadlineSaves[0].p_deadline_at, deadlineReply.body.deadlineAt);
+  assert.equal((await readRow(bookingId)).supplier_ticketing_time_limit, deadlineReply.body.deadlineAt);
+  assert.deepEqual(otherData(await readRow(bookingId)), otherData(beforeRefresh));
+  assert.deepEqual(await relatedData(), relatedRefresh);
+  assert.equal(deadlineRefreshes.length, 1); assert.equal(savedReads.length, 0); assert.equal(supplierCalls.length, 0);
+
+  // A nonverified read can still carry a newer already-saved stream revision.
+  await resetDeadlineRefresh({ outcome: 'superseded', revision: 3, deadlineAt: '2030-10-18T20:10:00+06:00' });
+  const newer = await (await request()).json();
+  assert.equal(newer.data.updated, true);
+  assert.equal(deadlineSaves[0].p_revision, 3);
+  assert.match(newer.data.message, /newer check/);
+  const savedNewer = await readRow(bookingId);
+
+  await resetDeadlineRefresh({ outcome: 'no_verified_update', revision: null, deadlineAt: null, available: false });
+  const noResult = await (await request()).json();
+  assert.equal(noResult.data.updated, false);
+  assert.equal(noResult.data.ticketingDeadlineAt, savedNewer.ticketing_deadline_at);
+  assert.equal(deadlineSaves.length, 0); assert.equal(deadlineRefreshes.length, 1);
+  assert.deepEqual(await readRow(bookingId), savedNewer);
+
+  await resetShapon('2030-10-18T21:10:00+06:00');
+  assert.equal((await (await request()).json()).data.updated, false);
+  assert.equal(savedReads.length, 1); assert.equal(deadlineRefreshes.length, 0);
+  assert.deepEqual(await readRow(bookingId), savedNewer, 'A legacy GET cannot replace a versioned deadline');
+  await resetShapon(null);
+  assert.equal((await (await request(undefined, statusRoute)).json()).data.ticketingTimeUpdated, false);
+  assert.deepEqual(await readRow(bookingId), savedNewer, 'A legacy status read cannot clear a versioned deadline');
+
+  for (const [overrides, status] of [
+    [{ bookingId: randomUUID() }, 502], [{ reference: 'STRFOREIGN123456' }, 502],
+    [{ revision: -1 }, 502], [{ deadlineAt: '2030-02-30T19:59:00+06:00' }, 502],
+    [{ deadlineAt: '2030-10-18T19:59:00Z' }, 502], [{ available: false }, 502],
+  ]) {
+    await resetDeadlineRefresh(overrides);
+    assert.equal((await request()).status, status);
+    assert.equal(deadlineRefreshes.length, 1); assert.equal(deadlineSaves.length, 0);
+    assert.deepEqual(await readRow(bookingId), savedNewer);
+  }
+  await resetDeadlineRefresh();
+  deadlineReply = { httpStatus: 429, retryAfter: '60', body: null };
+  const cooldown = await request();
+  assert.equal(cooldown.status, 429); assert.equal(cooldown.headers.get('Retry-After'), '60');
+  assert.equal(deadlineRefreshes.length, 1); assert.equal(deadlineSaves.length, 0);
+  await resetDeadlineRefresh(); permitted = false;
+  const localCooldown = await request();
+  assert.equal(localCooldown.status, 429); assert.equal(localCooldown.headers.get('Retry-After'), '10');
+  assert.equal(deadlineRefreshes.length, 0); assert.equal(deadlineSaves.length, 0);
+  await resetDeadlineRefresh(); session = { clerkId: 'another-owner', role: 'customer' };
+  assert.equal((await request()).status, 404); assert.equal(deadlineRefreshes.length, 0);
+
+  await resetDeadlineRefresh({ revision: 4, deadlineAt: '2030-10-18T20:10:60.123456789+06:00' });
+  const leapSecond = await request();
+  assert.equal(leapSecond.status, 200, await leapSecond.text());
+  assert.equal(deadlineSaves[0].p_deadline_at, deadlineReply.body.deadlineAt);
+
   console.log('Saved API deadlines passed for every upstream supplier: scoped route, status refresh, canonical/null evidence, local authority, stale-write and financial isolation.');
+  console.log('Opted-in Shapon deadline refresh passed: owned one-shot POST, exact identity, canonical timestamps, revision ordering and cooldown.');
   console.log('Manual PNR deadline refresh passed: full-row preservation, wallet/event isolation, local overrides, identity/date guards, stale-write rejection, scope, limits and all three suppliers.');
 } finally {
   await db.close();

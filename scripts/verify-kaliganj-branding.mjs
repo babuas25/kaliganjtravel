@@ -24,6 +24,8 @@ const integrationFiles = new Set([
   'app/api/flights/booking/shapon-status/route.ts',
   'components/flights/BookingActions.tsx',
   'components/flights/BookingDetails.tsx',
+  'app/api/webhooks/shapon-ticketing-deadline/route.ts',
+  'lib/db/booking-ticketing-time.ts',
   'lib/db/flight-bookings.ts',
   'lib/db/shapontravels-cancellation.ts',
   'lib/email/booking-event-snapshot.ts',
@@ -32,6 +34,7 @@ const integrationFiles = new Set([
   'lib/sms/booking-issued-snapshot.ts',
 ]);
 const integrationNames = new Set([
+  'apply_shapon_booking_deadline', 'SHAPON_DEADLINE_EVENT_CONFLICT', 'SHAPON_DEADLINE_REVISION_CONFLICT',
   'shaponBooking', 'shaponPlatformCancellation', 'ShaponPlatformCancellation', 'ShaponSavedCancellation',
   'advanceShaponCancellationRetry', 'finalizeShaponPlatformCancellation', 'readShaponCancellationPublicRef',
   'readShaponCancellationState', 'isShaponPreClosureRefusal', 'retryShaponCancellation',

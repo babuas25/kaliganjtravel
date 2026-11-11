@@ -586,6 +586,37 @@ export async function shapontravelsReadBooking(
   throw new ShapontravelsReadError('AUTH_FAILED');
 }
 
+/** One explicit supplier deadline check. An uncertain POST is never repeated. */
+export async function shapontravelsRefreshTicketingDeadline(bookingId: string): Promise<{
+  httpStatus: number;
+  retryAfter: string | null;
+  body: unknown;
+}> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bookingId)) {
+    throw new ShapontravelsReadError('INVALID_BOOKING_LOOKUP');
+  }
+  const config = credentials();
+  const token = await accessToken(config);
+  let response: Response;
+  try {
+    response = await fetch(new URL(`api/bookings/${bookingId}/ticketing-deadline/refresh`, config.base), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token.value}`, accept: 'application/json' },
+      cache: 'no-store',
+      redirect: 'error',
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    throw new ShapontravelsReadError('DEADLINE_REFRESH_NETWORK');
+  }
+  if (response.status === 401 && cachedToken?.value === token.value) cachedToken = null;
+  if (response.status !== 200) {
+    await response.body?.cancel().catch(() => undefined);
+    return { httpStatus: response.status, retryAfter: response.headers.get('Retry-After'), body: null };
+  }
+  return { httpStatus: 200, retryAfter: null, body: await boundedJson(response, 8 * 1024) };
+}
+
 /** One physical Book request. An ambiguous result is never sent again. */
 export async function shapontravelsBookRequest(
   payload: unknown,

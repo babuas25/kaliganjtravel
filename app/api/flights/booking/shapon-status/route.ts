@@ -104,7 +104,8 @@ export async function POST(request: Request) {
         'Supplier details did not verify against this booking. Staff reconciliation is required.');
     }
     const deadline = shapontravelsTicketingTime(read, expected);
-    const savedDeadline = deadline ? await saveShapontravelsTicketingTime(booking, deadline) : null;
+    const savedDeadline = deadline
+      ? await saveShapontravelsTicketingTime(booking, supplierPublicRef, deadline.ticketingDeadlineAt) : null;
     const bookingUpdatedAt = savedDeadline?.updated ? savedDeadline.updatedAt : booking.updated_at;
     const currentStatus = status.currentStatus?.status;
     const locatorStatusMatches = (currentStatus === 'confirmed' && booking.status === 'confirmed') ||

@@ -97,6 +97,94 @@ async function makeProtectedHold(kind = 'ticketing') {
     identity };
 }
 
+async function verifyDeadlineRevisions(held, inProgress, cancelled) {
+  const read = () => one(`select to_jsonb(b) - array['ticketing_time_limit','ticketing_deadline_at',
+    'deadline_source','supplier_ticketing_time_limit','supplier_ticketing_deadline_at',
+    'supplier_deadline_source','updated_at'] as protected_fields,
+    b.ticketing_deadline_at,b.supplier_ticketing_deadline_at,b.updated_at::text as expected
+    from flight_bookings b where id=$1`, [held.booking.id]);
+  async function apply(record, { revision = null, deadline = null, eventId = null,
+    expected = null, supplierBooking = record.identity.bookingCodeRef,
+    supplierRef = record.identity.supplierPublicRef } = {}) {
+    await db.exec('set role service_role');
+    try {
+      return await rpc('select apply_shapon_booking_deadline($1,$2,$3,$4,$5,$6,$7) as result',
+        [eventId === null ? record.booking.id : null, supplierBooking, supplierRef,
+          expected, revision, deadline, eventId]);
+    } finally {
+      await db.exec('reset role');
+    }
+  }
+  const saved = '2029-06-01T08:10:11Z';
+  assert.equal((await apply(held, { expected: (await read()).expected, deadline: saved })).result, 'updated');
+  assert.equal((await apply(held, { expected: (await read()).expected })).lastTicketingTime, saved,
+    'An unversioned null cannot clear a verified saved deadline');
+  assert.equal((await apply(held, { expected: '2000-01-01T00:00:00Z', deadline: saved })).result, 'changed');
+
+  const local = await one(`insert into superadmin_booking_deadline_overrides
+    (booking_id,request_key,effective_deadline_at,actor_user_id,actor_role)
+    values($1,$2,'2030-01-01T05:00:00Z','synthetic-deadline-admin','superadmin')
+    returning id,effective_deadline_at`, [held.booking.id, 'synthetic-deadline-override']);
+  await db.query('update flight_bookings set active_superadmin_deadline_override_id=$2 where id=$1',
+    [held.booking.id, local.id]);
+  const protectedFields = (await read()).protected_fields;
+  const before = await snapshot();
+
+  const newer = { revision: 3, deadline: '2029-06-30T23:59:60+06:00', eventId: randomUUID() };
+  const applied = await apply(held, newer);
+  assert.equal(applied.result, 'updated');
+  assert.equal(applied.revision, 3);
+  assert.equal(applied.lastTicketingTime, newer.deadline);
+  assert.equal((await read()).supplier_ticketing_deadline_at.toISOString(), '2029-06-30T18:00:00.000Z');
+  assert.equal(new Date(applied.ticketingDeadlineAt).toISOString(), local.effective_deadline_at.toISOString());
+  assert.equal((await apply(held, newer)).result, 'duplicate');
+  assert.equal((await apply(held, { ...newer, eventId: randomUUID(), revision: 2 })).result, 'stale');
+  assert.equal((await apply(held, { expected: (await read()).expected, deadline: saved })).result, 'stale');
+  assert.equal((await apply(held, { expected: (await read()).expected })).result, 'stale');
+  assert.equal((await apply(held, { ...newer, eventId: randomUUID(), supplierRef: 'STRNOTMAPPED' })).result, 'missing');
+  await assert.rejects(apply(held, { ...newer, eventId: randomUUID(), supplierBooking: randomUUID() }),
+    error => error.code === '22023' && error.message === 'SHAPON_DEADLINE_IDENTITY_MISMATCH');
+  await assert.rejects(apply(held, { ...newer, deadline: '2029-07-01T01:00:00+06:00' }),
+    error => error.code === '22023' && error.message === 'SHAPON_DEADLINE_EVENT_CONFLICT');
+  await assert.rejects(apply(held, { ...newer, supplierRef: 'STRNOTMAPPED' }),
+    error => error.code === '22023' && error.message === 'SHAPON_DEADLINE_EVENT_CONFLICT');
+  await assert.rejects(apply(held, { ...newer, eventId: randomUUID(), deadline: '2029-07-01T01:00:00+06:00' }),
+    error => error.code === '22023' && error.message === 'SHAPON_DEADLINE_REVISION_CONFLICT');
+  await assert.rejects(apply(held, { ...newer, eventId: randomUUID(), revision: 4, deadline: '2029-02-29T01:00:00+06:00' }),
+    error => error.code === '22023' && error.message === 'SHAPON_DEADLINE_INPUT_INVALID');
+
+  const deferred = { ...newer, eventId: randomUUID() };
+  assert.equal((await apply(inProgress, deferred)).result, 'deferred');
+  assert.equal((await one('select count(*)::int as n from shapon_booking_deadline_event_receipts where event_id=$1',
+    [deferred.eventId])).n, 0, 'An in-flight booking can receive the event later');
+  const terminal = { ...newer, eventId: randomUUID() };
+  assert.equal((await apply(cancelled, terminal)).result, 'ignored');
+  assert.equal((await apply(cancelled, terminal)).result, 'duplicate');
+
+  const clear = await apply(held, { expected: (await read()).expected, revision: 4 });
+  assert.equal(clear.result, 'updated');
+  assert.equal(clear.lastTicketingTime, null);
+  assert.equal(clear.revision, 4);
+  const final = await read();
+  assert.equal(final.supplier_ticketing_deadline_at, null);
+  assert.equal(final.ticketing_deadline_at.toISOString(), local.effective_deadline_at.toISOString());
+  assert.deepEqual(final.protected_fields, protectedFields);
+  const after = await snapshot();
+  for (const table of Object.keys(before)) {
+    if (['flight_bookings', 'shapon_booking_deadline_versions', 'shapon_booking_deadline_event_receipts'].includes(table)) continue;
+    assert.equal(after[table], before[table], `Deadline RPC preserves all ${table} rows`);
+  }
+  for (const role of ['anon', 'authenticated', 'service_role']) {
+    for (const table of ['shapon_booking_deadline_versions', 'shapon_booking_deadline_event_receipts']) {
+      assert.equal((await one("select has_table_privilege($1,$2,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as allowed",
+        [role, table])).allowed, false, `${role} receives no direct access to ${table}`);
+    }
+  }
+  await assert.rejects(db.query('delete from shapon_booking_deadline_event_receipts where event_id=$1', [newer.eventId]),
+    error => error.code === '55000');
+  await assert.rejects(db.exec('truncate table shapon_booking_deadline_event_receipts'), error => error.code === '55000');
+}
+
 try {
   await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
     create schema auth;create schema storage;create schema extensions;create extension pgcrypto with schema extensions;`);
@@ -173,6 +261,7 @@ try {
   assert.equal((await locatorState()).shapon_unverified_airline_pnr, null);
   assert.equal((await locatorState()).airline_pnr, 'ABC123', 'A matching explicit airline locator may equal the reservation');
   const serviceRpcs = [
+    'apply_shapon_booking_deadline(uuid,text,text,timestamptz,bigint,text,uuid)',
     'resolve_shapon_cancelled_refresh_v1(uuid,text,text,uuid,jsonb,jsonb,timestamptz)',
     'preview_shapon_ticket_payment_v1(uuid,text,text)',
     'preview_booking_payment_return_v1(uuid,text,text)',
@@ -227,6 +316,7 @@ try {
   assert.equal((await one('select count(*)::int as n from booking_notification_outbox where lifecycle_event_id=$1', [event.id])).n, 1);
   assert.equal((await cancel()).replay, true);
   assert.deepEqual(await snapshot(), afterCancel, 'Exact cancelled recovery replay changes no state or money');
+  await verifyDeadlineRevisions(legacyLocator, target, cancelled);
   // Execute the exact new read-only hosted catalog query against this same
   // synthetic schema so rollout verification cannot silently diverge.
   await db.exec('create schema supabase_migrations;create table supabase_migrations.schema_migrations(version text primary key);');

@@ -306,6 +306,45 @@ async function savedBookingLookupOnlyReads() {
   assert.equal(requests.length, 3);
 }
 
+async function explicitDeadlineRefreshUsesOneEmptyPost() {
+  const bookingId = 'fa20f550-80b3-4adb-bd0b-4772eadf2c43';
+  let loginCount = 0, refreshCount = 0;
+  let status = 429;
+  const client = createClient(async (url, init) => {
+    if (url.pathname === '/auth/token') {
+      loginCount += 1;
+      return json({ access_token: 'stm_deadline_fixture', token_type: 'Bearer', expires_in: 1800 });
+    }
+    assert.equal(url.pathname, `/api/bookings/${bookingId}/ticketing-deadline/refresh`);
+    assert.equal(url.search, '');
+    assert.equal(init.method, 'POST');
+    assert.equal(init.body, undefined);
+    assert.equal(init.headers.authorization, 'Bearer stm_deadline_fixture');
+    refreshCount += 1;
+    if (status === 504) throw new Error('private fixture network error');
+    return new Response(JSON.stringify({ bookingId }), { status, headers: { 'Retry-After': '60' } });
+  });
+  await assert.rejects(client.shapontravelsRefreshTicketingDeadline('invalid'),
+    error => error.code === 'INVALID_BOOKING_LOOKUP');
+  assert.equal(loginCount, 0);
+  const cooldown = await client.shapontravelsRefreshTicketingDeadline(bookingId);
+  assert.equal(cooldown.httpStatus, 429);
+  assert.equal(cooldown.retryAfter, '60');
+  assert.equal(cooldown.body, null);
+  status = 401;
+  assert.equal((await client.shapontravelsRefreshTicketingDeadline(bookingId)).httpStatus, 401);
+  assert.equal(loginCount, 1, 'A 401 invalidates the cached token without replaying the POST');
+  assert.equal(refreshCount, 2);
+  status = 504;
+  await assert.rejects(client.shapontravelsRefreshTicketingDeadline(bookingId),
+    error => error.code === 'DEADLINE_REFRESH_NETWORK' && !error.message.includes('private fixture'));
+  assert.equal(loginCount, 2);
+  assert.equal(refreshCount, 3, 'The next explicit action renews the token but never retries a transport failure');
+  status = 200;
+  assert.equal((await client.shapontravelsRefreshTicketingDeadline(bookingId)).body.bookingId, bookingId);
+  assert.equal(refreshCount, 4);
+}
+
 async function bookMapperRequiresTheAcceptedHold() {
   const bookSource = 'lib/shapontravels/book.ts';
   const transpiled = ts.transpileModule(fs.readFileSync(bookSource, 'utf8'), {
@@ -397,5 +436,6 @@ await bookTransportFailureIsUncertain();
 await issueRetainsPrivatePendingReceipt();
 await bookCapturesStableReferenceHeader();
 await savedBookingLookupOnlyReads();
+await explicitDeadlineRefreshUsesOneEmptyPost();
 await bookMapperRequiresTheAcceptedHold();
 console.log('Shapontravels read and hold client verification passed');

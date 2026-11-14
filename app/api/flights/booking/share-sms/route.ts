@@ -12,6 +12,7 @@ import {
 } from '@/lib/db/booking-manual-sms';
 import { readBookingByPublicRef, type BookingRow } from '@/lib/db/flight-bookings';
 import { recordSecurityAuditEvent, securitySubjectHash } from '@/lib/db/security';
+import { readShaponDisplayLocators, supportsShaponDisplayLocators } from '@/lib/db/shapon-display-locators';
 import { checkActionLimit, rateLimitMessage } from '@/lib/rate-limit';
 import { bookingIssuedSmsMessage } from '@/lib/sms/booking-issued-message';
 import { bookingIssuedSmsSnapshotFromBooking } from '@/lib/sms/booking-issued-snapshot';
@@ -66,11 +67,14 @@ async function authorisedBooking(
   return booking;
 }
 
-function previewData(
+async function previewData(
   booking: BookingRow,
   status: Awaited<ReturnType<typeof readBookingManualSmsStatus>>
 ) {
-  const snapshot = bookingIssuedSmsSnapshotFromBooking(booking);
+  const display = supportsShaponDisplayLocators(booking)
+    ? (await readShaponDisplayLocators([booking.id])).get(booking.id)
+    : undefined;
+  const snapshot = bookingIssuedSmsSnapshotFromBooking(booking, display?.airlinePnrs);
   return {
     message: bookingIssuedSmsMessage(snapshot),
     recipientNumber: status.recipientNumber,
@@ -127,7 +131,7 @@ export async function GET(request: Request) {
   if (booking instanceof Response) return booking;
   try {
     const status = await readBookingManualSmsStatus(booking.id);
-    return walletOk(previewData(booking, status));
+    return walletOk(await previewData(booking, status));
   } catch (error) {
     return smsErrorResponse(error);
   }

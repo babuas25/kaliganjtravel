@@ -34,6 +34,11 @@ const check = {
 const text = value => [value.headline, ...value.details].join('\n');
 let cases = 0;
 
+const savedDetails = format({ savedDetailsAvailable: true, projectionUpdated: true });
+assert.equal(savedDetails.headline, 'Shapon saved booking details loaded.');
+assert.equal(savedDetails.details.length, 0);
+cases++;
+
 // Use the normalized seven-status contract, never the immutable Created receipt.
 for (const [status, label] of [
   ['cancelled', 'Cancelled'], ['confirmed', 'Confirmed'], ['on-hold', 'On Hold'],

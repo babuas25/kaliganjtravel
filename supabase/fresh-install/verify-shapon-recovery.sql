@@ -30,12 +30,23 @@ select jsonb_build_object(
   'return_accounting_private',not has_function_privilege('service_role','public.booking_payment_return_accounting_v1(uuid)','EXECUTE')
     and not has_function_privilege('anon','public.booking_payment_return_accounting_v1(uuid)','EXECUTE')
     and not has_function_privilege('authenticated','public.booking_payment_return_accounting_v1(uuid)','EXECUTE'),
+  'supplier_payable_projection',position('shapon_booking_supplier_payable_observations' in
+    pg_get_viewdef('public.booking_dashboard_list_v'::regclass,true))>0
+    and position('locator.display_pnr' in pg_get_viewdef('public.booking_dashboard_list_v'::regclass,true))>0
+    and position('locator.airline_pnr' in pg_get_viewdef('public.booking_dashboard_list_v'::regclass,true))>0
+    and exists(select 1 from pg_attribute where attrelid='public.booking_dashboard_creator_v'::regclass
+      and attname='shapon_display_pnr' and atttypid='text'::regtype and attnum>0 and not attisdropped)
+    and has_table_privilege('service_role','public.shapon_booking_supplier_payable_observations','SELECT')
+    and not has_table_privilege('service_role','public.shapon_booking_supplier_payable_observations','INSERT,UPDATE,DELETE,TRUNCATE')
+    and not has_table_privilege('anon','public.shapon_booking_supplier_payable_observations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+    and not has_table_privilege('authenticated','public.shapon_booking_supplier_payable_observations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE'),
   'service_rpc_only',(select bool_and(has_function_privilege('service_role',signature,'EXECUTE')
       and not has_function_privilege('anon',signature,'EXECUTE')
       and not has_function_privilege('authenticated',signature,'EXECUTE')) from unnest(array[
     'public.resolve_shapon_cancelled_refresh_v1(uuid,text,text,uuid,jsonb,jsonb,timestamptz)',
     'public.preview_shapon_ticket_payment_v1(uuid,text,text)',
     'public.preview_booking_payment_return_v1(uuid,text,text)',
+    'public.record_shapon_booking_supplier_payable_v1(uuid,timestamptz,text,jsonb,bigint,bigint,text,text,jsonb)',
     'public.return_booking_payment_v1(uuid,text,text,uuid,uuid,bigint,bigint,bigint,bigint,boolean,text)']) signature),
   'triplover_preserved',to_regprocedure('public.confirm_triplover_issued_hold_v1(uuid,text,text,uuid,text,text,boolean)') is not null
     and exists(select 1 from pg_trigger where tgrelid='public.booking_operations'::regclass

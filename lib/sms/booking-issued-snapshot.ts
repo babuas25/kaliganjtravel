@@ -19,11 +19,14 @@ function leadPassengerName(value: unknown): string {
 
 /** Current confirmed-booking values used by the manual SMS preview and send. */
 export function bookingIssuedSmsSnapshotFromBooking(
-  booking: BookingRow
+  booking: BookingRow,
+  displayAirlinePnrs?: string[],
 ): Record<string, unknown> {
   const locators = validAirlinePnrs(booking.airlines_pnr);
   const unverified = booking.shapon_unverified_airline_pnr?.trim().toUpperCase();
-  const pnr = locators.length === 1 && locators[0].toUpperCase() === unverified ? null : locators[0];
+  const originalPnr = locators.length === 1 && locators[0].toUpperCase() === unverified
+    ? null : locators[0];
+  const pnr = displayAirlinePnrs ? displayAirlinePnrs[0] : originalPnr;
   return {
     version: 1,
     bookingReference: booking.public_ref,

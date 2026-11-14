@@ -32,7 +32,7 @@ if (process.argv.includes('--current')) {
   assert.deepEqual(verification.migration_versions, migrationNames.map(name => name.split('_')[0]));
   for (const key of ['saved_sync_recorder','saved_sync_projection','original_status_nullable',
     'saved_source_date','mandatory_payment','return_decisions_immutable','return_table_private',
-    'return_accounting_private','service_rpc_only','triplover_preserved','ktt_reference_preserved']) {
+    'return_accounting_private','supplier_payable_projection','service_rpc_only','triplover_preserved','ktt_reference_preserved']) {
     assert.equal(verification[key], true, `${key} must match the reviewed current schema`);
   }
   console.log(JSON.stringify({ status: 'passed', mode: 'current', projectRef: expectedProjectRef,

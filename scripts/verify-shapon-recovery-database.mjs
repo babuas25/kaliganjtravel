@@ -50,8 +50,8 @@ async function viewColumns() {
     where n.nspname='public' and c.relkind='v' and a.attnum>0 and not a.attisdropped
     group by c.oid order by c.relname`)).rows;
 }
-async function makeProtectedHold(kind = 'ticketing') {
-  const actor = `fullchain-synthetic-${kind}-owner`;
+async function makeProtectedHold(kind = 'ticketing', label = kind) {
+  const actor = `fullchain-synthetic-${label}-owner`;
   await db.query("insert into app_users(clerk_id,role) values($1,'customer')", [actor]);
   const account = await one("select(wallet_ensure_account('user',$1,'BDT')).*", [actor]);
   await db.query('update wallet_accounts set available_balance=1000000 where id=$1', [account.id]);
@@ -185,6 +185,170 @@ async function verifyDeadlineRevisions(held, inProgress, cancelled) {
   await assert.rejects(db.exec('truncate table shapon_booking_deadline_event_receipts'), error => error.code === '55000');
 }
 
+async function verifySupplierPayable(held, paid, cancelled) {
+  const table = 'shapon_booking_supplier_payable_observations';
+  const signature = 'record_shapon_booking_supplier_payable_v1(uuid,timestamptz,text,jsonb,bigint,bigint,text,text,jsonb)';
+  const started = Date.now() + 2_000;
+  const observe = ({ target = held, identity = target.identity, at = started,
+    reference = target.identity.supplierPublicRef, amount = 42575, discount = -2425, currency = 'BDT',
+    pnr = null, airlinePnrs = null } = {}) =>
+    rpc('select record_shapon_booking_supplier_payable_v1($1,$2,$3,$4,$5,$6,$7,$8,$9) as result',
+      [target.booking.id, new Date(at).toISOString(), reference, JSON.stringify(identity), amount, discount,
+        currency, pnr, airlinePnrs == null ? null : JSON.stringify(airlinePnrs)]);
+  const amounts = target => one('select fare,gross,supplier_payable,profit from booking_dashboard_creator_v where id=$1',
+    [target.booking.id]);
+  const locators = target => one(`select public_ref,supplier_reference,pnr,airline_pnr,search_text,shapon_display_pnr
+    from booking_dashboard_creator_v where id=$1`,
+    [target.booking.id]);
+  const matchesLocator = value => one(`select search_text ilike '%' || $2 || '%' as matches
+    from booking_dashboard_creator_v where id=$1`, [held.booking.id, value]).then(row => row.matches);
+  // Clone one existing synthetic record as a legacy supplier-family fixture.
+  // Its own identifiers must stay distinct from the Shapon booking.
+  const otherId = randomUUID();
+  const otherAttempt = randomUUID();
+  await db.query(`insert into booking_attempts select row.* from booking_attempts a
+    cross join lateral jsonb_populate_record(null::booking_attempts,to_jsonb(a)||jsonb_build_object(
+      'id',$2::uuid,'access_token_hash',$3::text,'supplier','triplover','supplier_account','firsttrip',
+      'operation_request_key',$4::text,'unique_trans_id','FST999999999999999999',
+      'booking_code_ref','legacy-test-ref')) row where a.id=$1`,
+  [held.booking.attempt_id, otherAttempt, hash(otherAttempt), `synthetic-book:${otherAttempt}`]);
+  await db.query(`insert into flight_bookings select row.* from flight_bookings b
+    cross join lateral jsonb_populate_record(null::flight_bookings,to_jsonb(b)||jsonb_build_object(
+      'id',$2::uuid,'attempt_id',$3::uuid,'supplier','triplover','supplier_account','firsttrip',
+      'supplier_public_ref',null,'public_ref','KTT99999999999999',
+      'booking_code_ref','legacy-test-ref','booking_ref_number','legacy-test-pnr',
+      'deadline_source',null,'ticketing_deadline_at',null,'ticketing_time_limit',null,
+      'active_superadmin_deadline_override_id',null,
+      'supplier_refs','{"uniqueTransId":"FST999999999999999999"}'::jsonb)) row where b.id=$1`,
+  [held.booking.id, otherId, otherAttempt]);
+  const otherSupplier = { booking: { id: otherId }, identity: held.identity };
+  await db.query(`update flight_bookings set airlines_pnr='["SYNOLD1"]' where id=$1`, [held.booking.id]);
+  const baseline = await snapshot();
+  const fallback = { fare: '500.25', gross: '600', supplier_payable: '450', profit: '50.25' };
+  const heldBefore = await amounts(held);
+  const cancelledBefore = await amounts(cancelled);
+  const heldLocators = await locators(held);
+  const otherLocators = await locators(otherSupplier);
+  assert.equal(heldLocators.shapon_display_pnr, null);
+  assert.equal(heldLocators.airline_pnr, 'SYNOLD1');
+  assert.equal(await matchesLocator(heldLocators.pnr), true);
+  assert.equal(await matchesLocator(heldLocators.airline_pnr), true);
+  assert.deepEqual(await amounts(otherSupplier), fallback);
+  assert.deepEqual(heldBefore, fallback);
+  assert.equal((await observe({ target: cancelled })).code, 'SUPPLIER_PAYABLE_BOOKING_CANCELLED_OR_CANCELLING');
+
+  for (const role of ['anon', 'authenticated', 'service_role']) {
+    assert.equal((await one("select has_function_privilege($1,$2,'EXECUTE') allowed", [role, signature])).allowed,
+      role === 'service_role');
+    assert.equal((await one("select has_table_privilege($1,$2,'SELECT') allowed", [role, table])).allowed,
+      role === 'service_role');
+    assert.equal((await one("select has_table_privilege($1,$2,'INSERT,UPDATE,DELETE,TRUNCATE') allowed",
+      [role, table])).allowed, false);
+  }
+  for (const invalid of [
+    { at: started + 360_000 }, { at: started - 360_000 }, { currency: 'USD' },
+    { amount: 0 }, { amount: 9007199254740991 }, { discount: 0 }, { discount: 1 },
+    { amount: null }, { discount: null }, { amount: null, discount: null },
+    { pnr: 'NEW-123' }, { airlinePnrs: ['AIR123'] },
+    { pnr: 'IN VAL ID', airlinePnrs: [] }, { pnr: 'A'.repeat(33), airlinePnrs: [] },
+    { pnr: 'NEW-123', airlinePnrs: 'AIR123' }, { pnr: 'NEW-123', airlinePnrs: [123456] },
+    { pnr: 'NEW-123', airlinePnrs: ['AIR/123'] },
+    { pnr: 'NEW-123', airlinePnrs: Array.from({ length: 21 }, (_, index) => `AIR${index}`) },
+    { identity: { ...held.identity, pnr: 'DIFF99' } },
+    { identity: { ...held.identity, priceCodeRef: randomUUID() } },
+    { reference: cancelled.identity.supplierPublicRef },
+    { target: { booking: held.booking, identity: cancelled.identity } },
+    { target: otherSupplier },
+  ]) {
+    assert.equal((await observe(invalid)).recorded, false);
+  }
+  assert.deepEqual(await snapshot(), baseline, 'Unverified reads write no observations or other state');
+
+  // Supabase's service role already reads these original dependencies of the
+  // security-invoker dashboard. The blank local PGlite role lacks those defaults.
+  await db.exec('grant select on public.flight_bookings, public.app_users, public.agencies, public.user_profiles to service_role');
+  await db.exec('set role service_role');
+  try {
+    const locatorOnly = { amount: null, discount: null, pnr: 'NEW-123', airlinePnrs: ['AIR-234', 'ACD345'] };
+    assert.deepEqual(await observe(locatorOnly), { recorded: true, replayed: false });
+    assert.deepEqual(await observe(locatorOnly), { recorded: true, replayed: true });
+    assert.equal((await observe({ ...locatorOnly, pnr: 'DIF123' })).code, 'SUPPLIER_PAYABLE_OBSERVATION_CONFLICT');
+    assert.equal((await observe({ ...locatorOnly, at: started - 1 })).code, 'STALE_SUPPLIER_PAYABLE');
+    assert.deepEqual(await amounts(held), fallback, 'PNR-only changes preserve both payable amounts');
+    const updated = await locators(held);
+    assert.equal(updated.pnr, 'NEW-123');
+    assert.equal(updated.shapon_display_pnr, 'NEW-123');
+    assert.equal(updated.airline_pnr, 'AIR-234, ACD345');
+    assert.equal(updated.supplier_reference, heldLocators.supplier_reference);
+    assert.equal(updated.public_ref, heldLocators.public_ref);
+    for (const value of ['NEW-123', 'AIR-234', 'ACD345', updated.supplier_reference, updated.public_ref]) {
+      assert.equal(await matchesLocator(value), true, `Search finds ${value}`);
+    }
+    for (const value of [heldLocators.pnr, heldLocators.airline_pnr]) {
+      assert.equal(await matchesLocator(value), false, `Search omits the superseded locator ${value}`);
+    }
+
+    const combined = { at: started + 1, amount: 42500, discount: -2500, pnr: 'NEW-456', airlinePnrs: ['AIR-456'] };
+    assert.deepEqual(await observe(combined),
+      { recorded: true, replayed: false });
+    assert.equal((await observe({ ...combined, amount: 42501 })).code, 'SUPPLIER_PAYABLE_OBSERVATION_CONFLICT');
+    const combinedAmounts = {
+      fare: '500.25', gross: '600', supplier_payable: '425.0000000000000000', profit: '75.2500000000000000',
+    };
+    assert.deepEqual(await amounts(held), combinedAmounts);
+    assert.equal((await locators(held)).pnr, 'NEW-456');
+    assert.equal((await locators(held)).airline_pnr, 'AIR-456');
+
+    assert.deepEqual(await observe({ ...locatorOnly, at: started + 2, pnr: held.identity.pnr, airlinePnrs: [] }),
+      { recorded: true, replayed: false });
+    const restored = await locators(held);
+    assert.equal(restored.pnr, held.identity.pnr, 'The latest verified PNR can restore the original value');
+    assert.equal(restored.shapon_display_pnr, held.identity.pnr, 'The observed current PNR remains available after restoration');
+    assert.equal(restored.airline_pnr, '', 'A verified empty list removes the preceding Airline PNR overlay');
+    assert.doesNotMatch(restored.search_text, /new-456|air-456|synold1/);
+    assert.deepEqual(await amounts(held), combinedAmounts, 'A later PNR-only observation preserves the latest fare');
+
+    assert.deepEqual(await observe({ at: started + 3 }), { recorded: true, replayed: false });
+    assert.deepEqual(await locators(held), restored, 'A later fare-only observation preserves the latest locators');
+    assert.equal((await amounts(held)).supplier_payable, '425.7500000000000000');
+    assert.deepEqual(await amounts(cancelled), cancelledBefore, 'Unobserved booking amounts stay the same');
+    assert.deepEqual(await amounts(otherSupplier), fallback, 'Non-Shapon supplier amounts stay the same');
+    assert.deepEqual(await locators(otherSupplier), otherLocators, 'Non-Shapon supplier locators stay the same');
+  } finally {
+    await db.exec('reset role');
+  }
+  const after = await snapshot();
+  for (const name of Object.keys(baseline)) {
+    if (name !== table) assert.equal(after[name], baseline[name], `Supplier payable observation preserves ${name}`);
+  }
+  assert.equal((await one(`select count(*)::int as n from ${table} where booking_id=$1`, [held.booking.id])).n, 4);
+
+  // Use the existing real hold capture procedure in the synthetic fixture.
+  const owner = paid.booking.user_id;
+  const paidResult = await rpc('select wallet_capture_reservation($1,$2,$3,$4,$5) as result',
+    [paid.booking.id, owner, 'customer', `synthetic-display-capture:${randomUUID()}`,
+      JSON.stringify({ pnr: paid.identity.pnr, bookingStatus: 'Confirmed', ticketCodeRef: randomUUID(),
+        ticketNumbers: ['1234567890123'], airlinesPnr: ['ABC123'] })]);
+  assert.equal(paidResult.ok, true, JSON.stringify(paidResult));
+  const ledger = await one("select amount,available_before,available_after,hold_before,hold_after from wallet_ledger_entries where booking_id=$1 and transaction_type='booking_confirm'",
+    [paid.booking.id]);
+  assert.equal(ledger.amount, 50025);
+  assert.equal(ledger.available_before, ledger.available_after);
+  assert.equal(ledger.hold_before - ledger.hold_after, ledger.amount);
+  // Simulate an older displayed quote differing from the independently saved capture.
+  const changeQuote = (value) => db.query("update flight_bookings set pricing_snapshot=jsonb_set(pricing_snapshot,'{sellingPrice}',to_jsonb($2::numeric)) where id=$1",
+    [paid.booking.id, value]);
+  await changeQuote(540);
+  assert.equal((await amounts(paid)).fare, '540');
+  assert.deepEqual(await observe({ target: paid }), { recorded: true, replayed: false });
+  assert.deepEqual(await amounts(paid),
+    { fare: '500.2500000000000000', gross: '600', supplier_payable: '425.7500000000000000', profit: '74.5000000000000000' });
+  await db.query("update flight_bookings set payment_state='partially-refunded',refunded_amount=100 where id=$1", [paid.booking.id]);
+  assert.equal((await amounts(paid)).fare, '500.2500000000000000', 'Original capture stays gross of refunds');
+  await db.query('update flight_bookings set payment_amount=null where id=$1', [paid.booking.id]);
+  assert.equal((await amounts(paid)).fare, '540', 'Conflicting captured amounts retain the local quoted amount');
+}
+
 try {
   await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
     create schema auth;create schema storage;create schema extensions;create extension pgcrypto with schema extensions;`);
@@ -193,6 +357,7 @@ try {
     await db.exec(fs.readFileSync(path.join(migrationDirectory, file), 'utf8'));
   }
   const target = await makeProtectedHold();
+  const paidTarget = await makeProtectedHold('ticketing', 'ticketing-display');
   const legacyLocator = await makeProtectedHold('locator');
   const locatorId = legacyLocator.booking.id;
   const legacyTimestamp = (await one(`update flight_bookings set airlines_pnr='[" abc123 "]'
@@ -201,8 +366,13 @@ try {
   assert.ok(triploverBefore.functions.length >= 7, 'Include the complete installed Triplover feature and earlier supplier helpers');
   const expectedViews = await viewColumns();
   const appendedViewColumns = new Map([
-    ['20261109000000_shapon_platform_ticket_numbers.sql', ['shapon_passenger_ticket_refs', '3802', '-1']],
-    ['20261109030000_shapon_airline_pnr_display_provenance.sql', ['shapon_unverified_airline_pnr', '25', '-1']],
+    ['20261109000000_shapon_platform_ticket_numbers.sql',
+      new Map([['booking_lifecycle_v', ['shapon_passenger_ticket_refs', '3802', '-1']]])],
+    ['20261109030000_shapon_airline_pnr_display_provenance.sql',
+      new Map([['booking_lifecycle_v', ['shapon_unverified_airline_pnr', '25', '-1']]])],
+    ['20261114000000_shapon_booking_supplier_payable.sql',
+      new Map(['booking_dashboard_list_v', 'booking_dashboard_list_ordered_v', 'booking_dashboard_creator_v']
+        .map(name => [name, ['shapon_display_pnr', '25', '-1']]))],
   ]);
   const allocatorBefore = await one("select pg_get_functiondef('allocate_booking_ref_for(date)'::regprocedure) as definition");
   for (const file of migrationNames.slice(index)) {
@@ -213,10 +383,9 @@ try {
       assert.equal(after[table], digest, `${file} preserves every existing ${table} row, including protected money/operations/events`);
     }
     assert.deepEqual(await triploverSchema(), triploverBefore, `${file} preserves Triplover functions, tables, guards and grants exactly`);
-    const appended = appendedViewColumns.get(file);
-    if (appended) {
-      const lifecycle = expectedViews.find(view => view.relname === 'booking_lifecycle_v');
-      lifecycle.columns.push([lifecycle.columns.length + 1, ...appended].join(':'));
+    for (const [name, appended] of appendedViewColumns.get(file) ?? []) {
+      const view = expectedViews.find(view => view.relname === name);
+      view.columns.push([view.columns.length + 1, ...appended].join(':'));
     }
     assert.deepEqual(await viewColumns(), expectedViews, `${file} preserves existing view columns/options/ACLs`);
   }
@@ -317,6 +486,7 @@ try {
   assert.equal((await cancel()).replay, true);
   assert.deepEqual(await snapshot(), afterCancel, 'Exact cancelled recovery replay changes no state or money');
   await verifyDeadlineRevisions(legacyLocator, target, cancelled);
+  await verifySupplierPayable(legacyLocator, paidTarget, cancelled);
   // Execute the exact new read-only hosted catalog query against this same
   // synthetic schema so rollout verification cannot silently diverge.
   await db.exec('create schema supabase_migrations;create table supabase_migrations.schema_migrations(version text primary key);');

@@ -20,6 +20,7 @@ const siteModule = { exports: {} };
 new vm.Script(ts.transpileModule(fs.readFileSync('lib/site.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText).runInNewContext({ module: siteModule, exports: siteModule.exports });
 const site = siteModule.exports;
 let lastActionsProps = null;
+let displayLocatorRead;
 const mocks = {
   'server-only': {},
   '@/lib/site': site,
@@ -30,8 +31,31 @@ const mocks = {
   '@/components/flights/BookingDeadlineNotice': { BookingDeadlineNotice: () => null },
   '@/components/flights/CheckoutStepper': { __esModule: true, default: () => null },
   '@/components/flights/AirlineLogo': { __esModule: true, default: () => null },
+  '@/lib/airports/country': { passportRequiredForItinerary: () => false },
   '@/lib/tickets/verification.server': { bookingPrintVerification: async () => null },
-  '@/lib/supabase/server': { supabaseAdmin: () => assert.fail('Database reads are forbidden') },
+  '@/lib/appearance': { getSiteLogo: async () => null },
+  '@/lib/supabase/server': { supabaseAdmin: () => ({
+    from(table) {
+      assert.equal(table, 'booking_dashboard_creator_v');
+      const query = {
+        select(columns) {
+          assert.equal(columns, 'id, reservation_pnr:shapon_display_pnr, airline_pnr');
+          return query;
+        },
+        in(key, ids) {
+          assert.equal(key, 'id');
+          assert.deepEqual(Array.from(ids), ['11111111-1111-4111-8111-111111111111']);
+          return query;
+        },
+        not(column, operator, value) {
+          assert.deepEqual([column, operator, value], ['shapon_display_pnr', 'is', null]);
+          assert.ok(displayLocatorRead, 'Unexpected database read');
+          return displayLocatorRead;
+        },
+      };
+      return query;
+    },
+  }) },
 };
 function load(file) {
   const absolute = path.resolve(root, file);
@@ -69,6 +93,8 @@ const { bookingTicketDisplay } = load('lib/flights/ticket-display.ts');
 const BookingDetails = load('components/flights/BookingDetails.tsx').default;
 const { bookingStatusEmail } = load('lib/email/booking-template.ts');
 const { confirmedBookingTicketPdf } = load('lib/email/booking-ticket-pdf.ts');
+const { publicBookingWithHeaderContact } = load('lib/db/flight-bookings.ts');
+const { bookingIssuedSmsSnapshotFromBooking } = load('lib/sms/booking-issued-snapshot.ts');
 const clone = value => JSON.parse(JSON.stringify(value));
 const travellers = Array.from({ length: 3 }, (_, index) => ({ passengerType: 'ADT', title: 'Mr',
   firstName: `Fixture${index}`, lastName: 'Traveller', gender: 'Male', dateOfBirth: '1990-04-03', nationality: 'BD' }));
@@ -180,6 +206,53 @@ const shaponPnrDocument = await render(booking('6E', 1, { hideReservationPnr: tr
 assert.doesNotMatch(shaponPnrDocument.page, /Reservation PNR|GDS456/);
 assert.doesNotMatch(shaponPnrDocument.fullPdfText, /Reservation PNR|GDS456/);
 assert.match(shaponPnrDocument.fullPdfText, /ALN987/);
+
+const { bookingId, publicRef, itinerary, fares } = booking();
+const localBooking = {
+  id: bookingId, public_ref: publicRef, supplier: 'shapontravels', supplier_account: 'shapontravels',
+  audience: 'b2c', import_source: null, legacy_operational: false, direct_ticketing: false,
+  status: 'confirmed', lifecycle_status: 'confirmed', payment_state: 'captured',
+  itinerary, fares, passport_required: false, passenger_counts: { ADT: 1 }, currency: 'BDT',
+  pricing_snapshot: { sellingPrice: 12000, serviceMarginAmount: 0 },
+  travel_date: '2030-01-02', created_at: '2026-11-03T02:01:00Z', issued_at: '2026-11-03T02:03:00Z',
+  pnr: 'OLDRES', booking_ref_number: 'OLDBOOK', airlines_pnr: ['OLDAIR'],
+  ticket_numbers: ['OLDAIR/1', '7790000000001'],
+  shapon_passenger_ticket_refs: [{ ticketNumberSource: 'platform_pnr', ticketNumbers: ['OLDAIR/1', '7790000000001'] }],
+};
+const originalBooking = clone(localBooking);
+const locatorProjection = { id: bookingId, reservation_pnr: 'NEWRES', airline_pnr: 'NEWAIR' };
+displayLocatorRead = { data: [locatorProjection], error: null };
+const visibleBooking = await publicBookingWithHeaderContact(localBooking);
+assert.equal(visibleBooking.pnr, 'NEWRES');
+assert.equal(visibleBooking.bookingRefNumber, 'NEWRES');
+assert.deepEqual(Array.from(visibleBooking.airlinesPnr), ['NEWAIR']);
+assert.deepEqual(Array.from(visibleBooking.ticketNumbers), ['7790000000001']);
+assert.doesNotMatch(JSON.stringify(visibleBooking), /OLDRES|OLDBOOK|OLDAIR/);
+assert.equal(bookingIssuedSmsSnapshotFromBooking(localBooking, visibleBooking.airlinesPnr).pnr, 'NEWAIR');
+assert.deepEqual(localBooking, originalBooking, 'Display must preserve the original servicing row');
+const observation = await render(clone(visibleBooking), 1);
+for (const output of [observation.page, observation.fullPdfText, observation.email.html, observation.email.text]) {
+  assert.doesNotMatch(output, /OLDRES|OLDBOOK|OLDAIR/);
+  assert.match(output, /NEWAIR/);
+}
+displayLocatorRead = { data: [{ ...locatorProjection, airline_pnr: '' }], error: null };
+const withoutAirline = await publicBookingWithHeaderContact(localBooking);
+assert.equal(withoutAirline.airlinesPnr.length, 0, 'An explicit empty airline locator list must replace old locators');
+assert.equal(bookingIssuedSmsSnapshotFromBooking(localBooking, withoutAirline.airlinesPnr).pnr, 'Not available');
+const clearedObservation = await render(clone(withoutAirline), 1);
+assert.doesNotMatch(clearedObservation.page, /OLDAIR|NEWRES/);
+assert.doesNotMatch(clearedObservation.fullPdfText, /OLDAIR|NEWRES/);
+displayLocatorRead = { data: null, error: { code: '42703', message: 'column shapon_display_pnr does not exist' } };
+assert.equal((await publicBookingWithHeaderContact(localBooking)).pnr, 'OLDRES', 'Accepted before the additive migration');
+displayLocatorRead = { data: null, error: { code: 'XX000', message: 'unexpected database error' } };
+const unavailableLocators = await publicBookingWithHeaderContact(localBooking);
+assert.equal(unavailableLocators.pnr, null);
+assert.equal(unavailableLocators.bookingRefNumber, null);
+assert.equal(unavailableLocators.airlinesPnr.length, 0);
+assert.equal(unavailableLocators.status, 'confirmed');
+assert.deepEqual(Array.from(unavailableLocators.ticketNumbers), ['7790000000001']);
+assert.doesNotMatch(JSON.stringify(unavailableLocators), /OLDRES|OLDBOOK|OLDAIR/);
+displayLocatorRead = undefined;
 
 const terminalLabels = text => text.replace(/\s+/g, ' ').match(/\bTerminal \S+/g) ?? [];
 for (const [terminals, expected] of [

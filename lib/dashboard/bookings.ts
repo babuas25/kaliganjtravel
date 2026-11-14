@@ -36,7 +36,7 @@ export type BookingListRow = {
   createDate: string;
   /** Airline record locator(s), distinct from the supplier's booking locator. */
   airlinePnr: string;
-  pnr: string;
+  reservationPnr?: string;
   name: string;
   lifecycleAt: string | null;
   fare: number;
@@ -46,7 +46,7 @@ export type BookingListRow = {
   airline: string;
   flyDate: string;
   passengerType: string;
-  /** Authoritative supplier amount; null for legacy snapshots that predate it. */
+  /** Super Admin supplier amount, or null when unavailable or restricted. */
   supplierPayable: number | null;
   createdBy: string;
   status: BookingStatus;
@@ -193,10 +193,12 @@ function toListRow(
   row: BookingDashboardListDbRow,
   piiAccess: BookingPiiAccess,
   includeSupplierReference: boolean,
+  includeSupplierPayable: boolean,
   ticketManagementReferences: TicketManagementRequestReference[]
 ): BookingListRow {
   const financialOnly = piiAccess === 'financial-only';
   const supplierReference = row.supplier_reference?.trim();
+  const supplierPayable = row.supplier_payable === null ? null : Number(row.supplier_payable);
   const status = resolvePublicBookingStatus({
     lifecycleStatus: row.lifecycle_status,
     status: row.status,
@@ -213,7 +215,7 @@ function toListRow(
       : {}),
     createDate: row.created_at,
     airlinePnr: validAirlinePnrs(row.airline_pnr.split(',')).join(', '),
-    pnr: row.pnr,
+    ...(row.reservation_pnr ? { reservationPnr: row.reservation_pnr } : {}),
     name: financialOnly
       ? 'Restricted'
       : leadName(
@@ -229,8 +231,8 @@ function toListRow(
     airline: row.airline,
     flyDate: row.fly_date,
     passengerType: passengerTypeLabel(row.passenger_counts),
-    supplierPayable: Number.isFinite(Number(row.supplier_payable))
-      ? Number(row.supplier_payable)
+    supplierPayable: includeSupplierPayable && Number.isFinite(supplierPayable)
+      ? supplierPayable
       : null,
     createdBy: financialOnly ? 'Restricted' : creatorLabel(row),
     status,
@@ -278,9 +280,14 @@ export async function listDashboardBookings(
   query: BookingListQuery
 ): Promise<DashboardBookingList> {
   const startedAt = performance.now();
+  const includeSupplierPayable = session.role === 'superadmin';
+  const scopedQuery = !includeSupplierPayable &&
+    (query.sortKey === 'supplierPayable' || query.sortKey === 'profit')
+    ? { ...query, sortKey: null }
+    : query;
   const { rows, total, loadError } = await listBookingDashboardPage(
     bookingScopeFor(session),
-    query
+    scopedQuery
   );
   const piiAccess = bookingPiiAccessFor(session.role);
   const includeSupplierReference =
@@ -331,6 +338,7 @@ export async function listDashboardBookings(
       row,
       piiAccess,
       includeSupplierReference,
+      includeSupplierPayable,
       ticketManagementReferencesByBookingId.get(row.id) ?? []
     );
     const indicator = lifecycleByReference.get(row.public_ref);

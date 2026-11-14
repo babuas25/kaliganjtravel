@@ -64,6 +64,79 @@ assert.match(bookingsView, /temporary read error, not an empty booking result/);
 assert.match(bookingsView, /router\.refresh\(\)/);
 assert.match(bookingsTable, />\s*Refresh\s*<\/button>/);
 
+const dashboardModule = { exports: {} };
+const scopedReads = [];
+const dashboardDependencies = {
+  'server-only': {},
+  '@/lib/db/flight-bookings': {
+    listBookingDashboardPage: async (scope, query) => {
+      scopedReads.push({ scope, query });
+      const rows = ['13000.25', null, 0].map((supplierPayable, index) => ({
+        id: String(index), public_ref: `KTT-FIXTURE-${index}`, status: 'confirmed',
+        pnr: 'OLD-RESERVATION', supplier_reference: 'STR261115123456',
+        reservation_pnr: index < 2 ? 'NEW-RESERVATION' : null,
+        airline_pnr: index === 0 ? 'NEW001, NEW002' : '',
+        passenger_counts: {}, fare: '14000.50', gross: '15000.00',
+        supplier_payable: supplierPayable, creator_role: 'b2b',
+      }));
+      return { rows, total: rows.length, loadError: false };
+    },
+  },
+  '@/lib/db/ticket-management': { listTicketManagementRequestReferencesForBookings: async () => new Map() },
+  '@/lib/db/booking-lifecycle': { listStaffBookingLifecycle: async () => [] },
+  '@/lib/dashboard/booking-lifecycle': {
+    bookingLifecycleAccessForRole: role => ['superadmin', 'admin'].includes(role) ? 'staff' : null,
+  },
+  '@/lib/flights/airline-pnr': { airlinePnrs: values => values.map(value => value.trim()).filter(Boolean) },
+  '@/lib/flights/booking-status': { resolvePublicBookingStatus: ({ status }) => status },
+  '@/lib/flights/customer-status': { customerStatusMessage: () => null },
+};
+vm.runInNewContext(
+  typescript.transpileModule(dashboardBookings, {
+    compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022 },
+  }).outputText,
+  {
+    exports: dashboardModule.exports,
+    require: name => {
+      assert.ok(Object.hasOwn(dashboardDependencies, name), `Unexpected booking list dependency ${name}`);
+      return dashboardDependencies[name];
+    },
+    performance,
+    process: { env: {} },
+  }
+);
+const { listDashboardBookings } = dashboardModule.exports;
+for (const sortKey of ['supplierPayable', 'profit']) {
+  const query = { page: 2, pageSize: 25, sortKey, sortDirection: 'asc', amountMin: '100' };
+  const superAdmin = await listDashboardBookings({ role: 'superadmin', clerkId: 'root' }, query);
+  assert.deepEqual(Array.from(superAdmin.bookings, row => row.supplierPayable), [13000.25, null, 0]);
+  assert.deepEqual(Array.from(superAdmin.bookings, row => [row.reservationPnr, row.airlinePnr]), [
+    ['NEW-RESERVATION', 'NEW001, NEW002'], ['NEW-RESERVATION', ''], [undefined, ''],
+  ]);
+  assert.equal(superAdmin.bookings[0].supplierReference, 'STR261115123456');
+  assert.doesNotMatch(JSON.stringify(superAdmin.bookings), /OLD-RESERVATION/);
+  assert.equal(scopedReads.at(-1).query, query);
+  for (const session of [
+    { role: 'admin', clerkId: 'admin' },
+    { role: 'b2b', clerkId: 'owner', agencyCode: 'agency-1' },
+    { role: 'customer', clerkId: 'customer' },
+  ]) {
+    const page = await listDashboardBookings(session, query);
+    assert(page.bookings.every(row => row.supplierPayable === null && row.fare === 14000.5));
+    assert.equal(page.bookings[0].reservationPnr, 'NEW-RESERVATION');
+    assert.equal(page.bookings[0].airlinePnr, 'NEW001, NEW002');
+    assert.doesNotMatch(JSON.stringify(page.bookings), /OLD-RESERVATION/);
+    const read = scopedReads.at(-1);
+    assert.deepEqual({ ...read.query }, { ...query, sortKey: null });
+    assert.equal(read.scope.kind, { admin: 'all', b2b: 'agency', customer: 'user' }[session.role]);
+  }
+}
+assert.match(bookingsTable, /Reservation PNR:.*\n.*booking\.reservationPnr/);
+assert.match(dashboardPageQuery, /shaponDisplayColumnMissing\(projectionRead\.error\)\s*\? await readPage\(baseSelect\)/);
+const normalSort = { sortKey: 'fare', sortDirection: 'desc' };
+await listDashboardBookings({ role: 'b2b', clerkId: 'owner', agencyCode: 'agency-1' }, normalSort);
+assert.equal(scopedReads.at(-1).query, normalSort);
+
 const freshnessModule = { exports: {} };
 vm.runInNewContext(
   typescript.transpileModule(read('lib', 'dashboard', 'booking-list-freshness.ts'), {

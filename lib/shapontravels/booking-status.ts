@@ -18,6 +18,7 @@ const CURRENT_SOURCES = [
   'staff_manual', 'saved_booking', 'saved_import', 'airline_refresh', 'public_receipt', 'supplier_sync',
 ] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SAVED_DISPLAY_PNR = /^[A-Z0-9][A-Z0-9-]{2,31}$/i;
 export type ShapontravelsCurrentStatus = {
   status: typeof CURRENT_STATUSES[number];
   bookingState: string | null;
@@ -130,8 +131,16 @@ export function matchingShapontravelsSavedTicketSnapshots(bookingBody: unknown, 
   if (!booking || !ticket) return false;
   if (!booking.savedBooking && !ticket.savedBooking) return true;
   if (!booking.savedBooking || !ticket.savedBooking) return false;
+  return matchingShapontravelsCanonicalTicketSnapshots(booking.savedBooking, ticket.savedBooking);
+}
+
+/** Compare already normalized canonical snapshots even when legacy wrappers coexist. */
+export function matchingShapontravelsCanonicalTicketSnapshots(
+  booking: Record<string, unknown>,
+  ticket: Record<string, unknown>,
+): boolean {
   return ['bookingId', 'reference', 'passengerInfoes', 'segments', 'ticketInfoes', 'fareBreakdown', 'ticketCodeRef']
-    .every(key => sameSavedData(booking.savedBooking![key], ticket.savedBooking![key]));
+    .every(key => sameSavedData(booking[key], ticket[key]));
 }
 
 /** Platform references use the canonical passenger associations on saved reads. */
@@ -166,7 +175,10 @@ export function normalizeShapontravelsReceiptEnvelope(body: unknown): ReceiptEnv
  * legacy receipt. Neither failed wrappers nor contradictory duplicate fields
  * may be used to authorize a saved-status reconciliation.
  */
-export function normalizeShapontravelsSavedBookingEnvelope(body: unknown): ReceiptEnvelope | null {
+export function normalizeShapontravelsSavedBookingEnvelope(
+  body: unknown,
+  purpose: 'booking-status' | 'supplier-payable' = 'booking-status',
+): ReceiptEnvelope | null {
   const envelope = object(body);
   if (!envelope) return null;
   let legacyReceipt: Record<string, unknown> | null = null;
@@ -183,7 +195,8 @@ export function normalizeShapontravelsSavedBookingEnvelope(body: unknown): Recei
       saved.bookingCodeRef !== saved.bookingId ||
       !['uniqueTransID', 'itemCodeRef', 'priceCodeRef'].every(key =>
         typeof saved[key] === 'string' && UUID.test(saved[key] as string)) ||
-      !(saved.pnr === null || typeof saved.pnr === 'string' && /^[A-Z0-9]{3,12}$/.test(saved.pnr)) ||
+      !(saved.pnr === null || typeof saved.pnr === 'string' &&
+        (purpose === 'supplier-payable' ? SAVED_DISPLAY_PNR : /^[A-Z0-9]{3,12}$/).test(saved.pnr)) ||
       !(saved.bookingStatus === null || shortText(saved.bookingStatus)) ||
       !CURRENT_STATUSES.includes(saved.status as ShapontravelsCurrentStatus['status']) ||
       typeof saved.reviewRequired !== 'boolean' || typeof saved.requiresReconciliation !== 'boolean' ||
@@ -240,6 +253,64 @@ export function normalizeShapontravelsSavedBookingEnvelope(body: unknown): Recei
     receipt: { ...saved, bookingRefNumber: saved.bookingRefNumber ?? saved.pnr,
       ticketingTimeLimit: deadline?.raw ?? deadline?.iso ?? null },
   };
+}
+
+/** Bind a display-only observation to the original Shapon booking. */
+export function shapontravelsPayableSnapshot(
+  body: unknown,
+  expected: ShapontravelsExpectedBooking,
+  passengerCount: number,
+): ReceiptEnvelope | null {
+  const normalized = normalizeShapontravelsSavedBookingEnvelope(body, 'supplier-payable');
+  const saved = normalized?.savedBooking;
+  if (!saved || !expected.bookingCodeRef || !expected.supplierPublicRef ||
+      saved.source !== 'native' || saved.bookingId !== expected.bookingCodeRef ||
+      saved.reference !== expected.supplierPublicRef || saved.uniqueTransID !== expected.uniqueTransId ||
+      saved.itemCodeRef !== expected.itemCodeRef || saved.priceCodeRef !== expected.priceCodeRef ||
+      !saved.pnr || saved.passengerCount !== passengerCount) return null;
+
+  const current = object(saved.currentStatus);
+  const actions = object(object(saved.publicReceipt)?.actions);
+  if (receiptCurrentMetadata(normalized.envelope).currentStatusState !== 'available' ||
+      current?.reviewRequired !== saved.reviewRequired ||
+      saved.requiresReconciliation !== saved.reviewRequired ||
+      actions?.canIssue !== false || actions?.canCancel !== false) return null;
+  const issued = saved.status === 'confirmed' && saved.ticketingState === 'issued' &&
+    saved.paymentState === 'paid';
+  const held = saved.status === 'on-hold' && saved.ticketingState === 'not_issued' &&
+    saved.paymentState === 'unpaid' && saved.ticketCodeRef === null &&
+    Array.isArray(saved.ticketInfoes) && saved.ticketInfoes.length === 0 &&
+    actions.canRequestServicing === false;
+  return issued || held ? normalized : null;
+}
+
+export type ShapontravelsDisplayLocators = { pnr: string; airlinePnrs: string[] };
+
+/** Use explicit airline locators. A reservation PNR alone cannot fill this list. */
+export function shapontravelsDisplayLocators(
+  saved: Record<string, unknown> | null | undefined,
+  envelope: Record<string, unknown> | undefined,
+): ShapontravelsDisplayLocators | null {
+  const pnr = saved?.pnr;
+  const airlinePnrs = saved?.airlinesPNR;
+  if (typeof pnr !== 'string' || !SAVED_DISPLAY_PNR.test(pnr) ||
+      !Array.isArray(airlinePnrs) || airlinePnrs.length > 20 ||
+      !airlinePnrs.every(locator => typeof locator === 'string' && SAVED_DISPLAY_PNR.test(locator)) ||
+      !sameSavedData(airlinePnrs, object(saved?.publicReceipt)?.airlinePnrs)) return null;
+  const legacy = object(envelope?.item1);
+  if (legacy && Object.hasOwn(legacy, 'airlinesPNR') &&
+      !sameSavedData(airlinePnrs, legacy.airlinesPNR)) return null;
+  return { pnr, airlinePnrs: Array.from(new Set<string>(airlinePnrs)) };
+}
+
+export function matchingShapontravelsPayableSnapshots(
+  booking: Record<string, unknown>,
+  ticket: Record<string, unknown>,
+): boolean {
+  return matchingShapontravelsCanonicalTicketSnapshots(booking, ticket) &&
+    ['pnr', 'bookingRefNumber', 'airlinesPNR', 'ticketingState', 'currentStatus', 'publicReceipt',
+      'reviewRequired', 'requiresReconciliation']
+      .every(key => sameSavedData(booking[key], ticket[key]));
 }
 
 /** Group canonical segment tickets by their explicitly associated passenger. */

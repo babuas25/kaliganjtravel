@@ -41,6 +41,8 @@ jobs:
       - run: npm run verify:lcc-markup
       - run: npm run verify:lcc-display
       - run: npm run verify:shapontravels-pricing
+      - run: node scripts/verify-shapontravels-saved-fares.mjs
+      - run: npm run verify:booking-list-reliability
       - run: npm run verify:canonical-pricing-regression
 
   build:

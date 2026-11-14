@@ -20,16 +20,21 @@ const integrationFiles = new Set([
   'app/(dashboard)/dashboard/bookings/[reference]/page.tsx',
   'app/api/flights/booking/cancel/route.ts',
   'app/api/flights/booking/issue/route.ts',
+  'app/api/flights/booking/refresh-ticketing-time/route.ts',
   'app/api/flights/booking/route.ts',
+  'app/api/flights/booking/share-sms/route.ts',
   'app/api/flights/booking/shapon-status/route.ts',
   'components/flights/BookingActions.tsx',
+  'components/flights/BookingDeadlineNotice.tsx',
   'components/flights/BookingDetails.tsx',
   'app/api/webhooks/shapon-ticketing-deadline/route.ts',
   'lib/db/booking-ticketing-time.ts',
   'lib/db/flight-bookings.ts',
+  'lib/db/shapon-display-locators.ts',
   'lib/db/shapontravels-cancellation.ts',
   'lib/email/booking-event-snapshot.ts',
   'lib/flights/booking.ts',
+  'lib/rate-limit.ts',
   'lib/reports/issued-tickets.ts',
   'lib/sms/booking-issued-snapshot.ts',
 ]);
@@ -47,14 +52,20 @@ const integrationNames = new Set([
   'shaponCancelChecking', 'setShaponCancelChecking', 'shaponCancelRetry', 'setShaponCancelRetry',
   'saveShaponCancelRequest', 'checkShaponCancellation',
   'shapon_unverified_airline_pnr', 'shapon_passenger_ticket_refs', 'shaponPassengerTicketRefs',
+  'shaponDeadlineEnabled', 'shaponLiveDeadlineRefreshEnabled', 'shaponLiveDeadlineRefresh',
+  'isEligibleShaponHold', 'SHAPON_REFRESH_GAP_MS', 'record_shapon_booking_supplier_payable_v1',
+  'shapon_display_pnr', 'SHAPON_DISPLAY_PNR_COLUMN', 'SHAPON_DISPLAY_PNR_SELECT',
+  'readShaponDisplayLocators', 'shaponDisplayColumnMissing', 'shaponTicketIdentifiersForDisplay',
+  'supportsShaponDisplayLocators',
 ]);
 function withoutIntegrationNames(file, source) {
   if (!integrationFiles.has(file) && !file.startsWith('lib/shapontravels/')) return source;
   return source
     .replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, name => integrationNames.has(name) ? '' : name)
     .replace(/\bshapon-cancel:/g, '')
+    .replace(/\/shapon-display-locators\b/g, '')
     .replace(/\bShapon(?:['’]s)?(?= platform (?:closure|display state)\b| passenger receipt\b| did not close on this retry\b| declined (?:cancellation|this retry)\b)/g, '')
-    .replace(/(?<=sent to |closed on |booking on )Shapon\b/g, '');
+    .replace(/(?<=sent to |closed on |booking on |deadline while |One live )Shapon\b/g, '');
 }
 for (const file of integrationFiles) {
   assert.doesNotMatch(withoutIntegrationNames(file, 'shaponPlatformCancellation; Shapon platform closure'), forbidden);

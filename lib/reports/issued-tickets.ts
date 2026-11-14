@@ -5,6 +5,7 @@ import type { BookingPassengerType, BookingTraveller, BookedItinerary } from '@/
 import type { BookingDraftPricing } from '@/lib/flights/booking';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { bookingUserVisibilitySchemaAvailable } from '@/lib/db/booking-visibility';
+import { readShaponDisplayLocators, shaponTicketIdentifiersForDisplay } from '@/lib/db/shapon-display-locators';
 import { isAgencyCode } from '@/lib/agency';
 
 export type IssuedTicketFilters = {
@@ -186,19 +187,24 @@ function financials(row: ReportFinancialBooking) {
   };
 }
 
-function toRow(row: ReportBooking, userNames: Map<string, string>): IssuedTicketRow {
+function toRow(
+  row: ReportBooking,
+  userNames: Map<string, string>,
+  display?: { pnr: string; airlinePnrs: string[] },
+): IssuedTicketRow {
   const itinerary = row.itinerary;
   const lead = travellers(row.passengers)[0];
   const totalPassengers = Object.values(row.passenger_counts ?? {})
     .reduce((sum, count) => sum + (Number(count) || 0), 0);
   const { grossFare, payableAmount, profit } = financials(row);
+  const ticketNumbers = Array.isArray(row.ticket_numbers)
+    ? row.ticket_numbers.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
   return {
     id: row.id,
     orderReference: row.public_ref,
-    pnr: displayPnr(row),
-    ticketNumbers: Array.isArray(row.ticket_numbers)
-      ? row.ticket_numbers.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      : [],
+    pnr: display ? display.airlinePnrs.join(', ') || display.pnr : displayPnr(row),
+    ticketNumbers: display ? shaponTicketIdentifiersForDisplay(ticketNumbers, display.airlinePnrs) : ticketNumbers,
     airlineCode: itinerary?.carrierCode || '—',
     airlineName: itinerary?.carrierName || itinerary?.carrierCode || 'Unknown airline',
     totalSegments: itinerary?.legs.reduce((sum, leg) => sum + leg.segments.length, 0) ?? 0,
@@ -299,9 +305,8 @@ export async function listIssuedTickets(
   const { data, error, count } = await query.range(from, from + pageSize - 1);
   if (error) throw new Error(`Issued tickets could not be loaded: ${error.message}`);
   const rows = (data ?? []) as unknown as ReportBooking[];
-  const userNames = await bookingUserNames(rows, users);
   return {
-    rows: rows.map((row) => toRow(row, userNames)),
+    rows: await presentIssuedTickets(rows, users),
     total: count ?? 0,
     users: users.map((user) => ({ id: user.clerk_id, label: userLabel(user) })),
   };
@@ -324,8 +329,15 @@ export async function listAllIssuedTickets(
     rows.push(...page);
     if (page.length < pageSize) break;
   }
-  const userNames = await bookingUserNames(rows, users);
-  return rows.map((row) => toRow(row, userNames));
+  return presentIssuedTickets(rows, users);
+}
+
+async function presentIssuedTickets(rows: ReportBooking[], users: AppUser[]): Promise<IssuedTicketRow[]> {
+  const [userNames, locators] = await Promise.all([
+    bookingUserNames(rows, users),
+    readShaponDisplayLocators(rows.filter(row => row.supplier === 'shapontravels').map(row => row.id)),
+  ]);
+  return rows.map(row => toRow(row, userNames, locators.get(row.id)));
 }
 
 export async function summarizeIssuedTickets(

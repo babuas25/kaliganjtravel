@@ -6,6 +6,7 @@ export type ShapontravelsStatusStorage = 'saved' | 'unavailable' | 'not_recorded
 export type ShapontravelsStatusCheck = Partial<ShapontravelsBookingStatus> & {
   currentStatusStorage?: ShapontravelsStatusStorage;
   projectionUpdated?: boolean;
+  savedDetailsAvailable?: boolean;
   displayStatus?: BookingStatus;
   displayReviewRequired?: boolean;
 };
@@ -25,6 +26,13 @@ export function formatShapontravelsBookingStatus(
   const trustedIdentity = check?.result === 'verified' || check?.result === 'pending';
   const current = trustedIdentity && check?.currentStatusState === 'available'
     ? check.currentStatus : null;
+
+  if (check?.savedDetailsAvailable === true) {
+    return {
+      headline: 'Shapon saved booking details loaded.',
+      details: [],
+    };
+  }
 
   if (trustedIdentity && check?.supplierPublicRef) {
     details.push(`Supplier reference: ${check.supplierPublicRef}.`);

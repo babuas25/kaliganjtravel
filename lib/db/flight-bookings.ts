@@ -37,6 +37,13 @@ import type {
 } from '@/lib/dashboard/booking-list-query';
 import { bookingUserVisibilitySchemaAvailable } from '@/lib/db/booking-visibility';
 import { BookingReadUnavailableError } from '@/lib/db/booking-read-error';
+import {
+  readShaponDisplayLocators,
+  SHAPON_DISPLAY_PNR_SELECT,
+  shaponDisplayColumnMissing,
+  shaponTicketIdentifiersForDisplay,
+  supportsShaponDisplayLocators,
+} from '@/lib/db/shapon-display-locators';
 import { parseShapontravelsCurrentStatusProjection } from '@/lib/shapontravels/current-status-projection';
 
 const LIFECYCLE_VIEW = 'booking_lifecycle_v';
@@ -208,7 +215,7 @@ export type BookingDashboardListDbRow = {
   lifecycle_at?: string | null;
   supplier_reference: string | null;
   airline_pnr: string;
-  pnr: string;
+  reservation_pnr?: string | null;
   lead_name: string | null;
   traveller_count: number;
   passenger_counts: Partial<Record<BookingPassengerType, number>>;
@@ -862,7 +869,26 @@ export function publicBooking(row: BookingRow): PublicBooking {
 export async function publicBookingWithHeaderContact(
   row: BookingRow
 ): Promise<PublicBooking> {
-  const booking = publicBooking(row);
+  let booking = publicBooking(row);
+  if (supportsShaponDisplayLocators(row)) {
+    const locators = await readShaponDisplayLocators([row.id]).catch(() => {
+      console.error('[db] booking display locators unavailable');
+      return null;
+    });
+    const display = locators?.get(row.id);
+    if (display || !locators) {
+      const airlinesPnr = display?.airlinePnrs ?? [];
+      booking = {
+        ...booking,
+        pnr: display?.pnr ?? null,
+        bookingRefNumber: display?.pnr ?? null,
+        airlinesPnr,
+        ticketNumbers: shaponTicketIdentifiersForDisplay(booking.ticketNumbers, airlinesPnr),
+        ticketPassengerNumbers: booking.ticketPassengerNumbers?.map(numbers =>
+          shaponTicketIdentifiersForDisplay(numbers, airlinesPnr)),
+      };
+    }
+  }
   if (row.audience !== 'agency' || !row.agency_code) {
     const logo = await getSiteLogo();
     return {
@@ -1040,7 +1066,6 @@ const DASHBOARD_LIST_BASE_COLUMNS = [
   'lifecycle_at',
   'supplier_reference',
   'airline_pnr',
-  'pnr',
   'lead_name',
   'traveller_count',
   'passenger_counts',
@@ -1118,45 +1143,48 @@ export async function listBookingDashboardPage(
     ? DASHBOARD_LIST_SORT_COLUMNS[filters.sortKey]
     : 'created_at';
   const pageStart = (filters.page - 1) * filters.pageSize;
-  let query = supabase
-    .from(DASHBOARD_LIST_VIEW)
-    .select(
-      visibilityAvailable ? DASHBOARD_LIST_SELECT : DASHBOARD_LIST_SELECT_LEGACY,
-      { count: 'exact' }
-    )
-    .order(sortColumn, {
-      ascending: filters.sortKey ? filters.sortDirection === 'asc' : false,
-      nullsFirst: false,
-    });
+  const baseSelect = visibilityAvailable ? DASHBOARD_LIST_SELECT : DASHBOARD_LIST_SELECT_LEGACY;
+  const readPage = (columns: string) => {
+    let query = supabase
+      .from(DASHBOARD_LIST_VIEW)
+      .select(columns, { count: 'exact' })
+      .order(sortColumn, {
+        ascending: filters.sortKey ? filters.sortDirection === 'asc' : false,
+        nullsFirst: false,
+      });
 
-  if (scope.kind === 'agency') query = query.eq('agency_code', scope.agencyCode);
-  if (scope.kind === 'user') query = query.eq('user_id', scope.clerkId);
-  if (scope.kind !== 'all' && visibilityAvailable) {
-    query = query.eq('hidden_from_user', false);
-  }
-  if (filters.status !== 'all') {
-    query = query.eq('lifecycle_status', filters.status);
-  }
-  if (filters.search) {
-    const pattern = escapedLike(filters.search);
-    query = query.or(`search_text.ilike.${pattern},creator_search_text.ilike.${pattern}`);
-  }
-  if (filters.createdBy) {
-    query = query.ilike('creator_search_text', escapedLike(filters.createdBy));
-  }
-  if (filters.createdFrom) {
-    query = query.gte('created_at', `${filters.createdFrom}T00:00:00+06:00`);
-  }
-  if (filters.createdTo) {
-    query = query.lte('created_at', `${filters.createdTo}T23:59:59.999+06:00`);
-  }
-  if (filters.flyFrom) query = query.gte('fly_date', filters.flyFrom);
-  if (filters.flyTo) query = query.lte('fly_date', `${filters.flyTo}T23:59:59.999`);
-  if (filters.amountMin) query = query.gte('fare', Number(filters.amountMin));
-  if (filters.amountMax) query = query.lte('fare', Number(filters.amountMax));
-  query = query.range(pageStart, pageStart + filters.pageSize - 1);
-
-  const { data, error, count } = await query;
+    if (scope.kind === 'agency') query = query.eq('agency_code', scope.agencyCode);
+    if (scope.kind === 'user') query = query.eq('user_id', scope.clerkId);
+    if (scope.kind !== 'all' && visibilityAvailable) {
+      query = query.eq('hidden_from_user', false);
+    }
+    if (filters.status !== 'all') {
+      query = query.eq('lifecycle_status', filters.status);
+    }
+    if (filters.search) {
+      const pattern = escapedLike(filters.search);
+      query = query.or(`search_text.ilike.${pattern},creator_search_text.ilike.${pattern}`);
+    }
+    if (filters.createdBy) {
+      query = query.ilike('creator_search_text', escapedLike(filters.createdBy));
+    }
+    if (filters.createdFrom) {
+      query = query.gte('created_at', `${filters.createdFrom}T00:00:00+06:00`);
+    }
+    if (filters.createdTo) {
+      query = query.lte('created_at', `${filters.createdTo}T23:59:59.999+06:00`);
+    }
+    if (filters.flyFrom) query = query.gte('fly_date', filters.flyFrom);
+    if (filters.flyTo) query = query.lte('fly_date', `${filters.flyTo}T23:59:59.999`);
+    if (filters.amountMin) query = query.gte('fare', Number(filters.amountMin));
+    if (filters.amountMax) query = query.lte('fare', Number(filters.amountMax));
+    return query.range(pageStart, pageStart + filters.pageSize - 1);
+  };
+  const projectionRead = await readPage(`${baseSelect},${SHAPON_DISPLAY_PNR_SELECT}`);
+  const pageRead = projectionRead.error && shaponDisplayColumnMissing(projectionRead.error)
+    ? await readPage(baseSelect)
+    : projectionRead;
+  const { data, error, count } = pageRead;
   if (error) {
     console.error('[db] listBookingDashboardPage failed:', error.message);
     reportDashboardListTiming({

@@ -12,13 +12,19 @@ import { verifyShaponCancellationRecovery } from '@/lib/shapontravels/cancellati
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { shapontravelsReadBooking, shapontravelsReadTicket, shapontravelsReadCancellation } from '@/lib/shapontravels/client';
 import {
+  matchingShapontravelsCanonicalTicketSnapshots,
+  matchingShapontravelsPayableSnapshots,
   normalizeShapontravelsReceiptEnvelope,
   normalizeShapontravelsSavedBookingEnvelope,
   shapontravelsAirlinePnrs,
+  shapontravelsDisplayLocators,
+  shapontravelsPayableSnapshot,
   verifyShapontravelsBookingStatus,
+  type ShapontravelsDisplayLocators,
 } from '@/lib/shapontravels/booking-status';
 import { recordShapontravelsCurrentStatus } from '@/lib/shapontravels/current-status-store';
-import { parseShapontravelsTicketEvidence, shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
+import { readShapontravelsSavedPayable, type ShapontravelsSavedPayable } from '@/lib/shapontravels/saved-fares';
+import { parseShapontravelsTicketEvidence, shapontravelsPayableHasTickets, shapontravelsTicketIdentityReady } from '@/lib/shapontravels/ticket';
 import { parseShapontravelsCancellationReceipt, shapontravelsCancellationReferencesReady } from '@/lib/shapontravels/cancel';
 import {
   canConfirmShaponExternalTicket,
@@ -79,13 +85,11 @@ export async function POST(request: Request) {
   try {
     const requestStartedAt = new Date().toISOString();
     const read = await shapontravelsReadBooking({ bookingId: booking.booking_code_ref });
+    const expectedPassengerCount = Object.values(booking.passenger_counts)
+      .reduce<number>((sum, value) => sum + (value ?? 0), 0);
     const hasSavedBooking = read.httpStatus === 200 && read.body && typeof read.body === 'object' &&
       Object.hasOwn(read.body, 'savedBooking');
     const savedBooking = hasSavedBooking ? normalizeShapontravelsSavedBookingEnvelope(read.body) : null;
-    if (hasSavedBooking && !savedBooking) {
-      return walletFail(409, 'SUPPLIER_SAVED_STATUS_UNVERIFIED',
-        'The saved Shapon booking details are inconsistent. No booking change was made.');
-    }
     const expected = {
       uniqueTransId: refs.uniqueTransId,
       itemCodeRef: refs.itemCodeRef,
@@ -96,6 +100,80 @@ export async function POST(request: Request) {
       supplierPublicRef,
     };
     const status = verifyShapontravelsBookingStatus(read, expected, booking.booking_code_ref);
+    const recordDisplay = async (
+      payable: ShapontravelsSavedPayable | null,
+      locators: ShapontravelsDisplayLocators | null,
+    ) => {
+      try {
+        const { data, error } = await db.rpc('record_shapon_booking_supplier_payable_v1', {
+          p_booking_id: booking.id,
+          p_request_started_at: requestStartedAt,
+          p_supplier_public_ref: supplierPublicRef,
+          p_receipt_identity: expected,
+          p_supplier_payable_minor: payable?.supplierPayableMinor ?? null,
+          p_special_discount_minor: payable?.specialDiscountMinor ?? null,
+          p_currency: 'BDT',
+          p_display_pnr: locators?.pnr ?? null,
+          p_airline_pnrs: locators?.airlinePnrs ?? null,
+        });
+        return !error && data?.recorded === true;
+      } catch {
+        return false;
+      }
+    };
+
+    const cancellationActive = booking.operation_reason === 'cancellation' ||
+      booking.operation_reason === 'cancellation_reconciliation';
+    const displayEligible = hasSavedBooking && booking.currency === 'BDT' &&
+      !booking.direct_ticketing && !booking.legacy_operational &&
+      shapontravelsTicketIdentityReady(booking) &&
+      booking.status !== 'cancelled' && booking.operation_kind !== 'cancellation' && !cancellationActive &&
+      read.supplierPublicRef === supplierPublicRef;
+    const snapshot = displayEligible
+      ? shapontravelsPayableSnapshot(read.body, expected, expectedPassengerCount) : null;
+    const currentLocators = shapontravelsDisplayLocators(snapshot?.savedBooking, snapshot?.envelope);
+    const needsDisplayOnlyCheck = !savedBooking || status.result !== 'verified' ||
+      status.currentStatus?.reviewRequired !== false;
+    if (needsDisplayOnlyCheck && snapshot?.savedBooking &&
+        (snapshot.savedBooking.status !== 'on-hold' ||
+          (['on-hold', 'pending'].includes(booking.status) && booking.payment_state === 'unpaid'))) {
+      // Compare the two saved views by stable booking identity. An accepted
+      // display observation grants no permission to act on the new locator.
+      const payable = readShapontravelsSavedPayable(
+        snapshot.savedBooking, snapshot.envelope, 'display-observation',
+      );
+      const updatedPnr = snapshot.savedBooking.pnr;
+      if ((currentLocators || payable) && typeof updatedPnr === 'string') {
+        const ticketRead = await shapontravelsReadTicket(booking.booking_code_ref).catch(() => null);
+        const ticket = ticketRead?.httpStatus === 200
+          ? shapontravelsPayableSnapshot(ticketRead.body, expected, expectedPassengerCount) : null;
+        if (ticket?.savedBooking && matchingShapontravelsPayableSnapshots(snapshot.savedBooking, ticket.savedBooking)) {
+          const locators = currentLocators && shapontravelsDisplayLocators(ticket.savedBooking, ticket.envelope);
+          const validatedPayable = payable &&
+            readShapontravelsSavedPayable(ticket.savedBooking, ticket.envelope, 'display-observation') ? payable : null;
+          const ticketEvidenceMatches = ticket.savedBooking.ticketingState === 'not_issued' ||
+            shapontravelsPayableHasTickets(ticket.savedBooking, ticket.envelope, {
+              ...refs, pnr: updatedPnr, bookingRefNumber: updatedPnr,
+              bookingCodeRef: booking.booking_code_ref,
+              itinerary: booking.itinerary, expectedPassengerCount,
+            });
+          if (ticketEvidenceMatches && (locators || validatedPayable)) {
+            if (!await recordDisplay(validatedPayable, locators)) {
+              return walletFail(503, 'SUPPLIER_DETAILS_STORAGE_FAILED',
+                'Saved supplier details could not be refreshed. Please try again.');
+            }
+            return walletOk({
+              lookupMode: 'shapon_saved_status', supplierSyncPerformed: false,
+              projectionUpdated: true, savedDetailsAvailable: true,
+            });
+          }
+        }
+      }
+    }
+    if (hasSavedBooking && !savedBooking) {
+      return walletFail(409, 'SUPPLIER_SAVED_STATUS_UNVERIFIED',
+        'The saved Shapon booking details are inconsistent. No booking change was made.');
+    }
     if (status.result === 'mismatch' || status.result === 'unverified') {
       console.error('[shapontravels] booking status identity unverified', {
         bookingId: booking.id, result: status.result,
@@ -108,6 +186,9 @@ export async function POST(request: Request) {
       ? await saveShapontravelsTicketingTime(booking, supplierPublicRef, deadline.ticketingDeadlineAt) : null;
     const bookingUpdatedAt = savedDeadline?.updated ? savedDeadline.updatedAt : booking.updated_at;
     const currentStatus = status.currentStatus?.status;
+    const savedPayable = booking.currency === 'BDT' && status.result === 'verified' &&
+      status.currentStatusState === 'available' && status.currentStatus?.reviewRequired === false && savedBooking
+      ? readShapontravelsSavedPayable(savedBooking.savedBooking, savedBooking.envelope) : null;
     const locatorStatusMatches = (currentStatus === 'confirmed' && booking.status === 'confirmed') ||
       (currentStatus === 'on-hold' && ['on-hold', 'pending'].includes(booking.status));
     const locatorIdentityMatches = !hasSavedBooking || savedBooking?.savedBooking?.bookingId === booking.booking_code_ref;
@@ -137,6 +218,7 @@ export async function POST(request: Request) {
       bookingId: booking.id, requestStartedAt, expected, status,
       ...(airlineLocatorRefresh ? { airlineLocatorRefresh } : {}),
     });
+    let savedDetailsAvailable = false;
     let supplierTicket: {
       result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
       ticketCount?: number;
@@ -181,8 +263,6 @@ export async function POST(request: Request) {
       ? verifyShaponCancellationRecovery(booking, read, null, supplierPublicRef) : null;
     if (savedCancellation) await resolveCancellation(savedCancellation);
 
-    const cancellationActive = booking.operation_reason === 'cancellation' ||
-      booking.operation_reason === 'cancellation_reconciliation';
     let supplierCancellation: {
       result: 'verified' | 'pending' | 'not_found' | 'unverified' | 'unavailable';
     } | null = null;
@@ -229,10 +309,21 @@ export async function POST(request: Request) {
               bookingRefNumber: booking.booking_ref_number!,
               bookingCodeRef: booking.booking_code_ref,
               itinerary: booking.itinerary,
-              expectedPassengerCount: Object.values(booking.passenger_counts)
-                .reduce<number>((sum, value) => sum + (value ?? 0), 0),
+              expectedPassengerCount,
             });
             const ticket = evidence?.ticket;
+            if (ticket && displayEligible && (savedPayable || currentLocators) && savedBooking?.savedBooking) {
+              const canonicalTicket = normalizeShapontravelsSavedBookingEnvelope(ticketRead.body);
+              if (ticketRead.httpStatus === 200 && canonicalTicket?.savedBooking) {
+                const locators = currentLocators &&
+                  matchingShapontravelsPayableSnapshots(savedBooking.savedBooking, canonicalTicket.savedBooking)
+                  ? shapontravelsDisplayLocators(canonicalTicket.savedBooking, canonicalTicket.envelope) : null;
+                const payable = savedPayable &&
+                  matchingShapontravelsCanonicalTicketSnapshots(savedBooking.savedBooking, canonicalTicket.savedBooking) &&
+                  readShapontravelsSavedPayable(canonicalTicket.savedBooking, canonicalTicket.envelope) ? savedPayable : null;
+                if (locators || payable) savedDetailsAvailable = await recordDisplay(payable, locators);
+              }
+            }
             supplierTicket = ticket
               ? { result: 'verified', ticketCount: evidence!.passengerTickets.length,
                   ...(ticket.ticketCodeRef ? { ticketCodeRef: ticket.ticketCodeRef } : {}) }
@@ -276,7 +367,8 @@ export async function POST(request: Request) {
       ...(cancellationResolved ? {
         cancellationResolved: true, displayStatus: 'cancelled', displayReviewRequired: false,
       } : {}),
-      projectionUpdated: storage.projectionUpdated || cancellationResolved || airlinePnrsUpdated });
+      projectionUpdated: storage.projectionUpdated || cancellationResolved || airlinePnrsUpdated ||
+        savedDetailsAvailable, ...(savedDetailsAvailable ? { savedDetailsAvailable: true } : {}) });
   } catch (error) {
     console.error('[shapontravels] booking status read failed', {
       bookingId: booking.id,

@@ -336,6 +336,12 @@ function BookingReferences({
         <span className="text-neutral-500">Airline PNR: </span>
         <span className="font-semibold text-navy-950">{booking.airlinePnr || '—'}</span>
       </span>
+      {booking.reservationPnr && (
+        <span>
+          <span className="text-neutral-500">Reservation PNR: </span>
+          <span className="font-semibold text-navy-950">{booking.reservationPnr}</span>
+        </span>
+      )}
       <span>
         <span className="text-neutral-500">
           {showSupplierReference ? 'Our REF: ' : 'REF: '}

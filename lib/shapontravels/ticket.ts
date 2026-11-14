@@ -35,7 +35,8 @@ export type ShapontravelsTicketOutcome = TicketIssueOutcome & {
 function receiptPassengerTickets(
   envelope: Record<string, unknown>,
   receipt: Record<string, unknown>,
-  input: ShapontravelsTicketInput
+  input: ShapontravelsTicketInput,
+  purpose: 'ticket' | 'supplier-payable' = 'ticket',
 ): ShapontravelsPassengerTicket[] | null {
   const rows = shapontravelsTicketRowsInPassengerOrder(receipt.ticketInfoes, input.expectedPassengerCount);
   if (!rows) return null;
@@ -52,7 +53,8 @@ function receiptPassengerTickets(
     ? envelope.publicReceipt as Record<string, unknown> : null;
   const legs = input.itinerary?.legs;
   const carrier = legs?.[0]?.segments?.[0]?.airlineCode;
-  if (!current || current.status !== 'confirmed' || current.pendingReview !== false ||
+  if (!current || current.status !== 'confirmed' ||
+      (purpose === 'ticket' && current.pendingReview !== false) ||
       current.pnr !== input.pnr || (carrier !== '6E' && carrier !== 'J9') ||
       !Array.isArray(legs) ||
       !legs.every(leg => leg && Array.isArray(leg.segments) && leg.segments.length > 0 &&
@@ -89,6 +91,21 @@ function receiptPassengerTickets(
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Validate passenger ticket associations for a matched saved price snapshot. */
+export function shapontravelsPayableHasTickets(
+  saved: Record<string, unknown>,
+  envelope: Record<string, unknown>,
+  input: ShapontravelsTicketInput,
+): boolean {
+  const ticketCodeRef = saved.ticketCodeRef;
+  if (ticketCodeRef !== null && (typeof ticketCodeRef !== 'string' || !uuid.test(ticketCodeRef))) return false;
+  const rows = normalizeShapontravelsSavedTicketRows(saved);
+  if (!rows) return false;
+  const tickets = receiptPassengerTickets(envelope, { ...saved, ticketInfoes: rows }, input, 'supplier-payable');
+  return Boolean(tickets && (saved.ticketCodeRef != null ||
+    tickets.every(row => row.ticketNumberSource === null)));
+}
 
 /** Avoid reserving wallet funds when a required supplier locator is absent. */
 export function shapontravelsTicketIdentityReady(booking: {

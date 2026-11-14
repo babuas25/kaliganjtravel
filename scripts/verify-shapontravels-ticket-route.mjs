@@ -271,6 +271,7 @@ async function review(savedItinerary, extraBody = {}) {
     '@/lib/supabase/server': { supabaseAdmin: () => ({ from: () => query }) },
     '@/lib/shapontravels/client': client,
     '@/lib/shapontravels/booking-status': status,
+    '@/lib/shapontravels/saved-fares': compile('lib/shapontravels/saved-fares.ts', {}),
     '@/lib/shapontravels/ticketing-time': compile('lib/shapontravels/ticketing-time.ts', { './booking-status': status }),
     '@/lib/db/booking-ticketing-time': { saveShapontravelsTicketingTime: forbidden },
     '@/lib/shapontravels/external-ticket-confirmation': externalConfirmation,

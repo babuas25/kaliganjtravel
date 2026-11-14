@@ -86,6 +86,7 @@ const successfulRpcResult = {
   currency: 'BDT', decisionId: 'synthetic-decision',
 };
 const statusModule = compile('lib/shapontravels/booking-status.ts');
+const savedFares = compile('lib/shapontravels/saved-fares.ts');
 const references = { BOOKING_REFERENCE_PATTERN: /^(?:STR\d{12}|KTT[A-Z0-9]{1,100})$/ };
 const payload = compile('lib/triplover/ticket-payload.ts');
 
@@ -94,6 +95,7 @@ async function run(options = {}) {
   const rpcCalls = [];
   const audits = [];
   const statusRecords = [];
+  const supplierPayableRecords = [];
   const forbiddenCalls = [];
   let notifications = 0;
   const booking = options.missingBooking ? null : { ...plain(baseBooking), ...options.booking };
@@ -182,6 +184,13 @@ async function run(options = {}) {
       return query;
     },
     rpc: async (name, args) => {
+      if (name === 'record_shapon_booking_supplier_payable_v1') {
+        assert.equal(options.refresh, true);
+        events.push('store-supplier-payable');
+        supplierPayableRecords.push(plain(args));
+        if (options.supplierPayableStorageThrows) throw new Error('Synthetic display storage unavailable');
+        return { data: { recorded: true }, error: null };
+      }
       if (name === 'resolve_shapon_cancelled_refresh_v1') {
         events.push('cancel-recovery-rpc');
         rpcCalls.push(plain(args));
@@ -286,6 +295,7 @@ async function run(options = {}) {
     } },
     '@/lib/shapontravels/client': client,
     '@/lib/shapontravels/booking-status': statusModule,
+    '@/lib/shapontravels/saved-fares': savedFares,
     '@/lib/shapontravels/current-status-store': { recordShapontravelsCurrentStatus: async record => {
       events.push('store-status');
       statusRecords.push(plain(record));
@@ -336,7 +346,7 @@ async function run(options = {}) {
     assert.equal(result.data.supplierSyncPerformed, false,
       'Every successful Refresh explicitly reports a saved-status read without supplier synchronization');
   }
-  return { result, events, rpcCalls, audits, statusRecords, notifications, external };
+  return { result, events, rpcCalls, audits, statusRecords, supplierPayableRecords, notifications, external };
 }
 
 function assertBlocked(outcome, message) {
@@ -1034,6 +1044,223 @@ const validCanonicalConfirmation = await run({ bookingRead: canonicalIssuedRead,
 assert.equal(validCanonicalConfirmation.result.status, 200,
   'Matching complete canonical saved data and legacy wrappers retain valid confirmation support');
 assert.equal(validCanonicalConfirmation.rpcCalls.length, 1);
+
+const discountedBody = plain(canonicalIssued);
+for (const fare of [
+  discountedBody.savedBooking.fareBreakdown, discountedBody.item1.fareBreakdown,
+  discountedBody.item1.flightInfo.fareBreakdown,
+]) Object.assign(fare, { payable: '1980.00', specialDiscount: '-250.00' });
+for (const body of [discountedBody.currentStatus, discountedBody.savedBooking.currentStatus]) {
+  Object.assign(body, { source: 'admin_decision', verified: false });
+}
+const discountedRead = { ...canonicalIssuedRead, body: discountedBody };
+const discountedTicket = { ...canonicalIssuedTicket, body: plain(discountedBody) };
+const confirmedLocal = {
+  status: 'confirmed', lifecycle_status: 'confirmed', payment_state: 'captured',
+  user_payable_amount: baseBooking.user_payable_amount, captured_amount: baseBooking.user_payable_amount,
+  ticket_code_ref: ticketCodeRef, ticket_numbers: ['1234567890123', '1234567890124'],
+};
+const discountedRefresh = await run({ refresh: true, booking: confirmedLocal,
+  bookingRead: discountedRead, ticketRead: discountedTicket, locatorObservationWins: false });
+assert.equal(discountedRefresh.result.status, 200);
+assert.equal(discountedRefresh.result.data.projectionUpdated, true);
+assert.deepEqual(discountedRefresh.events.filter(event => event.startsWith('read-')), [
+  'read-local', 'read-booking', 'read-ticket',
+], 'Payable observation uses the existing authenticated booking and ticket reads');
+assert.equal(discountedRefresh.rpcCalls.length, 0, 'No wallet or booking resolution RPC');
+assert.equal(discountedRefresh.supplierPayableRecords.length, 1);
+const { p_request_started_at: payableReadAt, ...payableRecord } = discountedRefresh.supplierPayableRecords[0];
+assert.equal(payableReadAt, discountedRefresh.statusRecords[0].requestStartedAt);
+assert.deepEqual(payableRecord, {
+  p_booking_id: bookingId, p_supplier_public_ref: supplierPublicRef,
+  p_receipt_identity: { ...refs, supplierPublicRef },
+  p_supplier_payable_minor: '198000', p_special_discount_minor: '-25000', p_currency: 'BDT',
+  p_display_pnr: refs.pnr, p_airline_pnrs: ['AIR001'],
+});
+assert.equal(discountedRefresh.notifications, 0);
+assert.equal(JSON.stringify(discountedRefresh.result).includes('198000'), false, 'Supplier cost stays out of the status response');
+
+// Manual Shapon decisions can return canonical-only saved evidence, genuine
+// numeric tickets, no Issue UUID and no separately saved issue timestamp.
+const manualDiscounted = plain(discountedBody);
+delete manualDiscounted.item1;
+delete manualDiscounted.item2;
+manualDiscounted.savedBooking.bookingStatus = null;
+manualDiscounted.savedBooking.ticketCodeRef = null;
+manualDiscounted.savedBooking.issuedAt = null;
+manualDiscounted.savedBooking.publicReceipt.issuedAt = null;
+manualDiscounted.publicReceipt.issuedAt = null;
+for (const row of manualDiscounted.savedBooking.ticketInfoes) {
+  Object.assign(row, { ticketCodeRef: null, issuedAt: null, segmentIds: null });
+}
+const manualDiscountedRefresh = await run({ refresh: true, booking: confirmedLocal,
+  bookingRead: { ...discountedRead, body: manualDiscounted },
+  ticketRead: { ...discountedTicket, body: plain(manualDiscounted) } });
+assert.equal(manualDiscountedRefresh.result.status, 200);
+assert.equal(manualDiscountedRefresh.result.data.supplierTicket.result, 'verified');
+assert.equal(manualDiscountedRefresh.result.data.supplierTicket.ticketCodeRef, undefined);
+assert.equal(manualDiscountedRefresh.supplierPayableRecords[0].p_supplier_payable_minor, '198000');
+
+const platformDiscounted = plain(discountedBody);
+delete platformDiscounted.item1;
+delete platformDiscounted.item2;
+platformDiscounted.savedBooking.airlinesPNR = ['AIR001'];
+for (const row of platformDiscounted.savedBooking.ticketInfoes) {
+  row.ticketNumbers = [`AIR001/${row.passengerIndex + 1}`];
+  row.ticketNumberSource = 'platform_pnr';
+}
+const platformDiscountedRefresh = await run({ refresh: true, booking: { ...confirmedLocal,
+  itinerary: { carrierCode: '6E', legs: [{ segments: [{ airlineCode: '6E' }] }] } },
+  bookingRead: { ...discountedRead, body: platformDiscounted },
+  ticketRead: { ...discountedTicket, body: plain(platformDiscounted) } });
+assert.equal(platformDiscountedRefresh.result.status, 200);
+assert.equal(platformDiscountedRefresh.result.data.supplierTicket.result, 'verified');
+assert.equal(platformDiscountedRefresh.supplierPayableRecords[0].p_supplier_payable_minor, '198000');
+
+function correctedPayableReceipt({ pnr = 'NEW123', review = false, airfareChanged = true,
+    airlinePnrs = ['AIRNEW1'], held = false } = {}) {
+  const body = plain(manualDiscounted);
+  const current = {
+    status: held ? 'on-hold' : 'confirmed', reviewRequired: review, source: null, verified: null,
+    supplierStatus: null, supplierCheckedAt: null,
+  };
+  body.currentStatus = current;
+  body.savedBooking.currentStatus = current;
+  body.requiresReconciliation = review;
+  Object.assign(body.savedBooking, { pnr, airlinesPNR: airlinePnrs, reviewRequired: review,
+    requiresReconciliation: review });
+  for (const receipt of [body.publicReceipt, body.savedBooking.publicReceipt]) {
+    Object.assign(receipt, { pnr, airlinePnrs, pendingReview: review });
+    if (review) receipt.actions.canRequestServicing = false;
+  }
+  if (!airfareChanged) body.savedBooking.fareBreakdown = plain(canonicalIssued.savedBooking.fareBreakdown);
+  if (held) {
+    Object.assign(body.savedBooking, { status: 'on-hold', ticketingState: 'not_issued', paymentState: 'unpaid', ticketInfoes: [] });
+    for (const receipt of [body.publicReceipt, body.savedBooking.publicReceipt]) {
+      Object.assign(receipt, { status: 'on-hold', paymentState: 'unpaid', tickets: [] });
+      receipt.actions.canRequestServicing = false;
+    }
+    Object.assign(body, { status: 'on-hold', customerPaymentState: 'unpaid' });
+  }
+  return body;
+}
+
+for (const change of [{}, { pnr: 'NEW123-1', review: true }, { pnr: refs.pnr, review: true }]) {
+  const body = correctedPayableReceipt(change);
+  const outcome = await run({
+    refresh: true, booking: confirmedLocal,
+    bookingRead: { ...discountedRead, body }, ticketRead: { ...discountedTicket, body },
+  });
+  assert.equal(outcome.result.status, 200);
+  assert.equal(outcome.result.data.projectionUpdated, true);
+  assert.equal(outcome.result.data.savedDetailsAvailable, true);
+  assert.equal(outcome.result.data.externalTicketConfirmation, undefined);
+  assert.equal(outcome.result.data.supplierTicket, undefined);
+  assert.equal(outcome.statusRecords.length, 0, 'A payable observation cannot change operational status');
+  assert.equal(outcome.rpcCalls.length, 0, 'A payable observation cannot execute booking or wallet actions');
+  assert.equal(outcome.notifications, 0);
+  assert.deepEqual(outcome.supplierPayableRecords.map(({ p_request_started_at: _at, ...record }) => record),
+    [{ ...payableRecord, p_display_pnr: body.savedBooking.pnr, p_airline_pnrs: ['AIRNEW1'] }],
+    'The display write uses the original Kaligonj identity');
+  assert.equal(JSON.stringify(outcome.result).includes('198000'), false);
+}
+
+for (const change of [
+  { pnr: 'NEW123-2', review: true, airfareChanged: false },
+  { pnr: 'NEW124', review: true, airfareChanged: false, airlinePnrs: [] },
+  { pnr: 'NEW126', airfareChanged: false, held: true },
+  { pnr: refs.pnr, airfareChanged: false },
+  { pnr: refs.pnr, airfareChanged: false, airlinePnrs: canonicalIssued.savedBooking.airlinesPNR },
+]) {
+  const body = correctedPayableReceipt(change);
+  const outcome = await run({ refresh: true, booking: change.held ? baseBooking : confirmedLocal,
+    bookingRead: { ...discountedRead, body }, ticketRead: { ...discountedTicket, body } });
+  assert.equal(outcome.result.status, 200);
+  assert.equal(outcome.result.data.savedDetailsAvailable, true);
+  const [{ p_request_started_at: _at, ...record }] = outcome.supplierPayableRecords;
+  assert.deepEqual(record, { ...payableRecord, p_display_pnr: body.savedBooking.pnr,
+    p_airline_pnrs: body.savedBooking.airlinesPNR, p_supplier_payable_minor: null, p_special_discount_minor: null });
+  assert.equal(outcome.rpcCalls.length, 0);
+  assert.equal(outcome.notifications, 0);
+  assert.doesNotMatch(JSON.stringify(outcome.result), /NEW12[346]|AIRNEW1|mismatch/);
+}
+
+const corrected = correctedPayableReceipt({ review: true });
+const cancellingDiscount = await run({
+  refresh: true, booking: { ...confirmedLocal, operation_kind: 'reconciliation',
+    operation_reason: 'cancellation_reconciliation' },
+  bookingRead: { ...discountedRead, body: correctedPayableReceipt({ pnr: refs.pnr, review: true }) },
+  ticketRead: { ...discountedTicket, body: correctedPayableReceipt({ pnr: refs.pnr, review: true }) },
+});
+assert.equal(cancellingDiscount.result.status, 200);
+assert.equal(cancellingDiscount.supplierPayableRecords.length, 0);
+assert.ok(cancellingDiscount.events.includes('read-cancellation'));
+const invalidCorrectedTickets = [
+  { ...discountedTicket, httpStatus: 202, body: corrected },
+  { ...discountedTicket, body: correctedPayableReceipt({ pnr: 'NEW124', review: true }) },
+  { ...discountedTicket, body: correctedPayableReceipt() },
+];
+for (const update of [
+  body => { body.savedBooking.ticketCodeRef = 'invalid'; },
+  body => { body.savedBooking.reference = 'STRFOREIGN001'; },
+  body => { body.savedBooking.priceCodeRef = nonce; },
+  body => { body.savedBooking.segments[0].flightNumber = 'OTHER'; },
+  body => { body.savedBooking.passengerInfoes[0].nameElement.lastName = 'OTHER'; },
+  body => { body.savedBooking.ticketInfoes[0].ticketNumbers = ['1234567890125']; },
+  body => { body.savedBooking.fareBreakdown.payable = '1980.01'; },
+  body => { body.publicReceipt.actions.canIssue = true; body.savedBooking.publicReceipt.actions.canIssue = true; },
+]) {
+  const body = plain(corrected);
+  update(body);
+  invalidCorrectedTickets.push({ ...discountedTicket, body });
+}
+for (const ticketRead of invalidCorrectedTickets) {
+  const outcome = await run({
+    refresh: true, booking: confirmedLocal,
+    bookingRead: { ...discountedRead, body: corrected }, ticketRead,
+  });
+  assert.equal(outcome.result.status, 409);
+  assert.equal(outcome.supplierPayableRecords.length, 0);
+  assert.equal(outcome.statusRecords.length, 0);
+  assert.equal(outcome.rpcCalls.length, 0);
+}
+for (const supplierPublicRef of [null, 'STR261010111117']) {
+  const outcome = await run({
+    refresh: true, booking: confirmedLocal,
+    bookingRead: { ...discountedRead, supplierPublicRef, body: corrected },
+    ticketRead: { ...discountedTicket, body: corrected },
+  });
+  assert.equal(outcome.result.status, 409);
+  assert.equal(outcome.supplierPayableRecords.length, 0);
+}
+const failedCorrectedPayable = await run({
+  refresh: true, booking: confirmedLocal, supplierPayableStorageThrows: true,
+  bookingRead: { ...discountedRead, body: corrected }, ticketRead: { ...discountedTicket, body: corrected },
+});
+assert.equal(failedCorrectedPayable.result.status, 503);
+assert.equal(failedCorrectedPayable.statusRecords.length, 0);
+
+const conflictingSavedItinerary = plain(discountedTicket);
+conflictingSavedItinerary.body.savedBooking.segments[0].flightNumber = 'DIFFERENT';
+for (const [bookingRead, ticketRead, expectedLocatorObservations = 0] of [
+  [discountedRead, canonicalIssuedTicket],
+  [discountedRead, conflictingSavedItinerary],
+  [discountedRead, { ...discountedTicket, httpStatus: 404 }],
+  [{ ...discountedRead, body: { ...discountedBody,
+    item1: { ...discountedBody.item1, fareBreakdown: { ...discountedBody.item1.fareBreakdown, payable: '2230.00' } },
+  } }, discountedTicket, 1],
+]) {
+  const unchanged = await run({ refresh: true, booking: confirmedLocal, bookingRead, ticketRead });
+  assert.equal(unchanged.result.status, 200, 'Unusable fare evidence does not disrupt status refresh');
+  assert.equal(unchanged.supplierPayableRecords.length, expectedLocatorObservations);
+  assert.ok(unchanged.supplierPayableRecords.every(record => record.p_supplier_payable_minor === null),
+    'Independent valid locator evidence cannot save a fare with conflicting totals');
+  assert.equal(unchanged.rpcCalls.length, 0);
+}
+const missingPayableStorage = await run({ refresh: true, booking: confirmedLocal,
+  bookingRead: discountedRead, ticketRead: discountedTicket, supplierPayableStorageThrows: true });
+assert.equal(missingPayableStorage.result.status, 200);
+assert.equal(missingPayableStorage.result.data.supplierTicket.result, 'verified');
 for (const field of ['bookingRead', 'ticketRead']) {
   for (const [description, mutate] of [
     ['null canonical', body => { body.savedBooking = null; }],

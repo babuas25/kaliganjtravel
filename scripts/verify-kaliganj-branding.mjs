@@ -59,6 +59,10 @@ const integrationNames = new Set([
   'supportsShaponDisplayLocators',
 ]);
 function withoutIntegrationNames(file, source) {
+  if (file === 'components/dashboard/SupplierBalancePanel.tsx') {
+    // This staff-only card identifies the supplier whose balance is displayed.
+    return source.replace(/\bname: 'Shapon Travels'/, '');
+  }
   if (!integrationFiles.has(file) && !file.startsWith('lib/shapontravels/')) return source;
   return source
     .replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, name => integrationNames.has(name) ? '' : name)

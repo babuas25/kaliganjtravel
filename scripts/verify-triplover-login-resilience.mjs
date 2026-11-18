@@ -36,6 +36,13 @@ const configBySupplier = {
     email: 'firsttrip@example.test',
     password: 'firsttrip-password',
   },
+  triplover: {
+    supplier: 'triplover',
+    baseUrl: 'https://triplover-userapi.example.test',
+    searchBaseUrl: 'https://triplover-searchapi.example.test',
+    email: 'triplover@example.test',
+    password: 'triplover-password',
+  },
 };
 
 function successEnvelope(item1 = { ok: true }) {
@@ -58,7 +65,7 @@ function transportError(code) {
   return error;
 }
 
-function createClient(fetchImpl) {
+function createClient(fetchImpl, { loginTimeoutMs = 20_000 } = {}) {
   const module = { exports: {} };
   const warnings = [];
   const context = vm.createContext({
@@ -91,7 +98,7 @@ function createClient(fetchImpl) {
       if (specifier === 'crypto') return crypto;
       if (specifier.endsWith('/triplover/config')) {
         return {
-          LOGIN_TIMEOUT_MS: 20_000,
+          LOGIN_TIMEOUT_MS: loginTimeoutMs,
           SUPPLIER_TIMEOUT_MS: 110_000,
           triploverConfig: (supplier) => configBySupplier[supplier] ?? null,
         };
@@ -398,6 +405,40 @@ async function takeoffLoginRetryDoesNotDuplicateBook() {
   assert.equal(operationCalls(calls, '/api/Book').length, 1);
 }
 
+async function stalledTriploverLoginDoesNotBlockLaterBalanceReads() {
+  let loginCount = 0;
+  const client = createClient(async (url, init) => {
+    if (url.endsWith('/api/user/apiLogIn')) {
+      loginCount += 1;
+      if (loginCount === 1) {
+        return {
+          status: 200,
+          text: () => new Promise((resolve, reject) => {
+            // Resolve eventually so a missing abort fails the assertion instead of hanging.
+            const release = setTimeout(() => resolve('{}'), 250);
+            init.signal.addEventListener('abort', () => {
+              clearTimeout(release);
+              reject(init.signal.reason);
+            }, { once: true });
+          }),
+        };
+      }
+      return jsonResponse({ isSuccess: true, data: { token: 'replacement-token' } });
+    }
+    assert.equal(init.headers.Authorization, 'Bearer replacement-token');
+    return { status: 200, text: async () => '{"currentBalance":9007199254740993.01}' };
+  }, { loginTimeoutMs: 25 });
+
+  const readBalance = () => client.triploverCall('GetByUserId', '/api/User/GetByUserId', undefined, {
+    supplier: 'triplover', method: 'GET', topLevelPayload: true,
+  });
+  await assert.rejects(readBalance, (error) =>
+    error.diagnostic?.code === 'TOKEN_LOGIN_TIMEOUT' && error.diagnostic?.phase === 'response-body'
+  );
+  assert.equal((await readBalance()).data.currentBalance, '9007199254740993.01');
+  assert.equal(loginCount, 2);
+}
+
 await takeoffTransientLoginRetriesOnce();
 await takeoffTokenExpiryTraceShowsTheOnlySearchReplay();
 await firsttripLoginIsNotRetried();
@@ -406,6 +447,7 @@ await concurrentTakeoffSearchesShareOneRetriedLogin();
 await staleTokenFailureCannotDeleteAFreshTakeoffToken();
 await networkFailuresNeverReplaySearchOrBook();
 await takeoffLoginRetryDoesNotDuplicateBook();
+await stalledTriploverLoginDoesNotBlockLaterBalanceReads();
 
 assert.match(source, /invalidateToken\(config\.supplier, token\)/);
 assert.match(source, /text = await response\.text\(\)/);

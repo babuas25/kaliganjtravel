@@ -98,7 +98,8 @@ export type TriploverOperation =
   | 'Cancel'
   | 'NewTicket'
   | 'Pnr'
-  | 'AirTicketingDetails';
+  | 'AirTicketingDetails'
+  | 'GetByUserId';
 
 export function isRetrySafe(operation: TriploverOperation): boolean {
   switch (operation) {
@@ -108,6 +109,7 @@ export function isRetrySafe(operation: TriploverOperation): boolean {
     case 'RePrice':
     case 'Pnr':
     case 'AirTicketingDetails':
+    case 'GetByUserId':
       return true;
     // Each of these can create or destroy a booking. If the outcome is unknown,
     // it stays unknown — resolve it by reading the PNR, never by repeating.
@@ -453,7 +455,9 @@ async function fetchJson(
   const requestStartedPerf = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const keepDeadlineThroughResponseBody = supplier === 'takeoff';
+  const keepDeadlineThroughResponseBody = supplier === 'takeoff' ||
+    operation === 'GetByUserId' ||
+    (supplier === 'triplover' && operation === 'LogIn');
 
   let response: Response;
   let headersReceivedAt = requestStartedPerf;
@@ -465,8 +469,7 @@ async function fetchJson(
     headersReceivedAt = performance.now();
     hooks?.onResponseHeaders?.(response.status);
     phase = 'response-body';
-    // Scope the body deadline to TakeOff, the investigated provider. This fixes
-    // an unbounded TakeOff body read without changing FirstTrip's legacy timing.
+    // Keep the TripLover balance and its shared login bounded through the body.
     if (!keepDeadlineThroughResponseBody) clearTimeout(timer);
     text = await response.text();
     hooks?.onResponseComplete?.(response.status);
@@ -498,7 +501,15 @@ async function fetchJson(
   let body: unknown = null;
   if (text.length > 0) {
     try {
-      body = JSON.parse(text);
+      if (operation === 'GetByUserId') {
+        // Node 24 exposes the original JSON number so currency digits survive parsing.
+        body = JSON.parse(text, (key, value, context?: { source: string }) => {
+          if (key !== 'currentBalance') return value;
+          return typeof value === 'number' ? context?.source : null;
+        });
+      } else {
+        body = JSON.parse(text);
+      }
     } catch {
       body = null;
     }
@@ -904,8 +915,7 @@ export async function triploverCall(
     );
   }
 
-  // AirTicketingDetails is the documented exception to Triplover's envelope:
-  // its report object is returned directly at the top level.
+  // Reports and user details can return their payload directly at the top level.
   if (options.topLevelPayload) {
     return {
       data: response.body,

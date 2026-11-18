@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Save, Server } from 'lucide-react
 import {
   saveSupplierControlAction,
 } from '@/app/(dashboard)/dashboard/supplier-control/actions';
+import SupplierBalancePanel from '@/components/dashboard/SupplierBalancePanel';
 import type { SupplierOperationalControls } from '@/lib/db/supplier-controls';
 import type { FlightReadSupplier } from '@/lib/flights/supplier';
 
@@ -212,6 +213,8 @@ export default function SupplierControlPanel({
         Existing searches, RePrice requests, bookings, PNR reads, cancellations,
         and ticketing continue using the supplier account recorded when they began.
       </p>
+
+      <SupplierBalancePanel />
     </main>
   );
 }

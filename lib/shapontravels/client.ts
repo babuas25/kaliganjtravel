@@ -1,7 +1,8 @@
 import 'server-only';
 
 /** Shapontravels uses issued machine credentials, not the Triplover login. */
-export type ShapontravelsRead = 'Search' | 'FareRules' | 'Reprice' | 'Accept' | 'Airlines';
+type ShapontravelsGet = 'Airlines' | 'WalletBalance';
+export type ShapontravelsRead = 'Search' | 'FareRules' | 'Reprice' | 'Accept' | ShapontravelsGet;
 
 export type ShapontravelsReadTiming = {
   tokenMs: number;
@@ -24,6 +25,7 @@ const PATHS: Record<ShapontravelsRead, string> = {
   Reprice: 'api/Reprice',
   Accept: 'api/Reprice/accept',
   Airlines: 'api/Airlines',
+  WalletBalance: 'api/wallet/balance?currency=BDT',
 };
 const TOKEN_MARGIN_MS = 60_000;
 const LOGIN_TIMEOUT_MS = 20_000;
@@ -33,6 +35,7 @@ const READ_TIMEOUT_MS: Record<ShapontravelsRead, number> = {
   Reprice: 60_000,
   Accept: 30_000,
   Airlines: 15_000,
+  WalletBalance: 10_000,
 };
 const BODY_LIMIT: Record<ShapontravelsRead, number> = {
   Search: 64 * 1024 * 1024,
@@ -40,6 +43,7 @@ const BODY_LIMIT: Record<ShapontravelsRead, number> = {
   Reprice: 8 * 1024 * 1024,
   Accept: 128 * 1024,
   Airlines: 128 * 1024,
+  WalletBalance: 16 * 1024,
 };
 
 type Credentials = { base: URL; clientId: string; clientSecret: string };
@@ -203,8 +207,8 @@ async function accessToken(config: Credentials): Promise<Token> {
 }
 
 /** Reprice acceptance is safe to repeat for the same private price reference. */
-export function shapontravelsRead(operation: 'Airlines'): Promise<unknown>;
-export function shapontravelsRead(operation: Exclude<ShapontravelsRead, 'Airlines'>, payload: unknown, options?: ShapontravelsReadOptions): Promise<unknown>;
+export function shapontravelsRead(operation: ShapontravelsGet): Promise<unknown>;
+export function shapontravelsRead(operation: Exclude<ShapontravelsRead, ShapontravelsGet>, payload: unknown, options?: ShapontravelsReadOptions): Promise<unknown>;
 export async function shapontravelsRead(
   operation: ShapontravelsRead,
   payload?: unknown,
@@ -212,6 +216,7 @@ export async function shapontravelsRead(
 ): Promise<unknown> {
   const config = credentials();
   const endpoint = new URL(PATHS[operation], config.base);
+  const isGet = operation === 'Airlines' || operation === 'WalletBalance';
   const timing: ShapontravelsReadTiming | null = options.onTiming ? {
     tokenMs: 0,
     tokenSource: '',
@@ -240,12 +245,12 @@ export async function shapontravelsRead(
       let response: Response;
       try {
         response = await fetch(endpoint, {
-          method: operation === 'Airlines' ? 'GET' : 'POST',
+          method: isGet ? 'GET' : 'POST',
           headers: {
             authorization: `Bearer ${token.value}`,
-            ...(operation === 'Airlines' ? {} : { 'content-type': 'application/json' }),
+            ...(isGet ? {} : { 'content-type': 'application/json' }),
           },
-          ...(operation === 'Airlines' ? {} : { body: JSON.stringify(payload) }),
+          ...(isGet ? {} : { body: JSON.stringify(payload) }),
           cache: 'no-store',
           redirect: 'error',
           signal: AbortSignal.timeout(READ_TIMEOUT_MS[operation]),

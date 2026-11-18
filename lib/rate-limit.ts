@@ -151,6 +151,8 @@ export const LIMITS = {
   manageMarkup: { limit: 60, windowMs: HOUR },
   /** Super Admin changes the account that new supplier searches use. */
   manageSupplierControls: { limit: 30, windowMs: HOUR },
+  /** Super Admin reads a live balance, limited separately for each supplier. */
+  viewSupplierBalance: { limit: 60, windowMs: HOUR },
   /** Super Admin changes supplier daily budgets or individual search access. */
   manageFlightSearchControls: { limit: 120, windowMs: HOUR },
   /** Admin and Media Staff changes to the public announcement message set. */

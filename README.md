@@ -65,3 +65,6 @@ publishable key. No live service credentials are needed for CI.
 Production deployment is prepared for a **new** Vercel project. Setup and required
 GitHub configuration are in [Deployment setup](docs/25-GITHUB-VERCEL-DEPLOYMENT.md).
 Deployment stays disabled until that project and its credentials are configured.
+
+Check the [GitHub deployment history](https://github.com/babuas25/kaliganjtravel/deployments)
+for the latest production commit.
